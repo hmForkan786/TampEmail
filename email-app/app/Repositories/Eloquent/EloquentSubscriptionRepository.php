@@ -7,9 +7,12 @@ namespace App\Repositories\Eloquent;
 use App\DTOs\Subscription\CreateSubscriptionData;
 use App\DTOs\Subscription\SubscriptionFiltersData;
 use App\DTOs\Subscription\UpdateSubscriptionData;
+use App\Enums\SubscriptionStatus;
 use App\Models\Subscription;
 use App\Repositories\Contracts\SubscriptionRepositoryInterface;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
+use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Database\Eloquent\Collection;
 
 /**
  * Eloquent-backed persistence and query implementation for subscriptions.
@@ -42,6 +45,56 @@ final class EloquentSubscriptionRepository extends BaseEloquentRepository implem
             ->where('user_id', $userId)
             ->where('plan_id', $planId)
             ->first();
+    }
+
+    /**
+     * Find Active and Trial subscriptions for the given user.
+     *
+     * @param string $userId Owning user UUID.
+     *
+     * @return Collection<int, Subscription> Eligible subscriptions.
+     */
+    public function findEligibleForUser(string $userId): Collection
+    {
+        return $this->eligibleForUserQuery($userId)->get();
+    }
+
+    /**
+     * Find and lock Active and Trial subscriptions for the given user.
+     *
+     * @param string $userId Owning user UUID.
+     *
+     * @return Collection<int, Subscription> Locked eligible subscriptions.
+     */
+    public function findEligibleForUserForUpdate(string $userId): Collection
+    {
+        return $this->eligibleForUserQuery($userId)
+            ->lockForUpdate()
+            ->get();
+    }
+
+    /**
+     * Build the deterministic eligible-subscription query for a user.
+     *
+     * Ordering: Active before Trial, then latest starts_at, then latest
+     * created_at, then highest id.
+     *
+     * @param string $userId Owning user UUID.
+     *
+     * @return Builder<Subscription> The prepared query.
+     */
+    private function eligibleForUserQuery(string $userId): Builder
+    {
+        return $this->model()->newQuery()
+            ->where('user_id', $userId)
+            ->whereIn('status', [
+                SubscriptionStatus::Active,
+                SubscriptionStatus::Trial,
+            ])
+            ->orderByRaw('case when status = ? then 0 else 1 end', [SubscriptionStatus::Active->value])
+            ->orderByDesc('starts_at')
+            ->orderByDesc('created_at')
+            ->orderByDesc('id');
     }
 
     /**
