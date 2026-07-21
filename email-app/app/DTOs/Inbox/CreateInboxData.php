@@ -22,6 +22,7 @@ readonly class CreateInboxData
      * @param InboxType $inboxType Inbox lifecycle classification.
      * @param CarbonInterface|null $expiresAt Optional expiration timestamp.
      * @param array<string, mixed>|null $metadata Optional extra configuration.
+     * @param string|null $mailServerId Optional assigned mail server UUID.
      */
     public function __construct(
         public string $domainId,
@@ -32,6 +33,7 @@ readonly class CreateInboxData
         public InboxType $inboxType,
         public ?CarbonInterface $expiresAt,
         public ?array $metadata,
+        public ?string $mailServerId = null,
     ) {}
 
     /**
@@ -66,6 +68,26 @@ readonly class CreateInboxData
     }
 
     /**
+     * Return a copy of this DTO with the given mail server assignment.
+     *
+     * @param string $mailServerId Assigned mail server UUID.
+     */
+    public function withMailServerId(string $mailServerId): self
+    {
+        return new self(
+            domainId: $this->domainId,
+            userId: $this->userId,
+            localPart: $this->localPart,
+            fullAddress: $this->fullAddress,
+            displayName: $this->displayName,
+            inboxType: $this->inboxType,
+            expiresAt: $this->expiresAt,
+            metadata: $this->metadata,
+            mailServerId: $mailServerId,
+        );
+    }
+
+    /**
      * Convert the DTO to model-fillable attributes.
      *
      * @return array<string, mixed>
@@ -81,6 +103,7 @@ readonly class CreateInboxData
             'inbox_type' => $this->inboxType->value,
             'expires_at' => $this->expiresAt,
             'metadata' => $this->metadata,
+            'mail_server_id' => $this->mailServerId,
         ];
     }
 }

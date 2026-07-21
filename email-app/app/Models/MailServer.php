@@ -6,7 +6,9 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Attributes\Scope;
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Support\Carbon;
 
 /**
@@ -19,12 +21,15 @@ use Illuminate\Support\Carbon;
  * @property string $protocol
  * @property bool $is_active
  * @property int $priority
+ * @property string|null $pool_key
+ * @property int|null $max_inboxes
  * @property int $max_connections
  * @property int $timeout_seconds
  * @property Carbon|null $last_health_check_at
  * @property array<string, mixed>|null $metadata
  * @property Carbon|null $created_at
  * @property Carbon|null $updated_at
+ * @property-read Collection<int, Inbox> $inboxes
  */
 class MailServer extends BaseModel
 {
@@ -49,6 +54,8 @@ class MailServer extends BaseModel
         'protocol',
         'is_active',
         'priority',
+        'pool_key',
+        'max_inboxes',
         'max_connections',
         'timeout_seconds',
         'last_health_check_at',
@@ -65,11 +72,20 @@ class MailServer extends BaseModel
         return array_merge(parent::casts(), [
             'is_active' => 'boolean',
             'priority' => 'integer',
+            'max_inboxes' => 'integer',
             'max_connections' => 'integer',
             'timeout_seconds' => 'integer',
             'last_health_check_at' => 'datetime',
             'metadata' => 'array',
         ]);
+    }
+
+    /**
+     * Get the inboxes assigned to the mail server.
+     */
+    public function inboxes(): HasMany
+    {
+        return $this->hasMany(Inbox::class);
     }
 
     /**

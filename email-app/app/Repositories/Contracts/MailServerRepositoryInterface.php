@@ -41,4 +41,18 @@ interface MailServerRepositoryInterface extends BaseRepositoryInterface
      * @return LengthAwarePaginator Paginated mail server results.
      */
     public function paginate(MailServerFiltersData $filters): LengthAwarePaginator;
+
+    /**
+     * Select and lock the best available mail server for the given pools.
+     *
+     * Filters to active, healthy, under-capacity servers whose pool_key is
+     * in the given list, ordered deterministically by priority. Applies a
+     * row-level lock, so it must be called within an open transaction.
+     * Performs no entitlement resolution.
+     *
+     * @param array<string> $poolKeys Allowed pool keys.
+     *
+     * @return MailServer|null The locked selected mail server, if any.
+     */
+    public function selectAvailableForPoolsForUpdate(array $poolKeys): ?MailServer;
 }

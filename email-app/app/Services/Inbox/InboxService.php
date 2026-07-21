@@ -14,6 +14,7 @@ use App\DTOs\Inbox\CreateInboxData;
 use App\DTOs\Inbox\InboxFiltersData;
 use App\DTOs\Inbox\UpdateInboxData;
 use App\Models\Inbox;
+use App\Models\User;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 
 /**
@@ -42,12 +43,13 @@ final class InboxService
      * Create and persist a new inbox.
      *
      * @param CreateInboxData $data Validated inbox creation data.
+     * @param User|null       $user Authenticated user for entitlement enforcement, if any.
      *
      * @return Inbox The created inbox.
      */
-    public function create(CreateInboxData $data): Inbox
+    public function create(CreateInboxData $data, ?User $user = null): Inbox
     {
-        return $this->createInboxAction->execute($data);
+        return $this->createInboxAction->execute($data, $user);
     }
 
     /**

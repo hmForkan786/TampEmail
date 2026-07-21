@@ -5,27 +5,33 @@ declare(strict_types=1);
 namespace App\Actions\Inbox;
 
 use App\DTOs\Inbox\CreateInboxData;
+use App\Exceptions\EligibleMailServerUnavailableException;
 use App\Exceptions\InboxQuotaExceededException;
 use App\Models\Inbox;
 use App\Models\User;
 use App\Repositories\Contracts\InboxRepositoryInterface;
 use App\Services\Entitlement\EntitlementService;
+use App\Services\MailServer\MailServerSelectionService;
+use Illuminate\Support\Facades\DB;
 
 /**
  * Create and persist a new inbox from validated input data.
  *
  * Enforces the max_inboxes plan entitlement before persistence when an
- * authenticated user context is provided.
+ * authenticated user context is provided, and assigns an entitled mail
+ * server inside a single transaction so the selection lock holds.
  */
 final class CreateInboxAction
 {
     /**
-     * @param InboxRepositoryInterface $inboxRepository    Inbox persistence contract.
-     * @param EntitlementService       $entitlementService Feature entitlement resolution service.
+     * @param InboxRepositoryInterface   $inboxRepository            Inbox persistence contract.
+     * @param EntitlementService         $entitlementService         Feature entitlement resolution service.
+     * @param MailServerSelectionService $mailServerSelectionService Entitled mail server selection service.
      */
     public function __construct(
         private readonly InboxRepositoryInterface $inboxRepository,
         private readonly EntitlementService $entitlementService,
+        private readonly MailServerSelectionService $mailServerSelectionService,
     ) {}
 
     /**
@@ -37,14 +43,25 @@ final class CreateInboxAction
      * @return Inbox The created inbox.
      *
      * @throws InboxQuotaExceededException When the user's inbox quota is exhausted.
+     * @throws EligibleMailServerUnavailableException When no eligible mail server is available.
      */
     public function execute(CreateInboxData $data, ?User $user = null): Inbox
     {
-        if ($user !== null) {
-            $this->enforceQuota($user);
-        }
+        return DB::transaction(function () use ($data, $user): Inbox {
+            if ($user !== null) {
+                $this->enforceQuota($user);
 
-        return $this->inboxRepository->create($data);
+                $mailServer = $this->mailServerSelectionService->selectForUser($user);
+
+                if ($mailServer === null) {
+                    throw new EligibleMailServerUnavailableException;
+                }
+
+                $data = $data->withMailServerId($mailServer->id);
+            }
+
+            return $this->inboxRepository->create($data);
+        });
     }
 
     /**

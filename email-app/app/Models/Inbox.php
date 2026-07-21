@@ -20,6 +20,7 @@ use Illuminate\Support\Carbon;
  * @property string $id
  * @property string $domain_id
  * @property string|null $user_id
+ * @property string|null $mail_server_id
  * @property string $local_part
  * @property string $full_address
  * @property string|null $display_name
@@ -34,6 +35,7 @@ use Illuminate\Support\Carbon;
  * @property Carbon|null $deleted_at
  * @property-read Domain $domain
  * @property-read User|null $user
+ * @property-read MailServer|null $mailServer
  * @property-read Collection<int, Email> $emails
  */
 class Inbox extends BaseModel
@@ -56,6 +58,7 @@ class Inbox extends BaseModel
     protected $fillable = [
         'domain_id',
         'user_id',
+        'mail_server_id',
         'local_part',
         'full_address',
         'display_name',
@@ -98,6 +101,14 @@ class Inbox extends BaseModel
     public function user(): BelongsTo
     {
         return $this->belongsTo(User::class);
+    }
+
+    /**
+     * Get the mail server assigned to the inbox.
+     */
+    public function mailServer(): BelongsTo
+    {
+        return $this->belongsTo(MailServer::class);
     }
 
     /**

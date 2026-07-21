@@ -80,4 +80,49 @@ final class EloquentMailServerRepository extends BaseEloquentRepository implemen
 
         return $query->paginate($filters->perPage);
     }
+
+    /**
+     * Select and lock the best available mail server for the given pools.
+     *
+     * Filters to active, healthy, under-capacity servers whose pool_key is
+     * in the given list, ordered deterministically by priority. Applies a
+     * row-level lock, so it must be called within an open transaction.
+     * Performs no entitlement resolution.
+     *
+     * @param array<string> $poolKeys Allowed pool keys.
+     *
+     * @return MailServer|null The locked selected mail server, if any.
+     */
+    public function selectAvailableForPoolsForUpdate(array $poolKeys): ?MailServer
+    {
+        if ($poolKeys === []) {
+            return null;
+        }
+
+        return $this->model()->newQuery()
+            ->whereIn('pool_key', $poolKeys)
+            ->where('is_active', true)
+            ->whereNotNull('last_health_check_at')
+            ->where('last_health_check_at', '>=', now()->subMinutes(10))
+            ->where(function ($query): void {
+                $query->whereNull('max_inboxes')
+                    ->orWhere('max_inboxes', '>', function ($query): void {
+                        // Utilization: assigned inboxes that are not soft
+                        // deleted, active, and not expired.
+                        $query->selectRaw('count(*)')
+                            ->from('inboxes')
+                            ->whereColumn('inboxes.mail_server_id', 'mail_servers.id')
+                            ->whereNull('inboxes.deleted_at')
+                            ->where('inboxes.is_active', true)
+                            ->where(function ($query): void {
+                                $query->whereNull('inboxes.expires_at')
+                                    ->orWhere('inboxes.expires_at', '>', now());
+                            });
+                    });
+            })
+            ->orderByDesc('priority')
+            ->orderByDesc('id')
+            ->lockForUpdate()
+            ->first();
+    }
 }
