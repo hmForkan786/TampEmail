@@ -79,6 +79,16 @@ final class EloquentSubscriptionRepository extends BaseEloquentRepository implem
             $query->where('auto_renew', false);
         }
 
+        if ($filters->hasSearch()) {
+            $search = $filters->search;
+
+            $query->where(function ($query) use ($search): void {
+                $query->where('status', 'like', "%{$search}%")
+                    ->orWhere('billing_cycle', 'like', "%{$search}%")
+                    ->orWhere('currency', 'like', "%{$search}%");
+            });
+        }
+
         return $query
             ->orderBy($filters->sortBy, $filters->sortDirection)
             ->paginate($filters->perPage);

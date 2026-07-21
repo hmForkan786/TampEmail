@@ -69,6 +69,13 @@ final class EloquentInboxRepository extends BaseEloquentRepository implements In
             $query->expired();
         }
 
+        if ($filters->isExpired === false) {
+            $query->where(function ($query): void {
+                $query->whereNull('expires_at')
+                    ->orWhere('expires_at', '>', now());
+            });
+        }
+
         if ($filters->hasSearch()) {
             $search = $filters->search;
 
