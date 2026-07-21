@@ -22,6 +22,7 @@ use Illuminate\Support\Carbon;
  * @property bool $is_active
  * @property bool $is_public
  * @property bool $allow_registration
+ * @property bool $is_healthy
  * @property int $priority
  * @property int|null $max_mailboxes
  * @property int $retention_hours
@@ -57,6 +58,7 @@ class Domain extends BaseModel
         'is_active',
         'is_public',
         'allow_registration',
+        'is_healthy',
         'priority',
         'max_mailboxes',
         'retention_hours',
@@ -76,6 +78,7 @@ class Domain extends BaseModel
             'is_active' => 'boolean',
             'is_public' => 'boolean',
             'allow_registration' => 'boolean',
+            'is_healthy' => 'boolean',
             'priority' => 'integer',
             'max_mailboxes' => 'integer',
             'retention_hours' => 'integer',

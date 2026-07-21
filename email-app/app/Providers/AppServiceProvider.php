@@ -2,8 +2,16 @@
 
 namespace App\Providers;
 
+use App\Repositories\Contracts\AttachmentRepositoryInterface;
+use App\Repositories\Contracts\DomainRepositoryInterface;
+use App\Repositories\Contracts\EmailRepositoryInterface;
 use App\Repositories\Contracts\InboxRepositoryInterface;
+use App\Repositories\Contracts\SubscriptionRepositoryInterface;
+use App\Repositories\Eloquent\EloquentAttachmentRepository;
+use App\Repositories\Eloquent\EloquentDomainRepository;
+use App\Repositories\Eloquent\EloquentEmailRepository;
 use App\Repositories\Eloquent\EloquentInboxRepository;
+use App\Repositories\Eloquent\EloquentSubscriptionRepository;
 use Illuminate\Cache\RateLimiting\Limit;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\RateLimiter;
@@ -19,6 +27,26 @@ class AppServiceProvider extends ServiceProvider
         $this->app->bind(
             InboxRepositoryInterface::class,
             EloquentInboxRepository::class,
+        );
+
+        $this->app->bind(
+            EmailRepositoryInterface::class,
+            EloquentEmailRepository::class,
+        );
+
+        $this->app->bind(
+            AttachmentRepositoryInterface::class,
+            EloquentAttachmentRepository::class,
+        );
+
+        $this->app->bind(
+            DomainRepositoryInterface::class,
+            EloquentDomainRepository::class,
+        );
+
+        $this->app->bind(
+            SubscriptionRepositoryInterface::class,
+            EloquentSubscriptionRepository::class,
         );
     }
 

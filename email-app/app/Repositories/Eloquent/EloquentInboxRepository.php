@@ -13,41 +13,19 @@ use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 
 /**
  * Eloquent-backed persistence and query implementation for inboxes.
+ *
+ * Common CRUD operations are inherited from BaseEloquentRepository.
+ *
+ * @extends BaseEloquentRepository<Inbox, CreateInboxData, UpdateInboxData>
  */
-final class EloquentInboxRepository implements InboxRepositoryInterface
+final class EloquentInboxRepository extends BaseEloquentRepository implements InboxRepositoryInterface
 {
     /**
-     * Persist a new inbox.
+     * @return Inbox
      */
-    public function create(CreateInboxData $data): Inbox
+    protected function model(): Inbox
     {
-        return Inbox::create($data->toArray());
-    }
-
-    /**
-     * Update an existing inbox with partial data.
-     */
-    public function update(Inbox $inbox, UpdateInboxData $data): Inbox
-    {
-        $inbox->update($data->toArray());
-
-        return $inbox->refresh();
-    }
-
-    /**
-     * Delete the given inbox.
-     */
-    public function delete(Inbox $inbox): bool
-    {
-        return (bool) $inbox->delete();
-    }
-
-    /**
-     * Find an inbox by its UUID.
-     */
-    public function findById(string $id): ?Inbox
-    {
-        return Inbox::find($id);
+        return new Inbox;
     }
 
     /**
@@ -55,7 +33,7 @@ final class EloquentInboxRepository implements InboxRepositoryInterface
      */
     public function findByAddress(string $fullAddress): ?Inbox
     {
-        return Inbox::query()
+        return $this->model()->newQuery()
             ->where('full_address', $fullAddress)
             ->first();
     }
@@ -65,7 +43,7 @@ final class EloquentInboxRepository implements InboxRepositoryInterface
      */
     public function paginate(InboxFiltersData $filters): LengthAwarePaginator
     {
-        $query = Inbox::query();
+        $query = $this->model()->newQuery();
 
         if ($filters->userId !== null) {
             $query->where('user_id', $filters->userId);

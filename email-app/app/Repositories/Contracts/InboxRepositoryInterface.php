@@ -12,29 +12,14 @@ use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 
 /**
  * Contract for inbox persistence operations.
+ *
+ * Common CRUD methods are inherited from BaseRepositoryInterface.
+ * Module-specific lookups and Filter DTO pagination remain here.
+ *
+ * @extends BaseRepositoryInterface<Inbox, CreateInboxData, UpdateInboxData>
  */
-interface InboxRepositoryInterface
+interface InboxRepositoryInterface extends BaseRepositoryInterface
 {
-    /**
-     * Persist a new inbox.
-     */
-    public function create(CreateInboxData $data): Inbox;
-
-    /**
-     * Update an existing inbox with partial data.
-     */
-    public function update(Inbox $inbox, UpdateInboxData $data): Inbox;
-
-    /**
-     * Delete the given inbox.
-     */
-    public function delete(Inbox $inbox): bool;
-
-    /**
-     * Find an inbox by its UUID.
-     */
-    public function findById(string $id): ?Inbox;
-
     /**
      * Find an inbox by its full email address.
      */

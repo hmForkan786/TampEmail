@@ -58,10 +58,10 @@ readonly class InboxFiltersData
                 : null,
             inboxType: $inboxType,
             isActive: array_key_exists('is_active', $filters)
-                ? (bool) $filters['is_active']
+                ? ($filters['is_active'] !== null ? (bool) $filters['is_active'] : null)
                 : null,
             isExpired: array_key_exists('is_expired', $filters)
-                ? (bool) $filters['is_expired']
+                ? ($filters['is_expired'] !== null ? (bool) $filters['is_expired'] : null)
                 : null,
             search: array_key_exists('search', $filters)
                 ? ($filters['search'] !== null ? (string) $filters['search'] : null)
