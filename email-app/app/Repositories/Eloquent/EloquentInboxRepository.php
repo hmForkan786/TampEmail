@@ -39,6 +39,23 @@ final class EloquentInboxRepository extends BaseEloquentRepository implements In
     }
 
     /**
+     * Count the non-deleted inboxes owned by the given user.
+     *
+     * Soft-deleted rows are excluded by Eloquent's SoftDeletes global scope.
+     * Active and expiration state are intentionally ignored.
+     *
+     * @param string $userId Owning user UUID.
+     *
+     * @return int Number of inboxes owned by the user.
+     */
+    public function countForUser(string $userId): int
+    {
+        return $this->model()->newQuery()
+            ->where('user_id', $userId)
+            ->count();
+    }
+
+    /**
      * Retrieve a paginated list of inboxes matching the given filters.
      */
     public function paginate(InboxFiltersData $filters): LengthAwarePaginator

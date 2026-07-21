@@ -26,6 +26,15 @@ interface InboxRepositoryInterface extends BaseRepositoryInterface
     public function findByAddress(string $fullAddress): ?Inbox;
 
     /**
+     * Count the non-deleted inboxes owned by the given user.
+     *
+     * @param string $userId Owning user UUID.
+     *
+     * @return int Number of inboxes owned by the user.
+     */
+    public function countForUser(string $userId): int;
+
+    /**
      * Retrieve a paginated list of inboxes matching the given filters.
      */
     public function paginate(InboxFiltersData $filters): LengthAwarePaginator;
