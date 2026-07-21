@@ -2,11 +2,13 @@
 
 namespace App\Providers;
 
+use App\Repositories\Contracts\ApiKeyRepositoryInterface;
 use App\Repositories\Contracts\AttachmentRepositoryInterface;
 use App\Repositories\Contracts\DomainRepositoryInterface;
 use App\Repositories\Contracts\EmailRepositoryInterface;
 use App\Repositories\Contracts\InboxRepositoryInterface;
 use App\Repositories\Contracts\SubscriptionRepositoryInterface;
+use App\Repositories\Eloquent\EloquentApiKeyRepository;
 use App\Repositories\Eloquent\EloquentAttachmentRepository;
 use App\Repositories\Eloquent\EloquentDomainRepository;
 use App\Repositories\Eloquent\EloquentEmailRepository;
@@ -24,6 +26,11 @@ class AppServiceProvider extends ServiceProvider
      */
     public function register(): void
     {
+        $this->app->bind(
+            ApiKeyRepositoryInterface::class,
+            EloquentApiKeyRepository::class,
+        );
+
         $this->app->bind(
             InboxRepositoryInterface::class,
             EloquentInboxRepository::class,
