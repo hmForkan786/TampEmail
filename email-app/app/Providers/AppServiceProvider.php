@@ -6,6 +6,7 @@ use App\Repositories\Contracts\ApiKeyRepositoryInterface;
 use App\Repositories\Contracts\AttachmentRepositoryInterface;
 use App\Repositories\Contracts\DomainRepositoryInterface;
 use App\Repositories\Contracts\EmailRepositoryInterface;
+use App\Repositories\Contracts\FeatureRepositoryInterface;
 use App\Repositories\Contracts\InboxRepositoryInterface;
 use App\Repositories\Contracts\MailServerRepositoryInterface;
 use App\Repositories\Contracts\PlanRepositoryInterface;
@@ -14,6 +15,7 @@ use App\Repositories\Eloquent\EloquentApiKeyRepository;
 use App\Repositories\Eloquent\EloquentAttachmentRepository;
 use App\Repositories\Eloquent\EloquentDomainRepository;
 use App\Repositories\Eloquent\EloquentEmailRepository;
+use App\Repositories\Eloquent\EloquentFeatureRepository;
 use App\Repositories\Eloquent\EloquentInboxRepository;
 use App\Repositories\Eloquent\EloquentMailServerRepository;
 use App\Repositories\Eloquent\EloquentPlanRepository;
@@ -68,6 +70,11 @@ class AppServiceProvider extends ServiceProvider
         $this->app->bind(
             PlanRepositoryInterface::class,
             EloquentPlanRepository::class,
+        );
+
+        $this->app->bind(
+            FeatureRepositoryInterface::class,
+            EloquentFeatureRepository::class,
         );
     }
 
