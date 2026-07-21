@@ -43,6 +43,24 @@ final class EloquentApiKeyRepository extends BaseEloquentRepository implements A
     }
 
     /**
+     * Count the non-revoked API keys owned by the given user.
+     *
+     * Expiration state is intentionally ignored; expired but non-revoked
+     * keys still occupy quota.
+     *
+     * @param string $userId Owning user UUID.
+     *
+     * @return int Number of non-revoked API keys owned by the user.
+     */
+    public function countForUser(string $userId): int
+    {
+        return $this->model()->newQuery()
+            ->where('user_id', $userId)
+            ->whereNull('revoked_at')
+            ->count();
+    }
+
+    /**
      * Retrieve a paginated list of API keys matching the given filters.
      *
      * @param ApiKeyFiltersData $filters Pagination and filter criteria.

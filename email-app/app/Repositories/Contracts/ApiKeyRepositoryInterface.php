@@ -30,6 +30,15 @@ interface ApiKeyRepositoryInterface extends BaseRepositoryInterface
     public function findByKeyHash(string $keyHash): ?ApiKey;
 
     /**
+     * Count the non-revoked API keys owned by the given user.
+     *
+     * @param string $userId Owning user UUID.
+     *
+     * @return int Number of non-revoked API keys owned by the user.
+     */
+    public function countForUser(string $userId): int;
+
+    /**
      * Retrieve a paginated list of API keys matching the given filters.
      *
      * @param ApiKeyFiltersData $filters Pagination and filter criteria.
