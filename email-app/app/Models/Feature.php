@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Models;
 
 use App\Enums\ValueType;
+use App\Models\Pivots\FeaturePlan;
 use Illuminate\Database\Eloquent\Attributes\Scope;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Collection;
@@ -82,7 +83,11 @@ class Feature extends BaseModel
     public function plans(): BelongsToMany
     {
         return $this->belongsToMany(Plan::class, 'feature_plan')
-            ->withPivot('feature_value')
+            ->using(FeaturePlan::class)
+            ->withPivot([
+                'id',
+                'feature_value',
+            ])
             ->withTimestamps();
     }
 
