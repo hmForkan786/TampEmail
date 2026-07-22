@@ -9,6 +9,7 @@ use App\Enums\PlatformRole;
 use App\Enums\UserStatus;
 use App\Exceptions\ApiKeyScopeNotAllowedException;
 use App\Exceptions\InvalidApiKeyScopeException;
+use App\Models\ApiKey;
 use App\Models\User;
 
 /**
@@ -17,9 +18,10 @@ use App\Models\User;
  * Pool entitlements such as `mail_server_pools` are not API-key scopes and are
  * rejected by {@see normalize()}.
  *
- * Legacy `api_keys.permissions` values are not rewritten here. Authentication
- * middleware continues to trust stored strings for existing keys; create/update
- * paths must call {@see authorizeForOwner()} before persistence.
+ * Legacy `api_keys.permissions` values are not rewritten here. Create/update
+ * paths must call {@see authorizeForOwner()} before persistence. Scoped request
+ * middleware must call {@see validateStoredScopesForOwner()} so demotion and
+ * inactive owners fail closed without silently downgrading stored permissions.
  */
 final class ApiKeyScopeRegistry
 {
@@ -126,6 +128,27 @@ final class ApiKeyScopeRegistry
         }
 
         return $normalized;
+    }
+
+    /**
+     * Fail closed when any stored API-key permission is unknown or disallowed for the owner.
+     *
+     * Used at request time so demotion/status changes invalidate privileged keys without
+     * silently downgrading the stored permission list.
+     *
+     * @throws InvalidApiKeyScopeException
+     * @throws ApiKeyScopeNotAllowedException
+     */
+    public static function validateStoredScopesForOwner(ApiKey $apiKey, User $owner): void
+    {
+        $permissions = $apiKey->permissions ?? [];
+
+        if ($permissions === []) {
+            return;
+        }
+
+        // Reuse issuance rules: unknown/blank/non-string and capability mismatches fail closed.
+        self::authorizeForOwner($owner, $permissions);
     }
 
     /**

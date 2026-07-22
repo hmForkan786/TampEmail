@@ -53,11 +53,11 @@ Use stable, lowercase, colon-delimited permission names stored in the existing `
 
 Canonical runtime allowlist: `App\Enums\ApiKeyScope` + `App\Services\ApiKey\ApiKeyScopeRegistry` (Prompt 321). Unknown, blank, non-string, and whitespace-padded scopes are rejected by `normalize()`. Pool entitlements (`mail_server_pools`, etc.) are not API-key scopes.
 
-**Legacy permissions:** Existing `api_keys.permissions` rows are not rewritten by the registry. Authentication middleware still trusts stored strings. Issuance/update gating and legacy cleanup are separate follow-ups (Prompt 322+).
+**Legacy permissions:** Existing `api_keys.permissions` rows are not rewritten by the registry. Create/update paths normalize and authorize scopes against the owner. Scoped request middleware re-validates **all** stored scopes against the owner's current platform role/status (Prompt 323): unknown or unauthorized stored scopes fail closed with `403`. Missing or soft-deleted owners fail with `401`.
 
 `mail_servers:admin` does not implicitly grant unrelated module permissions. `AuthenticatedApiKeyContext` already allows `mail_servers:admin` to satisfy other `mail_servers:*` scope checks. These scopes are not ordinary end-user product grants; see `docs/MAIL_SERVER_OWNERSHIP_POLICY.md` and `docs/PLATFORM_OPERATOR_POLICY.md`.
 
-Platform operator eligibility (future `users.platform_role`: `user` | `operator` | `admin`) gates who may be issued `mail_servers:read` / `write` / `admin`. Ordinary users default to `user`. `mail_servers:admin` requires `admin`. Suspended, banned, pending, or soft-deleted users are never verified operators. Demotion must make privileged keys unusable.
+Platform operator eligibility (`users.platform_role`: `user` | `operator` | `admin`) gates who may be issued and who may continue using `mail_servers:read` / `write` / `admin` at runtime. Ordinary users default to `user`. `mail_servers:admin` requires `admin`. Suspended, banned, pending, or soft-deleted users are never verified operators. Demotion must make privileged keys unusable at request time even if stored permissions are unchanged.
 
 ## Authorization and ownership
 

@@ -45,6 +45,7 @@ final class EloquentApiKeyRepository extends BaseEloquentRepository implements A
     public function findActiveByPrefixAndHash(string $keyPrefix, string $keyHash): ?ApiKey
     {
         return $this->model()->newQuery()
+            ->with('user')
             ->where('key_prefix', $keyPrefix)
             ->where('key_hash', $keyHash)
             ->whereNull('revoked_at')

@@ -5,14 +5,23 @@ declare(strict_types=1);
 namespace App\Services\ApiKey;
 
 use App\Models\ApiKey;
+use App\Models\User;
 
 final readonly class AuthenticatedApiKeyContext
 {
-    public function __construct(public ApiKey $apiKey) {}
+    public function __construct(
+        public ApiKey $apiKey,
+        public User $owner,
+    ) {}
 
     public function id(): string
     {
         return $this->apiKey->id;
+    }
+
+    public function ownerId(): string
+    {
+        return (string) $this->owner->getKey();
     }
 
     /** @return list<string> */
