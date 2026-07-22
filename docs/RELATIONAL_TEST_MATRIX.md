@@ -77,7 +77,7 @@ The workflow defines:
 - `mysql / PHP 8.4`: MySQL 8.4 service, fresh migration, full relational suite, and JUnit artifact.
 - `postgres / PHP 8.4`: PostgreSQL 16 service, fresh migration, full relational suite, and JUnit artifact.
 
-Relational job failures fail the job; they are not converted to skips. The relational CI command uses `--disallow-skipped`, so any remaining harness gate or unexpected skip fails the job. The workflow does not invent serialized or pre-lock assertions to hide a missing fixture or worker harness.
+Relational job failures fail the job; they are not converted to skips. The relational CI command uses PHPUnit's `--fail-on-skipped` option, so any remaining harness gate or unexpected skip fails the job. The workflow does not invent serialized or pre-lock assertions to hide a missing fixture or worker harness.
 
 Local equivalents are the commands above with the corresponding database service running. The deprecated `RUN_RELATIONAL_CONCURRENCY_TESTS` variable remains accepted only as a fallback by the test gates; use `RUN_RELATIONAL_TESTS` for new runs.
 
