@@ -95,7 +95,9 @@ MailServers are platform-managed. There is no per-user or per-team owner on `mai
 | API key with `mail_servers:admin` | allow | allow | Implies other `mail_servers:*` scopes per existing context helper. |
 | Ordinary user inbox scopes only | deny | deny | Inbox APIs must not proxy MailServer admin. |
 
-Issuance of `mail_servers:*` permissions is an administrative act. Product plans should not casually attach these scopes to end-user API keys without an explicit operator policy.
+Issuance of `mail_servers:*` permissions is an administrative act bound by `docs/PLATFORM_OPERATOR_POLICY.md`. Product plans must not attach these scopes to ordinary end-user API keys. Pool entitlements never imply operator capability.
+
+Until the `platform_role` capability is implemented and issuance is gated, treat missing operator verification as **fail closed** for new privileged grants (Prompt 318 audit / Prompt 319 contract).
 
 ### 6.3 Entitlement vs ownership
 

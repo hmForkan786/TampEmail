@@ -51,7 +51,9 @@ Use stable, lowercase, colon-delimited permission names stored in the existing `
 | `inboxes:read` | Read owned inboxes |
 | `inboxes:write` | Create/update owned inboxes |
 
-`mail_servers:admin` does not implicitly grant unrelated module permissions. `AuthenticatedApiKeyContext` already allows `mail_servers:admin` to satisfy other `mail_servers:*` scope checks. These scopes are not ordinary end-user product grants; see `docs/MAIL_SERVER_OWNERSHIP_POLICY.md`.
+`mail_servers:admin` does not implicitly grant unrelated module permissions. `AuthenticatedApiKeyContext` already allows `mail_servers:admin` to satisfy other `mail_servers:*` scope checks. These scopes are not ordinary end-user product grants; see `docs/MAIL_SERVER_OWNERSHIP_POLICY.md` and `docs/PLATFORM_OPERATOR_POLICY.md`.
+
+Platform operator eligibility (future `users.platform_role`: `user` | `operator` | `admin`) gates who may be issued `mail_servers:read` / `write` / `admin`. Ordinary users default to `user`. `mail_servers:admin` requires `admin`. Suspended, banned, pending, or soft-deleted users are never verified operators. Demotion must make privileged keys unusable.
 
 ## Authorization and ownership
 
@@ -222,6 +224,16 @@ Anonymous/public inbox provisioning uses a dedicated configuration contract docu
 - Empty or unset values disable anonymous mail-server assignment.
 - Only servers whose `pool_key` exactly matches the configured value may be used; `pool_key = null` servers are never eligible.
 - Authenticated entitlement pool resolution (`mail_server_pools`) is unchanged and independent of this setting.
+
+## Platform operator capability
+
+MailServer API scopes are operator/admin-gated per `docs/PLATFORM_OPERATOR_POLICY.md` (Prompt 319):
+
+- Recommended model: `users.platform_role` ∈ {`user`, `operator`, `admin`} (default `user`; not yet migrated).
+- `mail_servers:read` / `mail_servers:write` → verified `operator` or `admin` owners only.
+- `mail_servers:admin` → verified `admin` only.
+- Missing capability, inactive lifecycle, or demotion → fail closed; privileged keys must not remain usable.
+- Pool entitlements never grant operator capability.
 
 ## API-key ownership policy
 
