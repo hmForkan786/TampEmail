@@ -9,6 +9,8 @@ use App\Enums\SubscriptionStatus;
 use App\Enums\UserStatus;
 use App\Models\Concerns\HasUuid;
 use Database\Factories\UserFactory;
+use Filament\Models\Contracts\FilamentUser;
+use Filament\Panel;
 use Illuminate\Database\Eloquent\Attributes\Scope;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Collection;
@@ -46,7 +48,7 @@ use Illuminate\Support\Carbon;
  * @property-read Collection<int, AuditLog> $auditLogs
  * @property-read Collection<int, ApiRequestLog> $apiRequestLogs
  */
-class User extends Authenticatable
+class User extends Authenticatable implements FilamentUser
 {
     /** @use HasFactory<UserFactory> */
     use HasFactory;
@@ -188,6 +190,22 @@ class User extends Authenticatable
     public function isActive(): bool
     {
         return $this->status === UserStatus::Active;
+    }
+
+    /**
+     * Determine whether the user may access the given Filament panel.
+     *
+     * Restricted to the admin panel and active platform operators/admins.
+     * Ordinary users, inactive lifecycle states, soft-deleted accounts,
+     * unknown roles, and pool entitlements fail closed.
+     */
+    public function canAccessPanel(Panel $panel): bool
+    {
+        if ($panel->getId() !== 'admin') {
+            return false;
+        }
+
+        return $this->hasActivePlatformCapability();
     }
 
     /**
