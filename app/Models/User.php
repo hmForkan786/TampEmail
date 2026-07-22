@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Models;
 
+use App\Enums\PlatformRole;
 use App\Enums\SubscriptionStatus;
 use App\Enums\UserStatus;
 use App\Models\Concerns\HasUuid;
@@ -31,6 +32,7 @@ use Illuminate\Support\Carbon;
  * @property string $timezone
  * @property string $locale
  * @property UserStatus $status
+ * @property PlatformRole $platform_role
  * @property Carbon|null $last_login_at
  * @property string|null $last_login_ip
  * @property string|null $remember_token
@@ -80,6 +82,7 @@ class User extends Authenticatable
         'timezone',
         'locale',
         'status',
+        'platform_role',
         'last_login_at',
         'last_login_ip',
     ];
@@ -107,6 +110,7 @@ class User extends Authenticatable
             'deleted_at' => 'datetime',
             'password' => 'hashed',
             'status' => UserStatus::class,
+            'platform_role' => PlatformRole::class,
         ];
     }
 
@@ -186,6 +190,66 @@ class User extends Authenticatable
     public function isActive(): bool
     {
         return $this->status === UserStatus::Active;
+    }
+
+    /**
+     * Determine whether the user currently holds an active privileged platform role.
+     *
+     * True for verified operators and admins only. Ordinary users, inactive
+     * lifecycle states, soft-deleted accounts, and unknown roles fail closed.
+     */
+    public function hasActivePlatformCapability(): bool
+    {
+        if ($this->trashed()) {
+            return false;
+        }
+
+        if ($this->status !== UserStatus::Active) {
+            return false;
+        }
+
+        $role = $this->resolvePlatformRole();
+
+        return $role instanceof PlatformRole && $role->isPrivileged();
+    }
+
+    /**
+     * Determine whether the user is a verified platform operator.
+     *
+     * Admins also satisfy operator capability. Unknown or missing roles fail closed.
+     */
+    public function isPlatformOperator(): bool
+    {
+        return $this->hasActivePlatformCapability();
+    }
+
+    /**
+     * Determine whether the user is a verified platform administrator.
+     *
+     * Unknown or missing roles fail closed.
+     */
+    public function isPlatformAdmin(): bool
+    {
+        return $this->hasActivePlatformCapability()
+            && $this->resolvePlatformRole() === PlatformRole::Admin;
+    }
+
+    /**
+     * Resolve the platform role from stored attributes without throwing on unknown values.
+     */
+    private function resolvePlatformRole(): ?PlatformRole
+    {
+        $raw = $this->attributes['platform_role'] ?? null;
+
+        if ($raw instanceof PlatformRole) {
+            return $raw;
+        }
+
+        if (! is_string($raw) || $raw === '') {
+            return null;
+        }
+
+        return PlatformRole::tryFrom($raw);
     }
 
     /**
