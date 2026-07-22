@@ -1,11 +1,13 @@
 <?php
 
+use App\Actions\ApiKey\RevokeApiKeyAction;
 use App\Enums\ApiKeyScope;
 use App\Enums\UserStatus;
 use App\Filament\Admin\Resources\ApiKeys\ApiKeyResource;
 use App\Filament\Admin\Resources\ApiKeys\Pages\ListApiKeys;
 use App\Filament\Admin\Resources\ApiKeys\Pages\ViewApiKey;
 use App\Models\ApiKey;
+use App\Models\AuditLog;
 use App\Models\User;
 use App\Services\ApiKey\ApiKeyTokenGenerator;
 use Filament\Facades\Filament;
@@ -432,6 +434,20 @@ it('allows an admin to revoke an api key through the header action', function ()
         ->and(ApiKeyResource::resolveStatus($fresh))->toBe('revoked')
         ->and(ApiKey::query()->count())->toBe(1);
 
+    $audit = AuditLog::query()->where('action', RevokeApiKeyAction::AUDIT_ACTION)->sole();
+    expect($audit->user_id)->toBe((string) $admin->getKey())
+        ->and($audit->auditable_type)->toBe(ApiKey::class)
+        ->and($audit->auditable_id)->toBe((string) $apiKey->getKey())
+        ->and($audit->old_values)->toBe(['revoked_at' => null])
+        ->and($audit->new_values['revoked_at'])->toBe(Carbon::parse('2026-07-22 15:30:00')->toIso8601String())
+        ->and($audit->metadata)->toBe([
+            'target_api_key_id' => (string) $apiKey->getKey(),
+            'owner_user_id' => (string) $owner->getKey(),
+            'source' => 'filament',
+        ])
+        ->and(json_encode($audit->toArray()))->not->toContain($created['plain_token'])
+        ->and(json_encode($audit->toArray()))->not->toContain($created['key_hash']);
+
     Livewire::actingAs($admin)
         ->test(ViewApiKey::class, ['record' => $apiKey->getKey()])
         ->assertActionHidden('revoke');
@@ -469,7 +485,9 @@ it('hides the revoke action for already-revoked keys and keeps expired keys revo
 
     expect($freshExpired->revoked_at?->equalTo(Carbon::parse('2026-07-22 15:30:00')))->toBeTrue()
         ->and(ApiKeyResource::resolveStatus($freshExpired))->toBe('revoked')
-        ->and($freshExpired->permissions)->toBe([ApiKeyScope::InboxesWrite->value]);
+        ->and($freshExpired->permissions)->toBe([ApiKeyScope::InboxesWrite->value])
+        ->and(AuditLog::query()->where('action', RevokeApiKeyAction::AUDIT_ACTION)->count())->toBe(1)
+        ->and(AuditLog::query()->where('auditable_id', $revoked->getKey())->exists())->toBeFalse();
 
     Carbon::setTestNow();
 });
@@ -525,4 +543,9 @@ it('does not expose plaintext token or hash during revoke confirmation or after 
     expect($apiKey->fresh()->revoked_at)->not->toBeNull()
         ->and($created['plain_token'])->toStartWith($apiKey->key_prefix)
         ->and(strlen($created['plain_token']))->toBeGreaterThan(strlen($apiKey->key_prefix));
+
+    $audit = AuditLog::query()->where('action', RevokeApiKeyAction::AUDIT_ACTION)->sole();
+    expect(json_encode($audit->toArray()))->not->toContain($created['plain_token'])
+        ->and(json_encode($audit->toArray()))->not->toContain($created['key_hash'])
+        ->and($audit->metadata['source'] ?? null)->toBe('filament');
 });

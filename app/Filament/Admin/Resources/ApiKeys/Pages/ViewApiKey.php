@@ -4,8 +4,10 @@ declare(strict_types=1);
 
 namespace App\Filament\Admin\Resources\ApiKeys\Pages;
 
-use App\Actions\ApiKey\UpdateApiKeyAction;
-use App\DTOs\ApiKey\UpdateApiKeyData;
+use App\Actions\ApiKey\RevokeApiKeyAction;
+use App\DTOs\ApiKey\RevokeApiKeyData;
+use App\Exceptions\ApiKeyRevocationNotAllowedException;
+use App\Exceptions\ApiKeyRevocationTargetUnavailableException;
 use App\Filament\Admin\Resources\ApiKeys\ApiKeyResource;
 use App\Models\ApiKey;
 use App\Models\User;
@@ -30,8 +32,10 @@ class ViewApiKey extends ViewRecord
                 ->modalDescription(fn (): string => $this->revokeConfirmationMessage())
                 ->modalSubmitActionLabel('Revoke key')
                 ->visible(fn (): bool => $this->canRevokeApiKey())
-                ->action(function (UpdateApiKeyAction $updateApiKey): void {
-                    if (! $this->canRevokeApiKey()) {
+                ->action(function (RevokeApiKeyAction $revokeApiKey): void {
+                    $actor = auth()->user();
+
+                    if (! $actor instanceof User) {
                         Notification::make()
                             ->title('API key revocation not allowed')
                             ->body('Only an active platform admin may revoke a non-revoked API key.')
@@ -44,23 +48,20 @@ class ViewApiKey extends ViewRecord
                     /** @var ApiKey $apiKey */
                     $apiKey = $this->getRecord();
 
-                    if (! $apiKey->isActive()) {
+                    try {
+                        $result = $revokeApiKey->execute(new RevokeApiKeyData(
+                            actorUserId: (string) $actor->getKey(),
+                            apiKeyId: (string) $apiKey->getKey(),
+                            source: 'filament',
+                        ));
+                    } catch (ApiKeyRevocationNotAllowedException|ApiKeyRevocationTargetUnavailableException $exception) {
                         Notification::make()
-                            ->title('API key already revoked')
-                            ->body('This API key has already been revoked.')
-                            ->warning()
+                            ->title('API key revocation not allowed')
+                            ->body($exception->getMessage())
+                            ->danger()
                             ->send();
 
                         return;
-                    }
-
-                    try {
-                        $updateApiKey->execute(
-                            $apiKey,
-                            UpdateApiKeyData::fromArray([
-                                'revoked_at' => now(),
-                            ]),
-                        );
                     } catch (Throwable $exception) {
                         report($exception);
 
@@ -74,6 +75,16 @@ class ViewApiKey extends ViewRecord
                     }
 
                     $this->getRecord()->refresh();
+
+                    if (! $result->changed) {
+                        Notification::make()
+                            ->title('API key already revoked')
+                            ->body('This API key has already been revoked.')
+                            ->warning()
+                            ->send();
+
+                        return;
+                    }
 
                     Notification::make()
                         ->title('API key revoked')
