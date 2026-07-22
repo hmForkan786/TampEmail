@@ -6,17 +6,20 @@ namespace App\Services\ApiKey;
 
 use App\Enums\ApiKeyScope;
 use App\Enums\PlatformRole;
+use App\Enums\UserStatus;
+use App\Exceptions\ApiKeyScopeNotAllowedException;
 use App\Exceptions\InvalidApiKeyScopeException;
+use App\Models\User;
 
 /**
- * Canonical API-key scope allowlist and normalization helpers.
+ * Canonical API-key scope allowlist, normalization, and owner authorization.
  *
  * Pool entitlements such as `mail_server_pools` are not API-key scopes and are
  * rejected by {@see normalize()}.
  *
  * Legacy `api_keys.permissions` values are not rewritten here. Authentication
- * middleware continues to trust stored strings until a later issuance/runtime
- * enforcement prompt wires this registry into create/update paths.
+ * middleware continues to trust stored strings for existing keys; create/update
+ * paths must call {@see authorizeForOwner()} before persistence.
  */
 final class ApiKeyScopeRegistry
 {
@@ -74,6 +77,55 @@ final class ApiKeyScopeRegistry
     public static function requiredCapability(ApiKeyScope $scope): PlatformRole
     {
         return $scope->requiredCapability();
+    }
+
+    /**
+     * Whether the locked owner may hold the given known scope.
+     *
+     * Active lifecycle is required for every scope. Operator/admin checks use
+     * the platform-role helpers (admins satisfy operator-minimum scopes).
+     */
+    public static function ownerAllows(User $owner, ApiKeyScope $scope): bool
+    {
+        if ($owner->trashed() || $owner->status !== UserStatus::Active) {
+            return false;
+        }
+
+        return match ($scope->requiredCapability()) {
+            PlatformRole::User => true,
+            PlatformRole::Operator => $owner->isPlatformOperator(),
+            PlatformRole::Admin => $owner->isPlatformAdmin(),
+        };
+    }
+
+    /**
+     * Normalize permissions (when present) and assert the owner may hold them.
+     *
+     * @param  list<mixed>|null  $permissions
+     * @return list<string>|null Normalized scopes, or null when no scopes were supplied.
+     *
+     * @throws InvalidApiKeyScopeException
+     * @throws ApiKeyScopeNotAllowedException
+     */
+    public static function authorizeForOwner(User $owner, ?array $permissions): ?array
+    {
+        if ($permissions === null) {
+            return null;
+        }
+
+        $normalized = self::normalize($permissions);
+
+        foreach ($normalized as $scopeValue) {
+            $scope = ApiKeyScope::from($scopeValue);
+
+            if (! self::ownerAllows($owner, $scope)) {
+                throw new ApiKeyScopeNotAllowedException(
+                    "The API key owner is not allowed to hold the [{$scopeValue}] scope."
+                );
+            }
+        }
+
+        return $normalized;
     }
 
     /**

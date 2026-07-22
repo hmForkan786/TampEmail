@@ -1,6 +1,7 @@
 <?php
 
 use App\Actions\ApiKey\CreateApiKeyAction;
+use App\Enums\PlatformRole;
 use App\Models\ApiKey;
 use App\Models\MailServer;
 use App\Models\User;
@@ -10,7 +11,11 @@ uses(RefreshDatabase::class);
 
 function issueMailServerApiKey(array $scopes = ['mail_servers:read']): array
 {
-    $user = User::factory()->create();
+    $role = in_array('mail_servers:admin', $scopes, true)
+        ? PlatformRole::Admin
+        : PlatformRole::Operator;
+
+    $user = User::factory()->create(['platform_role' => $role]);
     $issued = app(CreateApiKeyAction::class)->issue(
         userId: $user->id,
         name: 'mail-server-test',

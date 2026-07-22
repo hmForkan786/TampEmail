@@ -8,19 +8,25 @@ use App\DTOs\ApiKey\CreateApiKeyData;
 use App\DTOs\ApiKey\ApiKeyIssuanceResult;
 use App\Exceptions\ApiKeyQuotaExceededException;
 use App\Exceptions\ApiKeyOwnerRequiredException;
+use App\Exceptions\ApiKeyScopeNotAllowedException;
+use App\Exceptions\InvalidApiKeyScopeException;
 use App\Models\ApiKey;
 use App\Models\User;
 use App\Repositories\Contracts\ApiKeyRepositoryInterface;
-use App\Services\Entitlement\EntitlementService;
+use App\Services\ApiKey\ApiKeyScopeRegistry;
 use App\Services\ApiKey\ApiKeyTokenGenerator;
+use App\Services\Entitlement\EntitlementService;
 use Illuminate\Support\Facades\DB;
 use InvalidArgumentException;
 
 /**
  * Create and persist a new API key from validated input data.
  *
- * Enforces the max_api_keys plan entitlement before persistence when an
- * authenticated user context is provided.
+ * Lock order inside the transaction:
+ * 1. lock owning user row
+ * 2. normalize and authorize scopes against the locked owner
+ * 3. enforce quota
+ * 4. persist the API key with normalized permissions
  */
 final class CreateApiKeyAction
 {
@@ -43,11 +49,16 @@ final class CreateApiKeyAction
      * @return ApiKey The created API key.
      *
      * @throws ApiKeyQuotaExceededException When the user's API key quota is exhausted.
+     * @throws InvalidApiKeyScopeException When permissions contain invalid scopes.
+     * @throws ApiKeyScopeNotAllowedException When the owner may not hold a requested scope.
      */
     public function execute(CreateApiKeyData $data, ?User $user = null): ApiKey
     {
         return DB::transaction(function () use ($data, $user): ApiKey {
             $lockedUser = $this->resolveLockedUser($data->userId, $user);
+            $data = $data->withPermissions(
+                ApiKeyScopeRegistry::authorizeForOwner($lockedUser, $data->permissions)
+            );
             $this->enforceQuota($lockedUser);
 
             if ($data->userId === '') {
@@ -58,7 +69,15 @@ final class CreateApiKeyAction
         });
     }
 
-    /** Issue a canonical key and return its plaintext token once. */
+    /**
+     * Issue a canonical key and return its plaintext token once.
+     *
+     * @param  list<mixed>|null  $permissions
+     *
+     * @throws ApiKeyQuotaExceededException
+     * @throws InvalidApiKeyScopeException
+     * @throws ApiKeyScopeNotAllowedException
+     */
     public function issue(
         string $userId,
         string $name,
@@ -70,7 +89,7 @@ final class CreateApiKeyAction
     ): ApiKeyIssuanceResult {
         return DB::transaction(function () use ($userId, $name, $permissions, $rateLimitPerMinute, $expiresAt, $metadata, $user): ApiKeyIssuanceResult {
             $lockedUser = $this->resolveLockedUser($userId, $user);
-
+            $authorizedPermissions = ApiKeyScopeRegistry::authorizeForOwner($lockedUser, $permissions);
             $this->enforceQuota($lockedUser);
 
             $credentials = $this->tokenGenerator->generate();
@@ -79,7 +98,7 @@ final class CreateApiKeyAction
                 name: $name,
                 keyPrefix: $credentials['key_prefix'],
                 keyHash: $credentials['key_hash'],
-                permissions: $permissions,
+                permissions: $authorizedPermissions,
                 rateLimitPerMinute: $rateLimitPerMinute,
                 expiresAt: $expiresAt,
                 revokedAt: null,

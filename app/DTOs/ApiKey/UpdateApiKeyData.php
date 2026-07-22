@@ -143,4 +143,22 @@ final readonly class UpdateApiKeyData
 
         return $attributes;
     }
+
+    /**
+     * @param  list<string>  $permissions
+     */
+    public function withPermissions(array $permissions): self
+    {
+        return new self(
+            userId: $this->userId,
+            name: $this->name,
+            keyPrefix: $this->keyPrefix,
+            keyHash: $this->keyHash,
+            permissions: $permissions,
+            rateLimitPerMinute: $this->rateLimitPerMinute,
+            expiresAt: $this->expiresAt,
+            revokedAt: $this->revokedAt,
+            metadata: $this->metadata,
+        );
+    }
 }
