@@ -45,32 +45,32 @@ Use stable, lowercase, colon-delimited permission names stored in the existing `
 
 | Scope | Meaning |
 |---|---|
-| `mail_servers:read` | List and show MailServer records visible to the caller |
-| `mail_servers:write` | Create and update MailServer records visible to the caller |
-| `mail_servers:admin` | Administrative MailServer operations, including cross-owner access if later approved |
+| `mail_servers:read` | List and show platform MailServer records (operator/platform keys) |
+| `mail_servers:write` | Create and update platform MailServer records (operator/platform keys) |
+| `mail_servers:admin` | Administrative MailServer operations; implies other `mail_servers:*` scopes |
 | `inboxes:read` | Read owned inboxes |
 | `inboxes:write` | Create/update owned inboxes |
 
-`mail_servers:admin` does not implicitly grant unrelated module permissions. A future middleware/policy should allow `mail_servers:admin` wherever the corresponding read or write scope is required, or explicitly require both; that choice must be encoded in tests.
+`mail_servers:admin` does not implicitly grant unrelated module permissions. `AuthenticatedApiKeyContext` already allows `mail_servers:admin` to satisfy other `mail_servers:*` scope checks. These scopes are not ordinary end-user product grants; see `docs/MAIL_SERVER_OWNERSHIP_POLICY.md`.
 
 ## Authorization and ownership
 
-The current `mail_servers` table has no `user_id`, tenant identifier, or ownership relationship. Consequently, user ownership cannot currently be enforced from the schema.
+MailServer ownership is decided in `docs/MAIL_SERVER_OWNERSHIP_POLICY.md` (Prompt 317).
 
-Until an ownership model is introduced, MailServer endpoints must not be exposed as ordinary user-scoped endpoints. The safe implementation options are:
+**Decision: Option A — platform-managed global MailServers.** There is no `user_id` / `team_id` / tenant owner on `mail_servers`. Inbox ownership (`inboxes.user_id`) is separate from MailServer infrastructure assignment (`inboxes.mail_server_id`). Pool access is entitlement-controlled (`mail_server_pools`) for authenticated users and config-controlled (`PUBLIC_MAIL_SERVER_POOL`) for anonymous provisioning.
 
-- expose them only to a separately authorized platform/operator context; or
-- add an approved ownership/tenant design before exposing them to normal API users.
+MailServer API endpoints are an operator/platform surface, not an ordinary user product API. Do not expose them through end-user inbox scopes. Never infer ownership from hostname, pool key, provider, or request input.
 
-The future policy must never infer ownership from hostname, pool key, provider, or request input.
-
-| Caller | MailServer read | MailServer write | Cross-owner access |
+| Caller | MailServer read | MailServer write | Cross-tenant MailServer rows |
 |---|---:|---:|---:|
-| Anonymous | deny | deny | deny |
-| Authenticated API key without scope | deny | deny | deny |
-| Authenticated API key with `mail_servers:read` | allow only after ownership model is defined | deny | deny |
-| Authenticated API key with `mail_servers:write` | read as required by write policy | allow only after ownership model is defined | deny |
-| Authenticated API key with `mail_servers:admin` | allow | allow | only if operator/admin policy explicitly permits it |
+| Anonymous | deny | deny | n/a (no tenant ownership) |
+| Authenticated API key without `mail_servers:*` | deny | deny | n/a |
+| Authenticated API key with `mail_servers:read` | allow (global catalog; operator keys) | deny | n/a |
+| Authenticated API key with `mail_servers:write` | as needed for write | allow (global catalog; operator keys) | n/a |
+| Authenticated API key with `mail_servers:admin` | allow | allow | n/a (implies other `mail_servers:*`) |
+| API key with only `inboxes:*` | deny | deny | n/a |
+
+Tenant-owned MailServers (Option B) require an approved product decision, migration, and a revision of this document before implementation.
 
 ## HTTP status and error responses
 
@@ -191,21 +191,21 @@ Controllers must not implement pool selection, capacity calculation, persistence
 
 ## Filament alignment
 
-Filament is an authenticated admin surface under the existing `admin` panel. A future MailServer Resource must use the same authorization capabilities and ownership rules as the API. It must not treat Filament access as permission to bypass API policy. Admin-only operations should use `mail_servers:admin` or the project’s eventual equivalent capability.
+Filament is an authenticated admin surface under the existing `admin` panel. A future MailServer Resource must follow Option A: platform-managed catalog under the same operator capability boundary as the MailServer API. It must not treat Filament access as permission to bypass API policy. Admin-only operations should use `mail_servers:admin` or the project’s eventual equivalent capability.
 
 ## Required follow-up implementation
 
-Before Prompt 292 can safely add endpoints, the project needs:
+Historical checklist from the convention’s introduction (several items are already implemented):
 
 1. API-key bearer authentication middleware/guard and request user context.
 2. API-key issuance/revocation flow and secure hash verification policy.
 3. Scope checking middleware or policy integration.
-4. A decision and schema change for MailServer ownership or explicit platform-admin-only access.
+4. MailServer ownership decision: **resolved as Option A** (platform-managed; see `docs/MAIL_SERVER_OWNERSHIP_POLICY.md`). No ownership schema change is required for that baseline.
 5. Versioned API route registration and controller base response handling.
 6. A resource implementation that emits snake_case fields, correcting any prior camelCase mapping if that mapping is not intentionally retained.
-7. Feature tests for authentication, scope checks, ownership isolation, error envelopes, pagination, and rate limits.
+7. Feature tests for authentication, scope checks, error envelopes, pagination, and rate limits.
 
-No API route, controller, middleware, policy, token migration, or package installation is part of this document-only prompt.
+No API route, controller, middleware, policy, token migration, or package installation is part of documentation-only prompts.
 
 ## API-key generation format
 
