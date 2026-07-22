@@ -81,7 +81,6 @@ class User extends Authenticatable
         'avatar',
         'timezone',
         'locale',
-        'status',
         'last_login_at',
         'last_login_ip',
     ];
