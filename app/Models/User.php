@@ -82,7 +82,6 @@ class User extends Authenticatable
         'timezone',
         'locale',
         'status',
-        'platform_role',
         'last_login_at',
         'last_login_ip',
     ];
