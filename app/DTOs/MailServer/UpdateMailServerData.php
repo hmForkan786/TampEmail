@@ -39,6 +39,8 @@ final readonly class UpdateMailServerData
         public ?array $metadata,
         public ?string $poolKey = null,
         public ?int $maxInboxes = null,
+        private bool $poolKeyProvided = false,
+        private bool $maxInboxesProvided = false,
     ) {}
 
     /**
@@ -91,6 +93,8 @@ final readonly class UpdateMailServerData
             maxInboxes: array_key_exists('max_inboxes', $data)
                 ? ($data['max_inboxes'] !== null ? (int) $data['max_inboxes'] : null)
                 : null,
+            poolKeyProvided: array_key_exists('pool_key', $data),
+            maxInboxesProvided: array_key_exists('max_inboxes', $data),
         );
     }
 
@@ -145,11 +149,11 @@ final readonly class UpdateMailServerData
             $attributes['metadata'] = $this->metadata;
         }
 
-        if ($this->poolKey !== null) {
+        if ($this->poolKey !== null || $this->poolKeyProvided) {
             $attributes['pool_key'] = $this->poolKey;
         }
 
-        if ($this->maxInboxes !== null) {
+        if ($this->maxInboxes !== null || $this->maxInboxesProvided) {
             $attributes['max_inboxes'] = $this->maxInboxes;
         }
 
@@ -171,6 +175,8 @@ final readonly class UpdateMailServerData
             metadata: $this->metadata,
             poolKey: $poolKey,
             maxInboxes: $maxInboxes,
+            poolKeyProvided: $this->poolKeyProvided,
+            maxInboxesProvided: $this->maxInboxesProvided,
         );
     }
 }

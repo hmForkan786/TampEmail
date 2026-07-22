@@ -114,10 +114,12 @@ it('fails closed for unknown platform roles', function (): void {
 it('can roll back and re-run the platform role migration', function (): void {
     expect(Schema::hasColumn('users', 'platform_role'))->toBeTrue();
 
-    $this->artisan('migrate:rollback', ['--step' => 1])->assertSuccessful();
+    $migrationPath = database_path('migrations/0001_01_01_000025_add_platform_role_to_users_table.php');
+
+    $this->artisan('migrate:rollback', ['--path' => $migrationPath, '--realpath' => true])->assertSuccessful();
     expect(Schema::hasColumn('users', 'platform_role'))->toBeFalse();
 
-    $this->artisan('migrate')->assertSuccessful();
+    $this->artisan('migrate', ['--path' => $migrationPath, '--realpath' => true])->assertSuccessful();
     expect(Schema::hasColumn('users', 'platform_role'))->toBeTrue();
 
     $user = User::factory()->create();

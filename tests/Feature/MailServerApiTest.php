@@ -101,12 +101,14 @@ it('lists and shows persisted mail servers with pagination and nullable capacity
         ->and($list->json('meta.per_page'))->toBe(1)
         ->and($list->json('meta.current_page'))->toBe(1)
         ->and($list->json('meta.total'))->toBe(1);
+    expect($list->json('data.0'))->not->toHaveKey('metadata');
 
     $this->withToken($token)->getJson('/api/v1/mail-servers/'.$server->id)
         ->assertOk()
         ->assertJsonPath('data.id', $server->id)
         ->assertJsonPath('data.max_inboxes', null)
         ->assertJsonStructure(['data' => ['id', 'pool_key', 'max_inboxes']]);
+    expect($this->getJson('/api/v1/mail-servers/'.$server->id)->json('data'))->not->toHaveKey('metadata');
 
     $missing = $this->withToken($token)->getJson('/api/v1/mail-servers/'.str_repeat('0', 36));
     $missing->assertNotFound()
@@ -117,11 +119,14 @@ it('lists and shows persisted mail servers with pagination and nullable capacity
 it('creates and updates pool and capacity fields through the API', function (): void {
     [, $writeToken] = issueMailServerApiKey(['mail_servers:write']);
 
-    $created = $this->withToken($writeToken)->postJson('/api/v1/mail-servers', mailServerPayload());
+    $created = $this->withToken($writeToken)->postJson('/api/v1/mail-servers', mailServerPayload([
+        'metadata' => ['password' => 'do-not-return', 'token' => 'secret-token'],
+    ]));
     $created->assertCreated()
         ->assertJsonPath('data.pool_key', 'standard')
         ->assertJsonPath('data.max_inboxes', 25)
         ->assertJsonStructure(['data' => ['id', 'pool_key', 'max_inboxes']]);
+    expect($created->json('data'))->not->toHaveKey('metadata');
     expect($created->json('data'))->not->toHaveKeys(['poolKey', 'maxInboxes']);
     $id = $created->json('data.id');
 
@@ -138,10 +143,13 @@ it('creates and updates pool and capacity fields through the API', function (): 
         ->assertJsonPath('data.pool_key', 'premium')
         ->assertJsonPath('data.max_inboxes', 50)
         ->assertJsonStructure(['data']);
+    expect($this->withToken($writeToken)->getJson('/api/v1/mail-servers/'.$id)->json('data'))->not->toHaveKey('metadata');
 
     $this->assertDatabaseHas('mail_servers', ['id' => $id, 'pool_key' => 'premium', 'max_inboxes' => 50]);
 
-    $this->withToken($writeToken)->patchJson('/api/v1/mail-servers/'.$id, ['name' => 'Renamed'])->assertOk();
+    $updated = $this->withToken($writeToken)->patchJson('/api/v1/mail-servers/'.$id, ['name' => 'Renamed']);
+    $updated->assertOk();
+    expect($updated->json('data'))->not->toHaveKey('metadata');
     $this->assertDatabaseHas('mail_servers', ['id' => $id, 'pool_key' => 'premium', 'max_inboxes' => 50, 'name' => 'Renamed']);
 });
 

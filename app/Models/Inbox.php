@@ -129,6 +129,30 @@ class Inbox extends BaseModel
     }
 
     /**
+     * Scope a query to inboxes owned by the given user.
+     *
+     * Anonymous inboxes (`user_id` null) never match — ownership is not inferred.
+     */
+    #[Scope]
+    protected function ownedBy(Builder $query, string $userId): void
+    {
+        $query->where('user_id', $userId);
+    }
+
+    /**
+     * Scope a query to inboxes that are active and not expired for owner visibility.
+     */
+    #[Scope]
+    protected function visibleToOwner(Builder $query): void
+    {
+        $query->where('is_active', true)
+            ->where(function (Builder $inner): void {
+                $inner->whereNull('expires_at')
+                    ->orWhere('expires_at', '>', now());
+            });
+    }
+
+    /**
      * Scope a query to only include expired inboxes.
      */
     #[Scope]

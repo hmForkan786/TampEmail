@@ -33,10 +33,8 @@ final class MailServerResource extends JsonResource
             'max_connections' => $this->max_connections,
             'timeout_seconds' => $this->timeout_seconds,
             'last_health_check_at' => $this->last_health_check_at,
-            'metadata' => $this->metadata,
             'created_at' => $this->created_at,
             'updated_at' => $this->updated_at,
         ];
     }
 }
-

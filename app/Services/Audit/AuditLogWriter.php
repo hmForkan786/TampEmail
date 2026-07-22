@@ -13,6 +13,7 @@ use Illuminate\Database\Eloquent\Model;
  */
 class AuditLogWriter
 {
+    public function __construct(private readonly AuditPayloadSanitizer $payloadSanitizer) {}
     /**
      * Persist a new audit log entry.
      *
@@ -31,6 +32,10 @@ class AuditLogWriter
         ?string $ipAddress = null,
         ?string $userAgent = null,
     ): AuditLog {
+        $oldValues = $this->payloadSanitizer->sanitize($oldValues);
+        $newValues = $this->payloadSanitizer->sanitize($newValues);
+        $metadata = $this->payloadSanitizer->sanitize($metadata);
+
         $log = new AuditLog;
         $log->user_id = $actorUserId;
         $log->action = $action;

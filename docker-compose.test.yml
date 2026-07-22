@@ -1,0 +1,35 @@
+services:
+  mysql:
+    image: mysql:8.4
+    environment:
+      MYSQL_DATABASE: temail_test
+      MYSQL_USER: temail_test
+      MYSQL_PASSWORD: temail_test_password
+      MYSQL_ROOT_PASSWORD: temail_test_root_password
+    ports:
+      - "127.0.0.1:13306:3306"
+    healthcheck:
+      test: ["CMD-SHELL", "mysqladmin ping -h 127.0.0.1 -u root -ptemail_test_root_password"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    networks: [relational_test]
+
+  postgres:
+    image: postgres:16
+    environment:
+      POSTGRES_DB: temail_test
+      POSTGRES_USER: temail_test
+      POSTGRES_PASSWORD: temail_test_password
+    ports:
+      - "127.0.0.1:15432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U temail_test -d temail_test"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    networks: [relational_test]
+
+networks:
+  relational_test:
+    driver: bridge

@@ -12,6 +12,7 @@ use App\Actions\MailServer\PaginateMailServersAction;
 use App\Actions\MailServer\UpdateMailServerAction;
 use App\DTOs\MailServer\CreateMailServerData;
 use App\DTOs\MailServer\MailServerFiltersData;
+use App\DTOs\MailServer\MailServerMutationContext;
 use App\DTOs\MailServer\UpdateMailServerData;
 use App\Models\MailServer;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
@@ -45,9 +46,9 @@ final class MailServerService
      *
      * @return MailServer The created mail server.
      */
-    public function create(CreateMailServerData $data): MailServer
+    public function create(CreateMailServerData $data, MailServerMutationContext $context): MailServer
     {
-        return $this->createMailServerAction->execute($data);
+        return $this->createMailServerAction->execute($data, $context);
     }
 
     /**
@@ -58,9 +59,9 @@ final class MailServerService
      *
      * @return MailServer The updated mail server.
      */
-    public function update(MailServer $mailServer, UpdateMailServerData $data): MailServer
+    public function update(MailServer $mailServer, UpdateMailServerData $data, MailServerMutationContext $context): MailServer
     {
-        return $this->updateMailServerAction->execute($mailServer, $data);
+        return $this->updateMailServerAction->execute($mailServer, $data, $context);
     }
 
     /**

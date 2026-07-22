@@ -96,6 +96,11 @@ class Attachment extends BaseModel
         return $this->belongsTo(Email::class);
     }
 
+    public function inboundHolds(): IlluminateDatabaseEloquentRelationsHasMany
+    {
+        return $this->hasMany(InboundHold::class, 'target_id')->where('target_type', 'attachment');
+    }
+
     /**
      * Scope a query to attachments marked as safe.
      */

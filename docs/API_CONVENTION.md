@@ -1,5 +1,9 @@
 # API Convention
 
+For the implementation-accurate MailServer endpoint reference, see [`docs/API_REFERENCE.md`](API_REFERENCE.md). Retention details are in [`docs/LOG_RETENTION_POLICY.md`](LOG_RETENTION_POLICY.md).
+
+Operational request-log retention is defined separately in [`docs/LOG_RETENTION_POLICY.md`](LOG_RETENTION_POLICY.md). API request logs are short-lived operational records; audit logs are a separate, longer-lived security/compliance class and must not be purged together.
+
 Status: proposed implementation convention, established by Prompt 293.
 
 This document records the convention supported by the current codebase. It does not claim that the API is implemented.
@@ -174,7 +178,9 @@ max_inboxes  → CreateMailServerData::maxInboxes / UpdateMailServerData::maxInb
 
 `max_inboxes: null` means unlimited capacity. An absent update field means “leave unchanged.” Explicit nullable clearing remains a separate DTO concern and must not be silently introduced by endpoint code.
 
-MailServer API resources emit snake_case fields consistently, including `pool_key`, `max_inboxes`, `is_active`, `max_connections`, `timeout_seconds`, `last_health_check_at`, `created_at`, and `updated_at`. An audit found no frontend or internal API consumer depending on the previous camelCase response names, so this is a compatible standardization for the current project state.
+MailServer API resources emit snake_case fields consistently, including `pool_key`, `max_inboxes`, `is_active`, `max_connections`, `timeout_seconds`, `last_health_check_at`, `created_at`, and `updated_at`. The internal MailServer `metadata` column is never included in API responses; it may remain accepted on the write side for compatibility, but it has no public response schema and must never contain credentials or request/response payloads. An audit found no frontend or internal API consumer depending on the previous camelCase response names, so this is a compatible standardization for the current project state.
+
+All audit payloads pass through `AuditPayloadSanitizer` at the writer boundary. Sensitive keys are removed recursively, including token, hash, secret, credential, authorization, request/response body, header, cookie, and raw-payload variants. Values are limited to scalar values, ISO-8601 dates, and bounded nested arrays; unsupported values and excessive depth are discarded.
 
 ## Controller data flow
 

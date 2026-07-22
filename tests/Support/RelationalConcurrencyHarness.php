@@ -1,0 +1,120 @@
+<?php
+
+declare(strict_types=1);
+
+namespace Tests\Support;
+
+use RuntimeException;
+
+final class RelationalConcurrencyHarness
+{
+    public const SCENARIOS = ['api-key-quota', 'inbox-user-quota', 'mail-server-capacity', 'anonymous-capacity'];
+
+    /** @param array<int, array<string, mixed>> $workers */
+    public static function run(string $scenario, array $workers, int $timeoutSeconds = 30): array
+    {
+        self::guard($scenario, $timeoutSeconds);
+        $run = self::runDirectory();
+        $manifest = $run.'manifest.json';
+        file_put_contents($manifest, json_encode(['scenario' => $scenario, 'workers' => array_keys($workers)], JSON_THROW_ON_ERROR), LOCK_EX);
+        $processes = [];
+        $pipes = [];
+
+        try {
+            foreach ($workers as $workerId => $payload) {
+                $input = $run.$workerId.'.json';
+                file_put_contents($input, json_encode($payload, JSON_THROW_ON_ERROR), LOCK_EX);
+                $command = [PHP_BINARY, base_path('tests/Support/relational_worker.php'), '--run='.$run, '--worker='.$workerId, '--scenario='.$scenario, '--input='.$input];
+                $descriptors = [1 => ['pipe', 'w'], 2 => ['pipe', 'w']];
+                $process = proc_open($command, $descriptors, $workerPipes, base_path(), self::safeEnvironment());
+                if (! is_resource($process)) throw new RuntimeException('Unable to start relational worker.');
+                $processes[$workerId] = $process;
+                $pipes[$workerId] = $workerPipes;
+            }
+
+            self::waitForFiles($run, array_map(fn (string $id): string => 'ready.'.$id, array_keys($workers)), $timeoutSeconds);
+            file_put_contents($run.'start', '1', LOCK_EX);
+            $results = [];
+            $deadline = microtime(true) + $timeoutSeconds;
+            foreach ($processes as $workerId => $process) {
+                while (true) {
+                    $status = proc_get_status($process);
+                    if (! $status['running']) break;
+                    if (microtime(true) > $deadline) throw new RuntimeException("Relational worker {$workerId} timed out.");
+                    usleep(10000);
+                }
+                $stdout = stream_get_contents($pipes[$workerId][1]);
+                $stderr = stream_get_contents($pipes[$workerId][2]);
+                fclose($pipes[$workerId][1]); fclose($pipes[$workerId][2]);
+                $exit = proc_close($process);
+                if ($exit !== 0) throw new RuntimeException("Relational worker {$workerId} failed: ".self::safeError($stderr));
+                $result = json_decode(trim($stdout), true);
+                if (! is_array($result) || ($result['worker_id'] ?? null) !== (string) $workerId) throw new RuntimeException("Malformed result from worker {$workerId}.");
+                $results[] = $result;
+            }
+            return self::summary($scenario, $results);
+        } finally {
+            foreach ($processes as $process) if (is_resource($process)) @proc_terminate($process);
+            self::removeDirectory($run);
+        }
+    }
+
+    public static function guard(string $scenario, int $timeoutSeconds): void
+    {
+        if (! in_array($scenario, self::SCENARIOS, true)) throw new RuntimeException('Unknown relational scenario.');
+        if ($timeoutSeconds < 1 || ! function_exists('proc_open')) throw new RuntimeException('Process API unavailable.');
+        if (! in_array((string) config('database.default'), ['mysql', 'pgsql'], true)) throw new RuntimeException('Relational harness requires MySQL or PostgreSQL.');
+        if (env('RUN_RELATIONAL_TESTS') !== '1') throw new RuntimeException('RUN_RELATIONAL_TESTS=1 is required.');
+        if (preg_match('/(^|_)(prod|production)($|_)/i', (string) config('database.connections.'.config('database.default').'.database'))) throw new RuntimeException('Production database target rejected.');
+    }
+
+    /** @param array<int, array<string, mixed>> $results */
+    public static function summary(string $scenario, array $results): array
+    {
+        $summary = ['scenario' => $scenario, 'workers' => count($results), 'successes' => 0, 'rejections' => 0, 'errors' => 0, 'final_count' => null, 'assertion' => 'UNVERIFIED'];
+        foreach ($results as $result) {
+            if (($result['status'] ?? null) === 'success') $summary['successes']++;
+            elseif (($result['status'] ?? null) === 'rejected') $summary['rejections']++;
+            else $summary['errors']++;
+        }
+        return $summary;
+    }
+
+    private static function runDirectory(): string
+    {
+        $dir = rtrim(sys_get_temp_dir(), DIRECTORY_SEPARATOR).DIRECTORY_SEPARATOR.'relational-'.bin2hex(random_bytes(8)).DIRECTORY_SEPARATOR;
+        if (! mkdir($dir, 0700, true)) throw new RuntimeException('Unable to create barrier directory.');
+        return $dir;
+    }
+
+    /** @param list<string> $files */
+    private static function waitForFiles(string $dir, array $files, int $timeout): void
+    {
+        $deadline = microtime(true) + $timeout;
+        do { if (count(array_filter($files, fn (string $file): bool => is_file($dir.$file))) === count($files)) return; usleep(10000); } while (microtime(true) < $deadline);
+        throw new RuntimeException('Relational worker barrier timed out.');
+    }
+
+    /** @return array<string, string> */
+    private static function safeEnvironment(): array
+    {
+        $environment = $_ENV;
+        $environment['APP_ENV'] = 'testing';
+        $environment['RUN_RELATIONAL_TESTS'] = '1';
+        $environment['DB_CONNECTION'] = (string) env('DB_CONNECTION');
+        $environment['PUBLIC_MAIL_SERVER_POOL'] = (string) config('inbox.public_mail_server_pool', '');
+        if (isset($environment['APP_ENV']) && preg_match('/prod/i', (string) $environment['APP_ENV'])) throw new RuntimeException('Production environment rejected.');
+        return $environment;
+    }
+
+    private static function safeError(string $error): string
+    {
+        return preg_replace('/(password|token|hash|secret|authorization)[^\n]*/i', '$1=[redacted]', $error) ?: 'worker failure';
+    }
+
+    private static function removeDirectory(string $dir): void
+    {
+        foreach (glob($dir.'*') ?: [] as $file) @unlink($file);
+        @rmdir($dir);
+    }
+}

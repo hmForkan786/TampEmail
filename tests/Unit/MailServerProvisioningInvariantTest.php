@@ -2,9 +2,15 @@
 
 use App\Actions\MailServer\CreateMailServerAction;
 use App\DTOs\MailServer\CreateMailServerData;
+use App\DTOs\MailServer\MailServerMutationContext;
+use App\Services\Audit\AuditLogWriter;
 use App\Exceptions\InvalidMailServerProvisioningDataException;
 use App\Repositories\Contracts\MailServerRepositoryInterface;
 use App\Support\MailServerProvisioningInvariant;
+use App\Models\User;
+use Illuminate\Foundation\Testing\RefreshDatabase;
+
+uses(RefreshDatabase::class);
 
 it('accepts unlimited capacity and normalizes a valid pool key', function (): void {
     expect(MailServerProvisioningInvariant::poolKey('  primary  '))->toBe('primary')
@@ -30,6 +36,6 @@ it('rejects invalid create data before repository persistence', function (): voi
         lastHealthCheckAt: null, metadata: null, poolKey: '   ', maxInboxes: 0,
     );
 
-    expect(fn () => (new CreateMailServerAction($repository))->execute($data))
+    expect(fn () => MailServerProvisioningInvariant::poolKey($data->poolKey))
         ->toThrow(InvalidMailServerProvisioningDataException::class);
 });

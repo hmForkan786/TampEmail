@@ -2,6 +2,7 @@
 
 use App\Enums\PlatformRole;
 use App\Enums\UserStatus;
+use App\Models\AuditLog;
 use App\Filament\Admin\Resources\Users\Pages\ListUsers;
 use App\Filament\Admin\Resources\Users\Pages\ViewUser;
 use App\Filament\Admin\Resources\Users\UserResource;
@@ -140,6 +141,110 @@ it('is read-only with no create edit or delete actions on list and view pages', 
         ->assertSuccessful()
         ->assertActionDoesNotExist('edit')
         ->assertActionDoesNotExist('delete');
+});
+
+it('allows only platform admins to see the user mutation actions', function (): void {
+    $admin = User::factory()->platformAdmin()->create();
+    $user = User::factory()->create();
+
+    Livewire::actingAs($admin)
+        ->test(ViewUser::class, ['record' => $user->getKey()])
+        ->assertActionVisible('changeStatus')
+        ->assertActionVisible('changePlatformRole');
+
+    $this->actingAs($user)
+        ->get(UserResource::getUrl('view', ['record' => $user]))
+        ->assertForbidden();
+});
+
+it('changes status through the audited Filament action and ignores the same status', function (): void {
+    $admin = User::factory()->platformAdmin()->create();
+    $user = User::factory()->create(['status' => UserStatus::Active]);
+
+    Livewire::actingAs($admin)
+        ->test(ViewUser::class, ['record' => $user->getKey()])
+        ->callAction('changeStatus', ['status' => UserStatus::Suspended->value]);
+
+    expect($user->fresh()->status)->toBe(UserStatus::Suspended);
+    $audit = AuditLog::query()->where('action', 'user.status_changed')->latest('id')->first();
+    expect($audit)->not->toBeNull()
+        ->and($audit->user_id)->toBe((string) $admin->getKey())
+        ->and($audit->auditable_id)->toBe((string) $user->getKey());
+
+    Livewire::actingAs($admin)
+        ->test(ViewUser::class, ['record' => $user->getKey()])
+        ->callAction('changeStatus', ['status' => UserStatus::Suspended->value]);
+
+    expect($user->fresh()->status)->toBe(UserStatus::Suspended)
+        ->and(AuditLog::query()->where('action', 'user.status_changed')->count())->toBe(1);
+});
+
+it('does not mutate status when an unauthorized user attempts the action', function (): void {
+    $user = User::factory()->create(['status' => UserStatus::Active]);
+
+    $this->actingAs($user)
+        ->get(UserResource::getUrl('view', ['record' => $user]))
+        ->assertForbidden();
+
+    expect($user->fresh()->status)->toBe(UserStatus::Active)
+        ->and(AuditLog::query()->where('action', 'user.status_changed')->exists())->toBeFalse();
+});
+
+it('rejects an invalid status value without mutating the user', function (): void {
+    $admin = User::factory()->platformAdmin()->create();
+    $user = User::factory()->create(['status' => UserStatus::Active]);
+
+    Livewire::actingAs($admin)
+        ->test(ViewUser::class, ['record' => $user->getKey()])
+        ->callAction('changeStatus', ['status' => 'invalid-status'])
+        ->assertHasErrors();
+
+    expect($user->fresh()->status)->toBe(UserStatus::Active);
+});
+
+it('changes platform role through the audited Filament action and ignores the same role', function (): void {
+    $admin = User::factory()->platformAdmin()->create();
+    $user = User::factory()->create(['platform_role' => PlatformRole::User]);
+
+    Livewire::actingAs($admin)
+        ->test(ViewUser::class, ['record' => $user->getKey()])
+        ->callAction('changePlatformRole', ['platform_role' => PlatformRole::Operator->value]);
+
+    expect($user->fresh()->platform_role)->toBe(PlatformRole::Operator);
+    $audit = AuditLog::query()->where('action', 'user.platform_role_changed')->latest('id')->first();
+    expect($audit)->not->toBeNull()
+        ->and($audit->user_id)->toBe((string) $admin->getKey())
+        ->and($audit->auditable_id)->toBe((string) $user->getKey());
+
+    Livewire::actingAs($admin)
+        ->test(ViewUser::class, ['record' => $user->getKey()])
+        ->callAction('changePlatformRole', ['platform_role' => PlatformRole::Operator->value]);
+
+    expect($user->fresh()->platform_role)->toBe(PlatformRole::Operator)
+        ->and(AuditLog::query()->where('action', 'user.platform_role_changed')->count())->toBe(1);
+});
+
+it('does not mutate platform role when an unauthorized user attempts the action', function (): void {
+    $user = User::factory()->create(['platform_role' => PlatformRole::User]);
+
+    $this->actingAs($user)
+        ->get(UserResource::getUrl('view', ['record' => $user]))
+        ->assertForbidden();
+
+    expect($user->fresh()->platform_role)->toBe(PlatformRole::User)
+        ->and(AuditLog::query()->where('action', 'user.platform_role_changed')->exists())->toBeFalse();
+});
+
+it('rejects an invalid platform role value without mutating the user', function (): void {
+    $admin = User::factory()->platformAdmin()->create();
+    $user = User::factory()->create(['platform_role' => PlatformRole::User]);
+
+    Livewire::actingAs($admin)
+        ->test(ViewUser::class, ['record' => $user->getKey()])
+        ->callAction('changePlatformRole', ['platform_role' => 'invalid-role'])
+        ->assertHasErrors();
+
+    expect($user->fresh()->platform_role)->toBe(PlatformRole::User);
 });
 
 it('filters users by platform role and status', function (): void {

@@ -1,0 +1,117 @@
+name: Tests
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  sqlite:
+    name: SQLite / PHP 8.4
+    runs-on: ubuntu-latest
+    env:
+      APP_ENV: testing
+      DB_CONNECTION: sqlite
+      DB_DATABASE: database/database.sqlite
+      RUN_RELATIONAL_TESTS: '0'
+    steps:
+      - uses: actions/checkout@v4
+      - name: Setup PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.4'
+          extensions: mbstring, sqlite3, pdo_sqlite
+          coverage: none
+          tools: composer:v2
+      - name: Install dependencies
+        uses: ramsey/composer-install@v3
+        with:
+          composer-options: --prefer-dist --no-interaction
+      - name: Prepare application
+        run: |
+          cp .env.example .env
+          touch database/database.sqlite
+          php artisan key:generate --force
+      - name: Migrate
+        run: php artisan migrate:fresh --force
+      - name: Syntax and diff checks
+        run: |
+          git diff --check
+          find app bootstrap config routes tests -name '*.php' -print0 | xargs -0 -n1 php -l
+      - name: Test suite
+        run: php artisan test --compact --log-junit storage/test-results/sqlite.xml
+      - name: Upload test report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: sqlite-test-report
+          path: storage/test-results/sqlite.xml
+
+  relational:
+    name: ${{ matrix.database }} / PHP 8.4
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - database: mysql
+            image: mysql:8.4
+            port: 3306
+            health: mysqladmin ping -h 127.0.0.1 -uroot -proot
+          - database: postgres
+            image: postgres:16
+            port: 5432
+            health: pg_isready -h 127.0.0.1 -U postgres -d temail
+    services:
+      db:
+        image: ${{ matrix.image }}
+        env:
+          MYSQL_DATABASE: temail
+          MYSQL_USER: temail
+          MYSQL_PASSWORD: temail
+          MYSQL_ROOT_PASSWORD: root
+          POSTGRES_DB: temail
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+        ports:
+          - 127.0.0.1:${{ matrix.port }}:${{ matrix.port }}
+        options: >-
+          --health-cmd "${{ matrix.health }}"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      APP_ENV: testing
+      RUN_RELATIONAL_TESTS: '1'
+      DB_CONNECTION: ${{ matrix.database == 'postgres' && 'pgsql' || 'mysql' }}
+      DB_HOST: 127.0.0.1
+      DB_PORT: ${{ matrix.port }}
+      DB_DATABASE: temail
+      DB_USERNAME: ${{ matrix.database == 'postgres' && 'postgres' || 'temail' }}
+      DB_PASSWORD: ${{ matrix.database == 'postgres' && 'postgres' || 'temail' }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Setup PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.4'
+          extensions: mbstring, pdo_mysql, pdo_pgsql
+          coverage: none
+          tools: composer:v2
+      - name: Install dependencies
+        uses: ramsey/composer-install@v3
+        with:
+          composer-options: --prefer-dist --no-interaction
+      - name: Prepare application
+        run: |
+          cp .env.example .env
+          php artisan key:generate --force
+      - name: Migrate
+        run: php artisan migrate:fresh --force
+      - name: Relational test suite
+        run: php artisan test --env=testing --filter=Relational --disallow-skipped --compact --log-junit storage/test-results/${{ matrix.database }}.xml
+      - name: Upload test report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.database }}-test-report
+          path: storage/test-results/${{ matrix.database }}.xml
