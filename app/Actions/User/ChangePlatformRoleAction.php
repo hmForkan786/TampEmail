@@ -12,6 +12,7 @@ use App\Exceptions\PlatformRoleChangeNotAllowedException;
 use App\Exceptions\PlatformRoleTargetUnavailableException;
 use App\Models\User;
 use App\Repositories\Contracts\ApiKeyRepositoryInterface;
+use App\Services\Audit\AuditLogWriter;
 use Illuminate\Support\Facades\DB;
 
 /**
@@ -23,11 +24,15 @@ use Illuminate\Support\Facades\DB;
  * 3. reject self-changes and missing/deleted targets
  * 4. revoke demotion-affected API keys
  * 5. assign platform_role via explicit attribute + save()
+ * 6. append an immutable AuditLog for successful mutations
  */
 final class ChangePlatformRoleAction
 {
+    public const AUDIT_ACTION = 'user.platform_role_changed';
+
     public function __construct(
         private readonly ApiKeyRepositoryInterface $apiKeyRepository,
+        private readonly AuditLogWriter $auditLogWriter,
     ) {}
 
     /**
@@ -84,6 +89,24 @@ final class ChangePlatformRoleAction
 
             $target->platform_role = $newRole;
             $target->save();
+
+            $this->auditLogWriter->write(
+                action: self::AUDIT_ACTION,
+                actorUserId: (string) $actor->getKey(),
+                auditable: $target,
+                oldValues: [
+                    'platform_role' => $oldRole->value,
+                ],
+                newValues: [
+                    'platform_role' => $newRole->value,
+                ],
+                metadata: [
+                    'target_user_id' => (string) $target->getKey(),
+                    'revoked_key_count' => $revokedKeyCount,
+                    'changed_at' => $changedAt->toIso8601String(),
+                ],
+                occurredAt: $changedAt,
+            );
 
             return new ChangePlatformRoleResult(
                 target: $target->fresh() ?? $target,

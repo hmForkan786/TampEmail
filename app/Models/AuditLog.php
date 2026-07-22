@@ -128,9 +128,11 @@ class AuditLog extends BaseModel
     }
 
     /**
-     * Determine whether the audit log recorded value changes.
+     * Determine whether the audit log recorded old/new value payloads.
+     *
+     * Named distinctly from Eloquent Model::hasChanges().
      */
-    public function hasChanges(): bool
+    public function hasRecordedValueChanges(): bool
     {
         return $this->old_values !== null || $this->new_values !== null;
     }

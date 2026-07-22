@@ -7,9 +7,11 @@ use App\Enums\UserStatus;
 use App\Exceptions\PlatformRoleChangeNotAllowedException;
 use App\Exceptions\PlatformRoleTargetUnavailableException;
 use App\Models\ApiKey;
+use App\Models\AuditLog;
 use App\Models\User;
 use App\Repositories\Contracts\ApiKeyRepositoryInterface;
 use App\Services\ApiKey\ApiKeyTokenGenerator;
+use App\Services\Audit\AuditLogWriter;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Str;
@@ -57,6 +59,38 @@ it('allows an active admin to promote a user to operator', function (): void {
         ->and($result->newRole)->toBe(PlatformRole::Operator)
         ->and($result->revokedKeyCount)->toBe(0)
         ->and($user->fresh()->platform_role)->toBe(PlatformRole::Operator);
+
+    $audit = AuditLog::query()->sole();
+    expect($audit->action)->toBe(ChangePlatformRoleAction::AUDIT_ACTION)
+        ->and($audit->user_id)->toBe($admin->id)
+        ->and($audit->auditable_type)->toBe(User::class)
+        ->and($audit->auditable_id)->toBe($user->id)
+        ->and($audit->old_values)->toBe(['platform_role' => 'user'])
+        ->and($audit->new_values)->toBe(['platform_role' => 'operator'])
+        ->and($audit->metadata['target_user_id'])->toBe($user->id)
+        ->and($audit->metadata['revoked_key_count'])->toBe(0)
+        ->and($audit->metadata['changed_at'])->toBe($result->changedAt->toIso8601String())
+        ->and($audit->created_at?->timestamp)->toBe($result->changedAt->timestamp);
+});
+
+it('records demotion old and new roles with revoked key count', function (): void {
+    $actor = User::factory()->platformAdmin()->create();
+    $target = User::factory()->platformAdmin()->create();
+    roleChangeApiKey($target, ['mail_servers:admin']);
+    roleChangeApiKey($target, ['mail_servers:read']);
+
+    $result = changePlatformRole($actor, $target, PlatformRole::Operator);
+
+    $audit = AuditLog::query()->sole();
+    expect($result->revokedKeyCount)->toBe(1)
+        ->and($audit->user_id)->toBe($actor->id)
+        ->and($audit->auditable_id)->toBe($target->id)
+        ->and($audit->old_values)->toBe(['platform_role' => 'admin'])
+        ->and($audit->new_values)->toBe(['platform_role' => 'operator'])
+        ->and($audit->metadata['target_user_id'])->toBe($target->id)
+        ->and($audit->metadata['revoked_key_count'])->toBe(1)
+        ->and(json_encode($audit->toArray()))->not->toContain('te_live_')
+        ->and(json_encode($audit->metadata))->not->toContain('key_hash');
 });
 
 it('allows an active admin to promote an operator to admin', function (): void {
@@ -132,7 +166,8 @@ it('treats same-role requests as idempotent no-ops', function (): void {
     expect($result->changed)->toBeFalse()
         ->and($result->revokedKeyCount)->toBe(0)
         ->and($target->fresh()->platform_role)->toBe(PlatformRole::Operator)
-        ->and(ApiKey::query()->where('user_id', $target->id)->whereNull('revoked_at')->count())->toBe(1);
+        ->and(ApiKey::query()->where('user_id', $target->id)->whereNull('revoked_at')->count())->toBe(1)
+        ->and(AuditLog::query()->count())->toBe(0);
 });
 
 it('rejects operators and ordinary users as actors', function (PlatformRole $role): void {
@@ -141,7 +176,8 @@ it('rejects operators and ordinary users as actors', function (PlatformRole $rol
 
     expect(fn () => changePlatformRole($actor, $target, PlatformRole::Operator))
         ->toThrow(PlatformRoleChangeNotAllowedException::class);
-    expect($target->fresh()->platform_role)->toBe(PlatformRole::User);
+    expect($target->fresh()->platform_role)->toBe(PlatformRole::User)
+        ->and(AuditLog::query()->count())->toBe(0);
 })->with([
     PlatformRole::Operator,
     PlatformRole::User,
@@ -196,7 +232,49 @@ it('rolls back role and revocation when the transaction fails', function (): voi
         ->toThrow(RuntimeException::class);
 
     expect($target->fresh()->platform_role)->toBe(PlatformRole::Admin)
-        ->and($key->fresh()->revoked_at)->toBeNull();
+        ->and($key->fresh()->revoked_at)->toBeNull()
+        ->and(AuditLog::query()->count())->toBe(0);
+});
+
+it('rolls back role and key revocation when audit writing fails', function (): void {
+    $actor = User::factory()->platformAdmin()->create();
+    $target = User::factory()->platformAdmin()->create();
+    $key = roleChangeApiKey($target, ['mail_servers:admin']);
+
+    $writer = Mockery::mock(AuditLogWriter::class);
+    $writer->shouldReceive('write')
+        ->once()
+        ->andThrow(new RuntimeException('forced audit failure'));
+    app()->instance(AuditLogWriter::class, $writer);
+
+    expect(fn () => changePlatformRole($actor, $target, PlatformRole::Operator))
+        ->toThrow(RuntimeException::class);
+
+    expect($target->fresh()->platform_role)->toBe(PlatformRole::Admin)
+        ->and($key->fresh()->revoked_at)->toBeNull()
+        ->and(AuditLog::query()->count())->toBe(0);
+});
+
+it('creates separate immutable audit records for multiple role changes', function (): void {
+    $actor = User::factory()->platformAdmin()->create();
+    $target = User::factory()->create();
+
+    $firstAt = Carbon::parse('2026-07-22 12:00:00');
+    Carbon::setTestNow($firstAt);
+    changePlatformRole($actor, $target, PlatformRole::Operator);
+
+    Carbon::setTestNow($firstAt->copy()->addSecond());
+    changePlatformRole($actor, $target, PlatformRole::Admin);
+    Carbon::setTestNow();
+
+    $audits = AuditLog::query()->orderBy('created_at')->orderBy('id')->get();
+
+    expect($audits)->toHaveCount(2)
+        ->and($audits[0]->old_values)->toBe(['platform_role' => 'user'])
+        ->and($audits[0]->new_values)->toBe(['platform_role' => 'operator'])
+        ->and($audits[1]->old_values)->toBe(['platform_role' => 'operator'])
+        ->and($audits[1]->new_values)->toBe(['platform_role' => 'admin'])
+        ->and($audits[0]->id)->not->toBe($audits[1]->id);
 });
 
 it('does not allow mass assignment to change platform_role', function (): void {
