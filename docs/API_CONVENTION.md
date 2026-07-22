@@ -212,3 +212,13 @@ No API route, controller, middleware, policy, token migration, or package instal
 Newly issued keys use `te_live_<base64url-random-secret>`, with 43 cryptographically random URL-safe characters. The stored `key_prefix` is the first 16 token characters. The stored `key_hash` is `v1:` followed by an HMAC-SHA256 digest of the complete plaintext token using the dedicated `API_KEY_HASH_SECRET` value.
 
 `API_KEY_HASH_SECRET` is required; there is no `APP_KEY` fallback. Existing records are not rewritten and remain legacy/unresolvable until a separately approved compatibility policy exists. Plaintext is returned only through the creation-only issuance result and is never persisted, serialized from the model, or logged. Hash verification uses a timing-safe comparison.
+
+## Anonymous mail-server pool configuration
+
+Anonymous/public inbox provisioning uses a dedicated configuration contract documented in `docs/ANONYMOUS_MAIL_SERVER_POOL.md`.
+
+- Environment variable: `PUBLIC_MAIL_SERVER_POOL`
+- Config key: `inbox.public_mail_server_pool`
+- Empty or unset values disable anonymous mail-server assignment.
+- Only servers whose `pool_key` exactly matches the configured value may be used; `pool_key = null` servers are never eligible.
+- Authenticated entitlement pool resolution (`mail_server_pools`) is unchanged and independent of this setting.
