@@ -9,6 +9,7 @@ use App\DTOs\ApiKey\CreateApiKeyData;
 use App\DTOs\ApiKey\UpdateApiKeyData;
 use App\Models\ApiKey;
 use App\Repositories\Contracts\ApiKeyRepositoryInterface;
+use DateTimeInterface;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 
 /**
@@ -75,6 +76,51 @@ final class EloquentApiKeyRepository extends BaseEloquentRepository implements A
     }
 
     /**
+     * {@inheritdoc}
+     *
+     * Uses orWhereJsonContains so MySQL and SQLite match exact JSON array string
+     * elements without LIKE/wildcard substring false positives.
+     */
+    public function revokeUnrevokedForUserWithAnyScope(
+        string $userId,
+        array $scopes,
+        DateTimeInterface $revokedAt,
+    ): int {
+        $scopes = $this->uniqueExactScopes($scopes);
+
+        if ($scopes === []) {
+            return 0;
+        }
+
+        return $this->model()->newQuery()
+            ->where('user_id', $userId)
+            ->whereNull('revoked_at')
+            ->where(function ($query) use ($scopes): void {
+                foreach ($scopes as $scope) {
+                    $query->orWhereJsonContains('permissions', $scope);
+                }
+            })
+            ->update([
+                'revoked_at' => $revokedAt,
+            ]);
+    }
+
+    /**
+     * {@inheritdoc}
+     */
+    public function revokeAllUnrevokedForUser(
+        string $userId,
+        DateTimeInterface $revokedAt,
+    ): int {
+        return $this->model()->newQuery()
+            ->where('user_id', $userId)
+            ->whereNull('revoked_at')
+            ->update([
+                'revoked_at' => $revokedAt,
+            ]);
+    }
+
+    /**
      * Retrieve a paginated list of API keys matching the given filters.
      *
      * @param ApiKeyFiltersData $filters Pagination and filter criteria.
@@ -125,5 +171,24 @@ final class EloquentApiKeyRepository extends BaseEloquentRepository implements A
         return $query
             ->orderBy($filters->sortBy, $filters->sortDirection)
             ->paginate($filters->perPage);
+    }
+
+    /**
+     * @param  array<mixed>  $scopes
+     * @return list<string>
+     */
+    private function uniqueExactScopes(array $scopes): array
+    {
+        $normalized = [];
+
+        foreach ($scopes as $scope) {
+            if (! is_string($scope) || $scope === '') {
+                continue;
+            }
+
+            $normalized[$scope] = $scope;
+        }
+
+        return array_values($normalized);
     }
 }

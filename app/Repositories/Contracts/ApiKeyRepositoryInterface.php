@@ -8,6 +8,7 @@ use App\DTOs\ApiKey\ApiKeyFiltersData;
 use App\DTOs\ApiKey\CreateApiKeyData;
 use App\DTOs\ApiKey\UpdateApiKeyData;
 use App\Models\ApiKey;
+use DateTimeInterface;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 
 /**
@@ -39,6 +40,31 @@ interface ApiKeyRepositoryInterface extends BaseRepositoryInterface
      * @return int Number of non-revoked API keys owned by the user.
      */
     public function countForUser(string $userId): int;
+
+    /**
+     * Revoke non-revoked keys for a user that store any of the given exact scopes.
+     *
+     * Matching uses JSON array exact-value containment (not SQL substring wildcards).
+     * Already-revoked keys are left unchanged. Returns the number of rows revoked.
+     *
+     * @param  list<string>  $scopes Canonical scope values to match.
+     */
+    public function revokeUnrevokedForUserWithAnyScope(
+        string $userId,
+        array $scopes,
+        DateTimeInterface $revokedAt,
+    ): int;
+
+    /**
+     * Revoke every non-revoked API key owned by the user.
+     *
+     * Expired but non-revoked keys are included. Already-revoked timestamps are
+     * not overwritten. Returns the number of rows revoked.
+     */
+    public function revokeAllUnrevokedForUser(
+        string $userId,
+        DateTimeInterface $revokedAt,
+    ): int;
 
     /**
      * Retrieve a paginated list of API keys matching the given filters.
