@@ -222,3 +222,26 @@ Anonymous/public inbox provisioning uses a dedicated configuration contract docu
 - Empty or unset values disable anonymous mail-server assignment.
 - Only servers whose `pool_key` exactly matches the configured value may be used; `pool_key = null` servers are never eligible.
 - Authenticated entitlement pool resolution (`mail_server_pools`) is unchanged and independent of this setting.
+
+## API-key ownership policy
+
+### Decision
+
+The supported policy is **Option A: user-owned API keys only**. The `api_keys.user_id` foreign key is required and cascades on user deletion; `ApiKey::user()` is the ownership relationship. There is currently no separate system-owner, team-owner, or platform-owner representation.
+
+Every persisted API key therefore requires a valid user owner. Administrative or background issuance may issue a key on behalf of a specific user, but administrator status does not remove the owner or bypass that user's API-key quota.
+
+### User and payload resolution
+
+- If `$user` is supplied, its primary key must match the payload `userId`; a mismatch is rejected.
+- If `$user` is absent and `userId` is supplied, the user is resolved from the database and locked before quota evaluation and insertion.
+- A missing, empty, or invalid `userId` is not a supported system-key request. It must fail closed before persistence rather than rely on the database foreign-key error.
+- Owner quota applies to every supported key. Missing entitlement or a `null` limit means unlimited; revoked keys do not consume quota, while expired but non-revoked keys continue to consume quota.
+
+### System-key ambiguity and future work
+
+The current nullable-looking `$user = null` path is an API ambiguity, not a valid unowned-key capability: a true unowned record cannot satisfy the non-null `user_id` schema constraint. It must not be exposed as a system-key issuance path.
+
+If explicit system keys are later required, the implementation sequence is: choose an ownership representation and migration/backfill strategy; define an authenticated admin actor and audit trail; define separate quota, scope, rotation, revocation, and serialization rules; then add authorization and relational concurrency tests. Existing user-owned records must remain compatible, and no existing record should be rehashed or reclassified by assumption.
+
+Until that design is approved and implemented, API-key creation, issuance, and API authentication should assume a valid user owner and reject ownerless requests.
