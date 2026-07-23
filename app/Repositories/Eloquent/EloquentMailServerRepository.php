@@ -10,6 +10,7 @@ use App\DTOs\MailServer\UpdateMailServerData;
 use App\Models\MailServer;
 use App\Repositories\Contracts\MailServerRepositoryInterface;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
+use Illuminate\Support\Facades\DB;
 
 /**
  * Eloquent-backed persistence and query implementation for mail servers.
@@ -84,13 +85,14 @@ final class EloquentMailServerRepository extends BaseEloquentRepository implemen
     /**
      * Select and lock the best available mail server for the given pools.
      *
-     * Filters to active, healthy, under-capacity servers whose pool_key is
-     * in the given list, ordered deterministically by priority. Applies a
-     * row-level lock, so it must be called within an open transaction.
+     * Filters to active, healthy servers whose pool_key is in the given list,
+     * ordered deterministically by priority. Applies a row-level lock, so it
+     * must be called within an open transaction. Capacity is verified with a
+     * locking current-read after the server row is locked so concurrent
+     * creators cannot oversubscribe under MySQL REPEATABLE READ.
      * Performs no entitlement resolution.
      *
-     * @param array<string> $poolKeys Allowed pool keys.
-     *
+     * @param  array<string>  $poolKeys  Allowed pool keys.
      * @return MailServer|null The locked selected mail server, if any.
      */
     public function selectAvailableForPoolsForUpdate(array $poolKeys): ?MailServer
@@ -99,30 +101,37 @@ final class EloquentMailServerRepository extends BaseEloquentRepository implemen
             return null;
         }
 
-        return $this->model()->newQuery()
+        $servers = $this->model()->newQuery()
             ->whereIn('pool_key', $poolKeys)
             ->where('is_active', true)
             ->whereNotNull('last_health_check_at')
             ->where('last_health_check_at', '>=', now()->subMinutes(10))
-            ->where(function ($query): void {
-                $query->whereNull('max_inboxes')
-                    ->orWhere('max_inboxes', '>', function ($query): void {
-                        // Utilization: assigned inboxes that are not soft
-                        // deleted, active, and not expired.
-                        $query->selectRaw('count(*)')
-                            ->from('inboxes')
-                            ->whereColumn('inboxes.mail_server_id', 'mail_servers.id')
-                            ->whereNull('inboxes.deleted_at')
-                            ->where('inboxes.is_active', true)
-                            ->where(function ($query): void {
-                                $query->whereNull('inboxes.expires_at')
-                                    ->orWhere('inboxes.expires_at', '>', now());
-                            });
-                    });
-            })
             ->orderByDesc('priority')
             ->orderByDesc('id')
             ->lockForUpdate()
-            ->first();
+            ->get();
+
+        foreach ($servers as $server) {
+            if ($server->max_inboxes === null) {
+                return $server;
+            }
+
+            $utilization = (int) DB::table('inboxes')
+                ->where('mail_server_id', $server->id)
+                ->whereNull('deleted_at')
+                ->where('is_active', true)
+                ->where(function ($query): void {
+                    $query->whereNull('expires_at')
+                        ->orWhere('expires_at', '>', now());
+                })
+                ->lockForUpdate()
+                ->count();
+
+            if ($utilization < (int) $server->max_inboxes) {
+                return $server;
+            }
+        }
+
+        return null;
     }
 }

@@ -1,6 +1,6 @@
 # Relational Concurrency Worker Protocol
 
-Status: test-only worker protocol implemented by `tests/Support/RelationalConcurrencyHarness.php` and `tests/Support/relational_worker.php`. Relational execution remains unverified when MySQL/PostgreSQL is unavailable.
+Status: test-only worker protocol implemented by `tests/Support/RelationalConcurrencyHarness.php` and `tests/Support/relational_worker.php`. CI MySQL 8.4 and PostgreSQL 16 jobs execute the inbox and API-key scenarios with `RUN_RELATIONAL_TESTS=1`. Local runs remain unverified when those engines are unavailable.
 
 ## Execution guard
 
@@ -110,9 +110,11 @@ The parent emits a summary:
 
 ## CI policy and JUnit mapping
 
-The SQLite job runs the full suite and retains the six intentional relational skips. MySQL and PostgreSQL jobs set `RUN_RELATIONAL_TESTS=1`, use their disposable service database, and run the relational group plus the full relevant suite. The harness must be invoked in those jobs; an unexpected skip is a failure, not a pass. Parent assertions are regular PHPUnit/Pest assertions so worker failures appear in JUnit output. Raw worker result files may be uploaded only after sensitive-value validation.
+The SQLite job runs the full suite and retains the intentional relational skips. MySQL and PostgreSQL jobs set `RUN_RELATIONAL_TESTS=1`, wait for service health, migrate fresh, and run `RelationalInboxConcurrencyTest` plus `RelationalApiKeyConcurrencyTest` with `--fail-on-skipped` (PHPUnit's disallow-skipped equivalent). Sanitized worker summaries under `storage/test-results/relational/` and JUnit XML are uploaded even on failure. The harness must be invoked in those jobs; an unexpected skip is a failure, not a pass. Parent assertions are regular PHPUnit/Pest assertions so worker failures appear in JUnit output.
 
 Local service startup and database variables are defined in [RELATIONAL_TEST_MATRIX.md](RELATIONAL_TEST_MATRIX.md). The deprecated `RUN_RELATIONAL_CONCURRENCY_TESTS` variable remains a compatibility fallback only.
+
+Renewal versus scheduled expiration is intentionally out of scope for the current scenario allowlist; see the follow-up dependency section in the matrix document.
 
 ## Prompt 363 implementation contract
 

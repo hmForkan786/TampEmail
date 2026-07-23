@@ -25,7 +25,13 @@ try {
         $result = app(App\Actions\ApiKey\CreateApiKeyAction::class)->issue((string) $payload['user_id'], 'relational-worker', $payload['permissions'] ?? null, 60, null, null);
         $created = (string) $result->apiKey->getKey();
     } elseif (in_array($scenario, ['inbox-user-quota', 'mail-server-capacity', 'anonymous-capacity'], true)) {
-        $created = (string) app(App\Actions\Inbox\CreateInboxAction::class)->execute(App\DTOs\Inbox\CreateInboxData::fromArray($payload), isset($payload['user_id']) ? App\Models\User::findOrFail($payload['user_id']) : null)->getKey();
+        $created = (string) app(App\Actions\Inbox\CreateInboxAction::class)->execute(
+            App\DTOs\Inbox\CreateInboxData::fromArray($payload),
+            isset($payload['user_id']) ? App\Models\User::findOrFail($payload['user_id']) : null,
+            isset($payload['user_id'])
+                ? App\DTOs\Inbox\InboxMutationContext::forApi((string) $payload['user_id'], (string) ($payload['api_key_id'] ?? '00000000-0000-4000-8000-000000000001'))
+                : App\DTOs\Inbox\InboxMutationContext::forAnonymous()
+        )->getKey();
     } else throw new RuntimeException('Unsupported scenario.');
     echo json_encode(['worker_id' => $worker, 'scenario' => $scenario, 'status' => 'success', 'exception' => null, 'created_id' => $created, 'duration_ms' => (int) ((microtime(true) - $started) * 1000)], JSON_THROW_ON_ERROR);
 } catch (App\Exceptions\ApiKeyQuotaExceededException|App\Exceptions\InboxQuotaExceededException|App\Exceptions\EligibleMailServerUnavailableException $e) {

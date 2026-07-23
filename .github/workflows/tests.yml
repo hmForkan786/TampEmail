@@ -105,13 +105,40 @@ jobs:
         run: |
           cp .env.example .env
           php artisan key:generate --force
+          mkdir -p storage/test-results/relational
+      - name: Wait for database health
+        run: |
+          for i in $(seq 1 30); do
+            if php -r 'try { new PDO(getenv("DB_CONNECTION") === "pgsql" ? "pgsql:host=127.0.0.1;port=".getenv("DB_PORT").";dbname=temail" : "mysql:host=127.0.0.1;port=".getenv("DB_PORT").";dbname=temail", getenv("DB_USERNAME"), getenv("DB_PASSWORD")); exit(0);} catch (Throwable $e) { fwrite(STDERR, $e->getMessage().PHP_EOL); exit(1);}'; then
+              echo "database ready"
+              exit 0
+            fi
+            sleep 2
+          done
+          echo "database healthcheck failed"
+          exit 1
       - name: Migrate
         run: php artisan migrate:fresh --force
-      - name: Relational test suite
-        run: php artisan test --env=testing --filter=Relational --fail-on-skipped --compact --log-junit storage/test-results/${{ matrix.database }}.xml
-      - name: Upload test report
+      - name: Relational inbox concurrency suite
+        run: >
+          php artisan test --env=testing
+          --filter=RelationalInboxConcurrencyTest
+          --fail-on-skipped
+          --compact
+          --log-junit storage/test-results/${{ matrix.database }}-inbox-concurrency.xml
+      - name: Relational API-key concurrency suite
+        run: >
+          php artisan test --env=testing
+          --filter=RelationalApiKeyConcurrencyTest
+          --fail-on-skipped
+          --compact
+          --log-junit storage/test-results/${{ matrix.database }}-api-key-concurrency.xml
+      - name: Upload relational artifacts
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: ${{ matrix.database }}-test-report
-          path: storage/test-results/${{ matrix.database }}.xml
+          name: ${{ matrix.database }}-relational-artifacts
+          path: |
+            storage/test-results/${{ matrix.database }}-inbox-concurrency.xml
+            storage/test-results/${{ matrix.database }}-api-key-concurrency.xml
+            storage/test-results/relational/
