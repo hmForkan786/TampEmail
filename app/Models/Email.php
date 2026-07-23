@@ -32,6 +32,8 @@ use Illuminate\Support\Carbon;
  * @property int $attachment_count
  * @property int $size_bytes
  * @property ProcessingStatus $processing_status
+ * @property bool $is_read
+ * @property Carbon|null $read_at
  * @property string|null $spam_score
  * @property array<string, mixed>|null $headers
  * @property array<string, mixed>|null $metadata
@@ -75,6 +77,8 @@ class Email extends BaseModel
         'attachment_count',
         'size_bytes',
         'processing_status',
+        'is_read',
+        'read_at',
         'spam_score',
         'headers',
         'metadata',
@@ -96,6 +100,8 @@ class Email extends BaseModel
             'size_bytes' => 'integer',
             'spam_score' => 'decimal:2',
             'processing_status' => ProcessingStatus::class,
+            'is_read' => 'boolean',
+            'read_at' => 'datetime',
             'headers' => 'array',
             'metadata' => 'array',
         ]);
@@ -171,6 +177,18 @@ class Email extends BaseModel
     protected function withAttachments(Builder $query): void
     {
         $query->where('has_attachments', true);
+    }
+
+    #[Scope]
+    protected function read(Builder $query): void
+    {
+        $query->where('is_read', true);
+    }
+
+    #[Scope]
+    protected function unread(Builder $query): void
+    {
+        $query->where('is_read', false);
     }
 
     /**

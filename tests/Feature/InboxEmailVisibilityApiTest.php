@@ -294,3 +294,26 @@ it('keeps request logging and rate limiting intact for inbox email reads', funct
     $json = ApiRequestLog::query()->get()->toJson();
     expect($json)->not->toContain($token)->not->toContain($key->key_hash)->not->toContain('Authorization');
 });
+
+it('filters owned email listings by read state, fields, attachments, dates, sort and pagination', function (): void {
+    [$owner, $token] = issueInboxReadKey();
+    $fixture = ownedInboxEmailFixture($owner);
+    $fixture['email']->update(['is_read' => true, 'read_at' => now()->subHour(), 'subject' => 'Invoice alpha', 'sender_email' => 'Sender@Example.test', 'received_at' => now()->subHours(2)]);
+    $other = \App\Models\Email::query()->create(['inbox_id' => $fixture['inbox']->id, 'message_id' => 'filter-other-'.bin2hex(random_bytes(3)), 'sender_email' => 'other@example.test', 'recipient_email' => $fixture['inbox']->full_address, 'subject' => 'Report beta', 'received_at' => now()->subHour(), 'size_bytes' => 1, 'processing_status' => 'stored', 'has_attachments' => false, 'is_read' => false]);
+
+    $base = '/api/v1/inboxes/'.$fixture['inbox']->id.'/emails';
+    $this->withToken($token)->getJson($base.'?is_read=true&subject=INVOICE&from=sender@example.test&received_before='.urlencode(now()->subHour()->format('Y-m-d H:i:s')).'&sort=received_at&direction=asc&per_page=1')
+        ->assertOk()->assertJsonPath('meta.total', 1)->assertJsonPath('data.0.id', $fixture['email']->id);
+    $this->withToken($token)->getJson($base.'?message_id='.$other->message_id.'&has_attachments=false')
+        ->assertOk()->assertJsonPath('meta.total', 1)->assertJsonPath('data.0.id', $other->id);
+});
+
+it('returns the standard validation envelope for invalid email list filters', function (): void {
+    [$owner, $token] = issueInboxReadKey();
+    $fixture = ownedInboxEmailFixture($owner);
+    $base = '/api/v1/inboxes/'.$fixture['inbox']->id.'/emails';
+
+    $this->withToken($token)->getJson($base.'?is_read=maybe')->assertStatus(422)->assertJsonPath('error.code', 'validation_failed');
+    $this->withToken($token)->getJson($base.'?sort=raw_headers')->assertStatus(422)->assertJsonPath('error.code', 'validation_failed');
+    $this->withToken($token)->getJson($base.'?received_after=not-a-date')->assertStatus(422)->assertJsonPath('error.code', 'validation_failed');
+});

@@ -34,13 +34,24 @@ final class OwnedEmailVisibilityService
      *
      * @return LengthAwarePaginator<int, Email>
      */
-    public function paginateForInbox(Inbox $inbox, int $perPage = 15): LengthAwarePaginator
+    public function paginateForInbox(Inbox $inbox, array $filters = []): LengthAwarePaginator
     {
-        return Email::query()
-            ->where('inbox_id', $inbox->getKey())
+        $query = Email::query()->where('inbox_id', $inbox->getKey());
+        if (array_key_exists('is_read', $filters)) $query->where('is_read', (bool) $filters['is_read']);
+        if (filled($filters['from'] ?? null)) $query->whereRaw('LOWER(sender_email) LIKE ?', ['%'.mb_strtolower(trim((string) $filters['from'])).'%']);
+        if (filled($filters['to'] ?? null)) $query->whereRaw('LOWER(recipient_email) LIKE ?', ['%'.mb_strtolower(trim((string) $filters['to'])).'%']);
+        if (filled($filters['subject'] ?? null)) $query->whereRaw('LOWER(subject) LIKE ?', ['%'.mb_strtolower(trim((string) $filters['subject'])).'%']);
+        if (filled($filters['message_id'] ?? null)) $query->where('message_id', (string) $filters['message_id']);
+        if (filled($filters['received_after'] ?? null)) $query->where('received_at', '>=', $filters['received_after']);
+        if (filled($filters['received_before'] ?? null)) $query->where('received_at', '<=', $filters['received_before']);
+        if (array_key_exists('has_attachments', $filters)) $query->where('has_attachments', (bool) $filters['has_attachments']);
+
+        $sort = $filters['sort'] ?? 'received_at';
+        $direction = $filters['direction'] ?? 'desc';
+        return $query
             ->with(['body', 'attachments', 'inbox'])
-            ->orderByDesc('received_at')
-            ->paginate(max(1, min($perPage, 100)));
+            ->orderBy($sort, $direction)
+            ->paginate((int) ($filters['per_page'] ?? 15));
     }
 
     /**

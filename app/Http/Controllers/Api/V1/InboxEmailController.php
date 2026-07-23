@@ -9,6 +9,7 @@ use App\Http\Resources\EmailCollection;
 use App\Http\Resources\EmailResource;
 use App\Models\Email;
 use App\Models\User;
+use App\Http\Requests\Email\ListOwnedEmailsRequest;
 use App\Services\Email\OwnedEmailVisibilityService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Gate;
@@ -17,16 +18,14 @@ final class InboxEmailController extends Controller
 {
     public function __construct(private readonly OwnedEmailVisibilityService $visibility) {}
 
-    public function index(Request $request, string $inbox): EmailCollection
+    public function index(ListOwnedEmailsRequest $request, string $inbox): EmailCollection
     {
         $owner = $this->owner($request);
         Gate::forUser($owner)->authorize('viewAny', Email::class);
 
         $resolved = $this->visibility->resolveOwnedInbox($owner, $inbox);
-        $perPage = (int) $request->query('per_page', 15);
-
         return EmailResource::collection(
-            $this->visibility->paginateForInbox($resolved, $perPage)
+            $this->visibility->paginateForInbox($resolved, $request->validated())
         );
     }
 
