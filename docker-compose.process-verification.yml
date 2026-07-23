@@ -1,0 +1,19 @@
+services:
+  temail-process-verification-redis:
+    image: redis:7.2.5-alpine
+    container_name: temail-process-verification-redis
+    restart: "no"
+    ports:
+      - "127.0.0.1:6389:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    networks:
+      - temail-process-verification
+
+networks:
+  temail-process-verification:
+    name: temail-process-verification-network
+    driver: bridge

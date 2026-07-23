@@ -1,0 +1,24 @@
+; Copy to Supervisor's configuration directory and replace only the placeholders.
+; This enables the supervised schedule:work strategy. Do not also run cron unless
+; the deployment topology deliberately coordinates both strategies.
+
+[program:temail-scheduler]
+directory=<PROJECT_PATH>
+command=<PHP_BINARY> artisan schedule:work
+process_name=%(program_name)s
+numprocs=1
+user=<DEPLOYMENT_USER>
+autostart=true
+autorestart=true
+startsecs=5
+stopasgroup=true
+killasgroup=true
+stopsignal=TERM
+stopwaitsecs=<GRACEFUL_STOP_WAIT_SECONDS>
+redirect_stderr=false
+stdout_logfile=<LOG_DIRECTORY>/scheduler.log
+stderr_logfile=<LOG_DIRECTORY>/scheduler.error.log
+stdout_logfile_maxbytes=<LOG_MAX_BYTES>
+stdout_logfile_backups=<LOG_BACKUPS>
+stderr_logfile_maxbytes=<LOG_MAX_BYTES>
+stderr_logfile_backups=<LOG_BACKUPS>

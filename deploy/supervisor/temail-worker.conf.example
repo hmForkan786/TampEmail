@@ -1,0 +1,26 @@
+; Copy to Supervisor's configuration directory and replace only the placeholders.
+; Keep credentials and environment-specific values outside this file.
+
+[program:temail-worker]
+directory=<PROJECT_PATH>
+command=<PHP_BINARY> artisan queue:work <QUEUE_CONNECTION> --queue=<QUEUE_NAMES> --sleep=<SLEEP_SECONDS> --tries=<MAX_TRIES> --timeout=<JOB_TIMEOUT_SECONDS> --backoff=<BACKOFF_SECONDS> --memory=<MEMORY_MB>
+process_name=%(program_name)s_%(process_num)02d
+numprocs=<WORKER_COUNT>
+user=<DEPLOYMENT_USER>
+autostart=true
+autorestart=true
+startsecs=5
+stopasgroup=true
+killasgroup=true
+stopsignal=TERM
+stopwaitsecs=<GRACEFUL_STOP_WAIT_SECONDS>
+redirect_stderr=false
+stdout_logfile=<LOG_DIRECTORY>/worker-%(process_num)02d.log
+stderr_logfile=<LOG_DIRECTORY>/worker-%(process_num)02d.error.log
+stdout_logfile_maxbytes=<LOG_MAX_BYTES>
+stdout_logfile_backups=<LOG_BACKUPS>
+stderr_logfile_maxbytes=<LOG_MAX_BYTES>
+stderr_logfile_backups=<LOG_BACKUPS>
+
+; Recommended relationship: worker timeout must be below the queue connection's retry_after.
+; Example queue names: inbound,attachment-scans,default
