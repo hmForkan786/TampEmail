@@ -70,9 +70,9 @@ Authenticated inbox provisioning is unchanged:
 - Allowed pools come from the user's `mail_server_pools` entitlement feature value.
 - This configuration does not override, merge with, or fall back to entitlement pools.
 
-## Prompt 306 implementation contract
+## Implemented provisioning contract
 
-Prompt 306 will wire anonymous provisioning to this configuration without changing authenticated flows:
+Anonymous provisioning is wired to this configuration without changing authenticated flows:
 
 1. Read `config('inbox.public_mail_server_pool')` when assigning a mail server for anonymous/public inbox creation.
 2. When the config value is `null`, fail closed: anonymous provisioning is disabled and must not select any mail server.

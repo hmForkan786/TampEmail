@@ -1,6 +1,6 @@
 # Platform Operator Capability Contract
 
-Status: policy contract established by Prompt 319. Documentation only; no migration or runtime enforcement in this prompt.
+Status: implemented operator policy. Platform roles, live owner eligibility, MailServer scope gates, demotion revocation, audit requirements, and Filament admin authorization are implemented in the committed application paths and tests.
 
 Related audits: Prompt 318 (operator-only MailServer scope issuance gaps). Related ownership: `docs/MAIL_SERVER_OWNERSHIP_POLICY.md`.
 
@@ -9,31 +9,28 @@ Related audits: Prompt 318 (operator-only MailServer scope issuance gaps). Relat
 The owner API is for user-owned product resources and does not expose public
 API-key issuance, public customer billing/subscription management, or
 SMTP/LMTP administration. MailServer catalog operations are an operator/admin
-concern, not an ordinary owner capability. The current repository still lacks
-the persisted platform-role field and complete runtime gates described below;
-until those gates are implemented, authorization must fail closed and no
-privileged capability may be inferred from a pool entitlement or an opaque key
+concern, not an ordinary owner capability. Platform-role state and runtime
+gates are enforced by the committed User helpers, policies, scope registry,
+API-key actions, and Filament panel authorization. Authorization fails closed;
+no privileged capability is inferred from a pool entitlement or an opaque key
 scope alone.
 
-The Filament admin panel is an operational surface. Its intended boundary is
-verified active operators and admins, while ordinary users must be denied. The
-policy below is the target authorization contract; this documentation update
-does not silently grant panel access or create a super-admin bypass.
+The Filament admin panel is an operational surface restricted to verified
+active operators and admins; ordinary users are denied. Filament does not
+create a super-admin bypass or bypass API ownership and audit boundaries.
 
-## 1. Current capability gap and deferred enforcement
+## 1. Current implementation evidence
 
 | Area | Evidence | Gap |
 |---|---|---|
-| `users` schema | No operator/role/capability column; only `status` lifecycle | Cannot mark verified operators |
-| `User` model | Casts `UserStatus` only; no `canAccessPanel`, no role helpers | No runtime operator predicate |
-| Role package / tables | No Spatie/permission package; no roles/permissions tables | No existing RBAC to extend |
-| Filament | `admin` panel uses default Filament auth; no capability gate | Any registered user who can log in may reach the panel path once credentials exist |
-| API-key issuance/update | Permissions accepted as opaque arrays; no owner-capability check | Ordinary users can receive `mail_servers:*` if a caller supplies them |
-| Auth middleware | Trusts stored API-key scopes only | Demoted owners keep privileged keys usable |
-| Audit log | `AuditLog` model exists (append-only) | No required actions for operator promotion or privileged key issuance yet |
-| Product architecture | Mentions support / administrator / super administrator capabilities as policy concerns | Not encoded in schema or runtime gates |
+| `users` schema | Stores `platform_role` with `UserStatus` lifecycle | Unknown or inactive capability fails closed |
+| `User` model | Provides active, non-deleted operator/admin helpers | Ordinary users are not operators |
+| Filament | Admin panel access is gated by platform capability | Ordinary users are denied |
+| API-key issuance/update | Scope registry and actions validate owner capability | Ineligible `mail_servers:*` grants are rejected |
+| Auth middleware | Rechecks live owner eligibility and scope capability | Demoted owners fail closed |
+| Audit log | Role changes, privileged grants, and revocation outcomes are recorded | Sensitive transitions remain attributable |
 
-**Fail-closed rule until implemented:** missing operator capability must be treated as **not an operator**. Pool entitlements (`mail_server_pools`) never imply operator capability. Public self-service key issuance, public billing APIs, and SMTP/LMTP administration remain unsupported.
+**Fail-closed rule:** missing or invalid operator capability is treated as **not an operator**. Pool entitlements (`mail_server_pools`) never imply operator capability. Public self-service key issuance, public billing APIs, and SMTP/LMTP administration remain unsupported.
 
 ## 2. Option comparison
 
@@ -75,7 +72,7 @@ does not silently grant panel access or create a super-admin bypass.
 
 ## 3. Final recommended model
 
-**Adopt Option B — `users.platform_role` enum** with values:
+**Implemented model: Option B — `users.platform_role` enum** with values:
 
 | Value | Meaning |
 |---|---|
@@ -83,7 +80,7 @@ does not silently grant panel access or create a super-admin bypass.
 | `operator` | Verified platform operator (MailServer catalog read/write; Filament operator surfaces) |
 | `admin` | Platform administrator (operator powers plus highest MailServer admin scope and broader platform controls as later prompts define) |
 
-Runtime verification (future implementation) must be an explicit helper such as:
+Runtime verification uses explicit helpers equivalent to:
 
 ```text
 User::isPlatformOperator(): platform_role in {operator, admin} AND status === active AND not soft-deleted
@@ -92,9 +89,9 @@ User::isPlatformAdmin(): platform_role === admin AND status === active AND not s
 
 Missing column, null, unknown value, or inactive lifecycle → **fail closed** (treat as ordinary `user`).
 
-This prompt does **not** implement the column or helpers.
+The column, enum cast, helpers, and associated authorization paths are implemented.
 
-## 4. Database contract (future migration; not created here)
+## 4. Database and runtime contract
 
 ```text
 Table: users
@@ -193,16 +190,16 @@ Leaving privileged scopes stored while only relying on forgotten middleware chec
 
 ## 7. Filament panel access policy
 
-Until a dedicated Filament gate is implemented:
+The committed Filament gate:
 
-- **Target policy:** only verified `operator` or `admin` users may access the `admin` panel (`canAccessPanel` or equivalent).
+- Only verified `operator` or `admin` users may access the `admin` panel (`canAccessPanel` or equivalent).
 - Ordinary `user` accounts must be denied even if they somehow obtain panel credentials.
 - Filament must not bypass MailServer API policy: catalog mutations remain operator/admin-bound and audited.
 - This documentation prompt does not change Filament middleware.
 
 ## 8. API-key issuance / update gate
 
-Future enforcement (Create/Update ApiKey Actions and any FormRequest):
+API-key enforcement in the Create/Update actions and related validation:
 
 1. Resolve and lock the owning user.  
 2. Validate permissions against a canonical allowlist.  
@@ -216,7 +213,7 @@ Pool entitlement never authorizes these scopes.
 
 ## 9. Audit-log requirement
 
-Minimum audited events once enforcement ships:
+Minimum audited events:
 
 | Action | Required |
 |---|---|
@@ -227,16 +224,16 @@ Minimum audited events once enforcement ships:
 
 Use existing `audit_logs` table; do not log plaintext API tokens.
 
-## 10. Migration requirement
+## 10. Implemented components
 
-A later implementation prompt must:
+The committed implementation includes:
 
-1. Add `users.platform_role` with default `user`.  
-2. Add `PlatformRole` enum + User cast/helpers.  
-3. Backfill/default all rows to `user`.  
-4. Wire issuance/update gates + auth re-check + Filament gate + tests.  
+1. `users.platform_role` defaults to `user`.
+2. `PlatformRole` and User cast/helpers are wired.
+3. Existing rows default to `user`.
+4. Issuance/update gates, auth re-checks, Filament gate, and tests are wired.
 
-**Prompt 319 does not create that migration.**
+These paths are covered by focused authorization, revocation, audit, and Filament tests.
 
 ## 11. Safe defaults (normative)
 
@@ -247,7 +244,7 @@ A later implementation prompt must:
 - Demotion → privileged keys unusable (runtime + persistence).  
 - `mail_servers:admin` → `admin` role only.  
 
-## 12. Smallest safe implementation sequence
+## 12. Implementation sequence and maintenance
 
 1. Migration: `platform_role` default `user` + enum.  
 2. `User` helpers: `isPlatformOperator()`, `isPlatformAdmin()`.  
