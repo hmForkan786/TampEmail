@@ -131,13 +131,14 @@ Health commands fail closed. `healthy` is not reported when the relevant depende
 
 ## Documentation index
 
+- [`docs/README.md`](docs/README.md) — complete documentation index, with current contracts separated from historical manifests
 - [`docs/API_REFERENCE.md`](docs/API_REFERENCE.md) — owner API and signed webhook contract
+- [`docs/API_CONVENTION.md`](docs/API_CONVENTION.md) — shared API protocol conventions
+- [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) — system boundaries and runtime dependencies
+- [`docs/LOCAL_DEVELOPMENT.md`](docs/LOCAL_DEVELOPMENT.md) — safe local development setup
 - [`docs/CLAMAV_INTEGRATION_TESTING.md`](docs/CLAMAV_INTEGRATION_TESTING.md) — local/CI scanner integration
-- [`docs/PROCESS_OPERATIONS.md`](docs/PROCESS_OPERATIONS.md) — worker and scheduler operations
-- [`docs/PROCESS_RUNTIME_VERIFICATION.md`](docs/PROCESS_RUNTIME_VERIFICATION.md) — readiness verification
-- [`docs/INBOUND_RETENTION_POLICY.md`](docs/INBOUND_RETENTION_POLICY.md) — retention and legal holds
-- [`docs/RELATIONAL_TEST_MATRIX.md`](docs/RELATIONAL_TEST_MATRIX.md) — concurrency coverage
 - [`docs/PRODUCTION_RUNBOOK.md`](docs/PRODUCTION_RUNBOOK.md) — deployment and incident operations
+- Historical `_CHANGE_MANIFEST.md` files are implementation records; they are not current contracts. See [`docs/README.md`](docs/README.md) for the complete categorized list.
 
 ## Security defaults
 
