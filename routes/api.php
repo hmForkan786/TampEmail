@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\Api\V1\InboxEmailController;
+use App\Http\Controllers\Api\V1\AttachmentDownloadController;
 use App\Http\Controllers\Api\V1\InboundWebhookController;
 use App\Http\Controllers\Api\V1\MailServerController;
 use App\Http\Controllers\Api\V1\InboxController;
@@ -26,6 +27,9 @@ Route::prefix('v1')->name('api.v1.')->middleware(['api.request-log', 'api.key'])
         Route::get('inboxes/{inbox}/emails/{email}', [InboxEmailController::class, 'show'])
             ->whereUuid(['inbox', 'email'])
             ->name('inboxes.emails.show');
+        Route::get('inboxes/{inbox}/emails/{email}/attachments/{attachment}', AttachmentDownloadController::class)
+            ->whereUuid(['inbox', 'email', 'attachment'])
+            ->name('inboxes.emails.attachments.download');
     });
 
     Route::middleware(['api.scope:inboxes:write', 'api.rate-limit'])->group(function (): void {
