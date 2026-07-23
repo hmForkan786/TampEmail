@@ -16,6 +16,7 @@ use App\Contracts\InboundWebhookDispatcher;
 use App\Services\Inbound\QueuedInboundWebhookDispatcher;
 use App\Contracts\AttachmentScannerInterface;
 use App\Services\Inbound\DisabledAttachmentScanner;
+use App\Services\Inbound\ClamAvAttachmentScanner;
 use Symfony\Component\HttpKernel\Exception\HttpExceptionInterface;
 use Symfony\Component\HttpKernel\Exception\NotFoundHttpException;
 
@@ -28,7 +29,9 @@ return Application::configure(basePath: dirname(__DIR__))
     )
     ->withBindings([
         InboundWebhookDispatcher::class => fn (): QueuedInboundWebhookDispatcher => new QueuedInboundWebhookDispatcher(),
-        AttachmentScannerInterface::class => fn (): DisabledAttachmentScanner => new DisabledAttachmentScanner(),
+        AttachmentScannerInterface::class => fn (): AttachmentScannerInterface => config('attachments.scanner_backend', 'disabled') === 'clamav'
+            ? new ClamAvAttachmentScanner()
+            : new DisabledAttachmentScanner(),
     ])
     ->withSchedule(function (Schedule $schedule): void {
         $schedule->call(function (): void {

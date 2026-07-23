@@ -6,6 +6,9 @@ return [
     'clamav' => [
         'host' => env('ATTACHMENT_CLAMAV_HOST', '127.0.0.1'),
         'port' => (int) env('ATTACHMENT_CLAMAV_PORT', 3310),
+        'socket' => env('ATTACHMENT_CLAMAV_SOCKET'),
+        'connect_timeout_seconds' => (float) env('ATTACHMENT_CLAMAV_CONNECT_TIMEOUT_SECONDS', 5),
+        'read_timeout_seconds' => (float) env('ATTACHMENT_CLAMAV_READ_TIMEOUT_SECONDS', 30),
         'timeout_seconds' => (int) env('ATTACHMENT_SCAN_TIMEOUT_SECONDS', 30),
     ],
     'external' => [

@@ -19,12 +19,13 @@ final class ScanInboundAttachmentJob implements ShouldQueue, ShouldBeUnique
     public function handle(AttachmentScanService $service): void
     {
         $attachment = Attachment::query()->findOrFail($this->attachmentId); $result = $service->scan($attachment);
-        \App\Models\EmailProcessingLog::query()->create(['email_id'=>$result->email_id,'stage'=>\App\Enums\ProcessingStage::Scan,'status'=>$result->is_safe === true ? \App\Enums\ProcessingLogStatus::Success : \App\Enums\ProcessingLogStatus::Failed,'worker'=>'attachment-scanner','duration_ms'=>0,'metadata'=>['scan_status'=>$result->scan_status->value]]);
+        if ($service->terminalTransitionApplied()) { \App\Models\EmailProcessingLog::query()->create(['email_id'=>$result->email_id,'stage'=>\App\Enums\ProcessingStage::Scan,'status'=>$result->is_safe === true ? \App\Enums\ProcessingLogStatus::Success : \App\Enums\ProcessingLogStatus::Failed,'worker'=>'attachment-scanner','duration_ms'=>0,'metadata'=>['scan_status'=>$result->scan_status->value]]); }
     }
     public function failed(\Throwable $exception): void
     {
         $attachment = Attachment::query()->find($this->attachmentId); if ($attachment === null) return;
-        $attachment->update(['scan_status'=>\App\Enums\AttachmentScanStatus::Failed,'is_safe'=>null,'scanned_at'=>now(),'metadata'=>['scan_error'=>'retry_exhausted']]);
+        $updated = Attachment::query()->whereKey($attachment->getKey())->whereIn('scan_status', [\App\Enums\AttachmentScanStatus::Pending, \App\Enums\AttachmentScanStatus::Scanning])->update(['scan_status'=>\App\Enums\AttachmentScanStatus::Failed,'is_safe'=>null,'scanned_at'=>now(),'metadata'=>['scan_error'=>'retry_exhausted']]);
+        if ($updated !== 1) return;
         app(\App\Services\Inbound\InboundFailureService::class)->record($attachment->email_id, \App\Enums\ProcessingStage::Scan, 'attachment_scan_retry_exhausted', $this->attempts(), ['error_code'=>'retry_exhausted','attachment_id'=>(string)$attachment->id]);
     }
 }
