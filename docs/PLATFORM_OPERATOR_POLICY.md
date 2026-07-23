@@ -4,7 +4,23 @@ Status: policy contract established by Prompt 319. Documentation only; no migrat
 
 Related audits: Prompt 318 (operator-only MailServer scope issuance gaps). Related ownership: `docs/MAIL_SERVER_OWNERSHIP_POLICY.md`.
 
-## 1. Current capability gap
+## Current contract boundary
+
+The owner API is for user-owned product resources and does not expose public
+API-key issuance, public customer billing/subscription management, or
+SMTP/LMTP administration. MailServer catalog operations are an operator/admin
+concern, not an ordinary owner capability. The current repository still lacks
+the persisted platform-role field and complete runtime gates described below;
+until those gates are implemented, authorization must fail closed and no
+privileged capability may be inferred from a pool entitlement or an opaque key
+scope alone.
+
+The Filament admin panel is an operational surface. Its intended boundary is
+verified active operators and admins, while ordinary users must be denied. The
+policy below is the target authorization contract; this documentation update
+does not silently grant panel access or create a super-admin bypass.
+
+## 1. Current capability gap and deferred enforcement
 
 | Area | Evidence | Gap |
 |---|---|---|
@@ -15,9 +31,9 @@ Related audits: Prompt 318 (operator-only MailServer scope issuance gaps). Relat
 | API-key issuance/update | Permissions accepted as opaque arrays; no owner-capability check | Ordinary users can receive `mail_servers:*` if a caller supplies them |
 | Auth middleware | Trusts stored API-key scopes only | Demoted owners keep privileged keys usable |
 | Audit log | `AuditLog` model exists (append-only) | No required actions for operator promotion or privileged key issuance yet |
-| Product architecture | Mentions support / administrator / super administrator capabilities as future policy concerns | Not encoded in schema |
+| Product architecture | Mentions support / administrator / super administrator capabilities as policy concerns | Not encoded in schema or runtime gates |
 
-**Fail-closed rule until implemented:** missing operator capability must be treated as **not an operator**. Pool entitlements (`mail_server_pools`) never imply operator capability.
+**Fail-closed rule until implemented:** missing operator capability must be treated as **not an operator**. Pool entitlements (`mail_server_pools`) never imply operator capability. Public self-service key issuance, public billing APIs, and SMTP/LMTP administration remain unsupported.
 
 ## 2. Option comparison
 

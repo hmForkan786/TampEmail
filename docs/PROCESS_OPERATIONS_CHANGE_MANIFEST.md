@@ -1,5 +1,13 @@
 # Process Operations Change Manifest
 
+> **Historical document**
+>
+> This file records the implementation phase for process operations and is not
+> the current deployment or operational contract.
+>
+> Use [`PRODUCTION_RUNBOOK.md`](PRODUCTION_RUNBOOK.md), [`ARCHITECTURE.md`](ARCHITECTURE.md),
+> and the root [`README.md`](../README.md) for authoritative guidance.
+
 This manifest is the allowlist for the Prompt 415–440 process-operations change set. It was prepared from the current `git status --short`, `git diff --name-status`, and `git ls-files --others --exclude-standard` state.
 
 Only files explicitly listed in the Included Process Operations Files section may be staged for this change set.
