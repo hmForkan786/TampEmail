@@ -1,12 +1,12 @@
 # Inbox Lifetime and Renewal Policy
 
-Status: product and security contract established by Prompt 405. Runtime renewal is **not** implemented by this document. Scheduled expiration (`config/inboxes.php` + `ExpireInboxesService`) and inbox provisioning remain unchanged.
+Status: product and security contract established by Prompt 405. Scheduled expiration (`config/inboxes.php` + `ExpireInboxesService`), inbox provisioning, and the owner renewal endpoint are implemented; renewal remains disabled by default and is governed by `config/inbox_lifetime.php`.
 
 ## Decisions
 
 | Question | Decision |
 |---|---|
-| Is inbox renewal supported? | **Yes**, as a future authenticated product capability. Runtime remains disabled until an implementation prompt enables it (`INBOX_RENEWAL_ENABLED`, default `false`). |
+| Is inbox renewal supported? | **Yes**, through authenticated `PATCH /api/v1/inboxes/{inbox}/expiration` when `INBOX_RENEWAL_ENABLED=true`; the default is `false`. |
 | User-owned vs anonymous lifetime | Both may receive a finite `expires_at` at creation. **Only user-owned** inboxes may renew. Anonymous renewal is never allowed. |
 | Default lifetime | **24 hours** from creation (`INBOX_DEFAULT_LIFETIME_HOURS`, aligned with legacy `INBOX_DEFAULT_TTL=86400`). |
 | Minimum lifetime | **1 hour**. |
@@ -19,7 +19,7 @@ Status: product and security contract established by Prompt 405. Runtime renewal
 | Renewal vs quota / capacity | Renewal does **not** create a new inbox and must **not** consume `max_inboxes` quota or MailServer capacity. It must not reassign `mail_server_id`. |
 | Domain inactive | **Deny** renewal. |
 | MailServer unavailable / full | **Allow** renewal of an already-assigned inbox; do not change MailServer assignment or require capacity headroom. |
-| Concurrent renewal locking | Future implementation must `lockForUpdate` the inbox row inside a transaction before computing the new expiry. |
+| Concurrent renewal locking | The renewal action rechecks ownership and eligibility inside its transaction before persisting the expiry; relational lock-race proof remains covered by the supported database test matrix. |
 | Renewal audit event | `inbox.expiration_extended` (contract below). |
 | Rate-limit / abuse | Dedicated per-owner renewal limit (`RATE_LIMIT_INBOX_RENEWAL_PER_HOUR`, default 10). Distinct from creation and global API limits. |
 
@@ -38,7 +38,7 @@ These gates are hard-coded in `config/inbox_lifetime.php` and are **not** enviro
 
 Numeric misconfiguration (out of bounds, zero, negative) fails closed to `0` for that setting, which makes renewal math unusable until fixed. `renewal_enabled` defaults to `false`.
 
-## Eligibility matrix (future runtime)
+## Eligibility matrix (implemented runtime)
 
 | Condition | Renew? |
 |---|---|
@@ -91,7 +91,7 @@ Existing product entitlements remain authoritative for their domains:
 - `max_inboxes` — creation count only; renewal does not consume it.
 - `mail_server_pools` — authenticated provisioning selection only; renewal does not re-select pools.
 
-## API contract proposal (not implemented)
+## Owner renewal API
 
 ```http
 PATCH /api/v1/inboxes/{inbox}/expiration
@@ -112,7 +112,7 @@ or
 { "expires_at": "2026-07-24T12:00:00+00:00" }
 ```
 
-Rules for a future implementation:
+Runtime rules:
 
 - `extend_by_hours` must be an integer within `1…max_extension_hours_per_request`.
 - `expires_at` must be strictly after the current `expires_at`, within the per-request extension cap relative to the current expiry, and within the absolute ceiling from `created_at`.
@@ -146,7 +146,7 @@ Actor for scheduler expiry remains separate (`inbox.expired` with `source=schedu
 
 ## Concurrent renewal locking
 
-Future implementation lock order inside one DB transaction:
+Renewal lock order inside one DB transaction:
 
 1. Resolve API owner (already authenticated).
 2. `lockForUpdate` the target `inboxes` row by primary key under ownership + eligibility predicates.
@@ -186,17 +186,16 @@ out-of-range values fail closed.
 
 | Variable | Default | Bounds / notes |
 |---|---:|---|
-| `INBOX_RENEWAL_ENABLED` | `false` | Feature gate for future endpoint |
+| `INBOX_RENEWAL_ENABLED` | `false` | Feature gate for the owner renewal endpoint |
 | `INBOX_DEFAULT_LIFETIME_HOURS` | `24` | 1–168; invalid → `0` |
 | `INBOX_MIN_LIFETIME_HOURS` | `1` | 1–24; invalid → `0` |
 | `INBOX_MAX_EXTENSION_HOURS_PER_REQUEST` | `24` | 1–168; invalid → `0` |
 | `INBOX_MAX_ABSOLUTE_LIFETIME_HOURS` | `720` | 24–8760; invalid → `0` |
 | `RATE_LIMIT_INBOX_RENEWAL_PER_HOUR` | `10` | 1–120; invalid → `0` |
 
-## Out of scope for this prompt
+## Operational boundary
 
-- Implementing `PATCH /api/v1/inboxes/{inbox}/expiration`
-- Enabling the renewal feature flag in production
+- Enabling the renewal feature flag in production requires explicit entitlement, rate-limit, and abuse-policy review.
 - Changing `ExpireInboxesService`, create/delete actions, or anonymous provisioning
 - Seeding `inbox_max_lifetime_hours` into plans/features
 - Reviving expired, inactive, or soft-deleted inboxes

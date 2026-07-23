@@ -1,6 +1,6 @@
 # Production Attachment Scanning Contract
 
-Status: contract only. No scanner connection, quarantine flow, scan job, download endpoint, or attachment persistence change is implemented by this contract.
+Status: implemented contract. The application includes the scanner interface, ClamAV adapter, scanner health command, quarantine lifecycle, scan job, and fail-closed download checks. This document defines the safety contract; implementation details remain authoritative in the committed code and tests.
 
 ## Approved backend
 
@@ -68,6 +68,8 @@ Transient scanner unavailable/timeout failures retry with bounded backoff `[60, 
 
 Only `scan_status=clean` with `is_safe=true` and an existing private file may be downloaded. Pending, scanning, failed, infected, missing, or quarantined files fail closed. Download responses must never expose storage paths, scanner details, raw bytes in logs, or credentials. Processing logs contain only stage/status/duration and redacted error codes.
 
-## Current limitation
+## Runtime and verification boundary
 
-No ClamAV daemon or approved external scanner is available in the current environment. Therefore no runtime scanner integration or attachment can be marked clean. Prompt 374 implementation must stop at pending/quarantine if the scanner dependency is unavailable.
+The scanner backend defaults to `disabled` and must be explicitly configured before production scanning is enabled. Disabled or unavailable scanning is never equivalent to `clean`: attachments remain pending, retryable, or terminally failed and are not downloadable. Transient unavailable/timeout results remain retryable within the bounded attempt policy; infected, malformed, oversized, and other terminal failures remain blocked and fail closed.
+
+The scanner health command and disposable integration-test setup are documented in [`CLAMAV_INTEGRATION_TESTING.md`](CLAMAV_INTEGRATION_TESTING.md). Production enablement, queue, storage, health, and operational requirements are documented in [`PRODUCTION_RUNBOOK.md`](PRODUCTION_RUNBOOK.md).

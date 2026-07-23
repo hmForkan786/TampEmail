@@ -1,5 +1,13 @@
 # Attachment Download API Change Manifest
 
+> **Historical document**
+>
+> This file records an earlier implementation phase and is not the current
+> product, API, deployment, or operational contract.
+>
+> Use [`README.md`](../README.md) and the current documentation index for
+> authoritative guidance.
+
 Prompt: **464**
 Scope: Isolate owner-scoped attachment download endpoint, authorization, storage safety, route, and focused tests from Inbox restaging, Email read-state, inbound, ClamAV, relational concurrency, CI, and generated artifacts.
 

@@ -1,5 +1,13 @@
 # Owner-Scoped Inbox API Change Manifest
 
+> **Historical document**
+>
+> This file records an earlier implementation phase and is not the current
+> product, API, deployment, or operational contract.
+>
+> Use [`README.md`](../README.md) and the current documentation index for
+> authoritative guidance.
+
 Prompt: **454**
 Scope: Isolate owner-scoped Inbox API (CRUD / renewal / listing / owned-inbox email listing / unread metadata schema) from Email read-state mutation, attachment download, inbound, ClamAV, relational concurrency, CI, and generated artifacts.
 

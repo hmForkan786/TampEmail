@@ -1,5 +1,13 @@
 # Inbox Lifecycle Change Manifest
 
+> **Historical document**
+>
+> This file records an earlier implementation phase and is not the current
+> product, API, deployment, or operational contract.
+>
+> Use [`README.md`](../README.md) and the current documentation index for
+> authoritative guidance.
+
 This manifest isolates the remaining Inbox lifecycle-core work from the dirty working tree. It covers creation, deactivation, renewal, expiration, lifetime policy, mutation context, owned Inbox visibility, lifecycle configuration, lifecycle documentation and lifecycle-specific tests.
 
 Only files explicitly listed in the Included Inbox Lifecycle Files section may be staged for this change set.

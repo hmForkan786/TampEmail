@@ -1,6 +1,10 @@
 # Inbound Recipient Routing Contract
 
-Status: recipient normalization and side-effect-free resolution are implemented by `App\Services\Inbound\InboundRecipientResolver`. SMTP/provider ingress and transport acknowledgement are not implemented.
+Status: the signed provider-neutral webhook boundary, queued parsing/persistence, recipient resolution, and failure/replay flow are implemented. Native SMTP/LMTP ingress and transport acknowledgement remain deferred.
+
+## Implemented boundary
+
+The implemented inbound boundary is `POST /api/v1/inbound/webhook`. It verifies the signed provider headers, validates a bounded canonical envelope, applies duplicate/idempotency handling, queues parsing and persistence, resolves the target domain and inbox, and records safe processing/failure state. Replay is an authorized operational action and follows the same bounded processing and scanning lifecycle.
 
 ## Current schema evidence
 
@@ -35,7 +39,7 @@ Normalization must never use `pool_key`, hostname, provider, or a fallback addre
 
 ## Resolution order
 
-The future resolver must execute this order:
+The resolver executes this order:
 
 1. Parse and validate the recipient address.
 2. Normalize the address and derive the normalized domain.
@@ -83,9 +87,11 @@ The `PUBLIC_MAIL_SERVER_POOL` setting belongs to anonymous Inbox provisioning. I
 - Do not expose whether a private user-owned inbox exists to unauthenticated senders beyond the configured SMTP/provider rejection class.
 - Apply message size, recipient count, rate, and abuse controls at the ingress boundary; none are currently implemented.
 
-## Prompt 371 implementation contract
+## Deferred SMTP/LMTP material
 
-Implement only after this contract is approved:
+The result table above preserves the non-authoritative mapping vocabulary for a future SMTP or LMTP adapter. It does not imply that this repository currently runs an SMTP server, accepts LMTP traffic, performs SMTP routing, or operates a mail exchanger. Native SMTP ingress, LMTP ingress, SMTP server routing/mapping, and mail-exchanger operation remain deferred.
+
+## Contract boundaries
 
 1. Add a pure address parser/normalizer with explicit IDN and local-part policy.
 2. Add a repository/service resolver implementing the lookup order and result enum above.
@@ -94,8 +100,6 @@ Implement only after this contract is approved:
 5. Add safe rejection event/log writing without raw recipient/message data.
 6. Add an explicit health/deferred policy and ensure infrastructure failures retry rather than become permanent recipient failures.
 
-No route, SMTP connection, migration, or existing-data normalization is part of this contract document.
+Native SMTP connection, migration, or existing-data normalization is outside this contract. The implemented webhook and queued processing paths are covered by the committed routes, services, jobs, and focused tests.
 
-The signed provider-neutral boundary is now `POST /api/v1/inbound/webhook`. It authenticates `X-Inbound-Provider`, `X-Inbound-Timestamp`, `X-Inbound-Signature`, and `X-Inbound-Message-Id` using provider-specific HMAC secrets. It validates a bounded canonical JSON envelope and returns `202` without persisting raw content; MIME parsing and processing remain Prompt 373 dependencies.
-
-Prompt 373 adds the queued `ProcessInboundMessageJob`, Symfony MIME parsing, Symfony HTML sanitization, resolver integration, and transactional email/body/event/processing-log persistence. Attachment malware scanning, retention, DLQ handling, and email access UI remain separate dependencies.
+The signed provider-neutral boundary authenticates `X-Inbound-Provider`, `X-Inbound-Timestamp`, `X-Inbound-Signature`, and `X-Inbound-Message-Id` using provider-specific HMAC secrets. It validates a bounded canonical JSON envelope and returns `202`; queued processing performs MIME parsing, sanitization, resolver integration, and transactional persistence. Attachment scanning, retention, and authorized replay are separate committed lifecycle components.

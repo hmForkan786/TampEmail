@@ -1,5 +1,13 @@
 # Email Read-State API Change Manifest
 
+> **Historical document**
+>
+> This file records an earlier implementation phase and is not the current
+> product, API, deployment, or operational contract.
+>
+> Use [`README.md`](../README.md) and the current documentation index for
+> authoritative guidance.
+
 Prompt: **459**
 Scope: Isolate owner-scoped Email read/unread mutation endpoints, `EmailResource` read-state response fields, read-state routes, and focused tests from Attachment download, Inbox restaging, inbound, ClamAV, relational concurrency, CI, and generated artifacts.
 
