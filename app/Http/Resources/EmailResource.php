@@ -39,6 +39,8 @@ final class EmailResource extends JsonResource
             ])),
             'subject' => $this->subject,
             'received_at' => $this->received_at,
+            'is_read' => $this->is_read,
+            'read_at' => $this->read_at,
             'text_body' => $this->whenLoaded('body', fn () => $this->body?->text_body),
             'html_body' => $this->whenLoaded('body', fn () => $sanitizer->sanitize($this->body?->html_body)),
             'attachments' => $this->whenLoaded('attachments', function () use ($visibility, $actor) {

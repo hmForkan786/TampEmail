@@ -33,6 +33,15 @@ Route::prefix('v1')->name('api.v1.')->middleware(['api.request-log', 'api.key'])
         Route::delete('inboxes/{inbox}', [InboxController::class, 'destroy'])->whereUuid('inbox')->name('inboxes.destroy');
         Route::patch('inboxes/{inbox}/expiration', [InboxController::class, 'renew'])->whereUuid('inbox')->name('inboxes.expiration');
     });
+
+    Route::middleware(['api.scope:inboxes:write', 'api.rate-limit'])->group(function (): void {
+        Route::patch('inboxes/{inbox}/emails/{email}/read', [\App\Http\Controllers\Api\V1\EmailReadStateController::class, 'read'])
+            ->whereUuid(['inbox', 'email'])
+            ->name('inboxes.emails.read');
+        Route::patch('inboxes/{inbox}/emails/{email}/unread', [\App\Http\Controllers\Api\V1\EmailReadStateController::class, 'unread'])
+            ->whereUuid(['inbox', 'email'])
+            ->name('inboxes.emails.unread');
+    });
 });
 
 Route::post('v1/inbound/webhook', InboundWebhookController::class)->name('api.v1.inbound.webhook');
