@@ -9,11 +9,11 @@ The endpoints below are the currently registered routes. This document describes
 Send:
 
 ```http
-Authorization: Bearer <plain_api_key>
+Authorization: Bearer <api-key-value>
 Accept: application/json
 ```
 
-API keys are generated internally as `te_live_` followed by a random secret. Only the plaintext token returned at issuance is available once; the HTTP API has no token-issuance endpoint. The database stores only the key hash and a short prefix. Never send or document the hash, prefix as a credential, or plaintext token in logs.
+The HTTP API has no token-issuance endpoint. API-key credentials are resolved by the existing first-party API-key middleware; credential values and stored hashes are never returned or logged.
 
 Every endpoint requires an active, non-expired, non-revoked API key and a live owner. Suspended, banned, pending, soft-deleted, or otherwise invalid owners are rejected.
 
@@ -163,3 +163,51 @@ MailServers are platform-managed global infrastructure and have no user/team own
 - Pagination does not include `links`.
 - Query parameter validation and sort-field allowlisting are limited by the current DTO/repository implementation.
 - Request-log retention is governed by `docs/LOG_RETENTION_POLICY.md`; audit logs and API request logs have separate retention classes and legal holds.
+
+## Inbound email API
+
+These are the currently registered owner-scoped inbound routes. They use the API-key middleware, live owner capability checks, and the standard error envelope described above.
+
+| Method | Route | Scope | Success |
+|---|---|---|---|
+| `GET` | `/api/v1/inboxes/{inbox}/emails` | `inboxes:read` | `200` collection |
+| `GET` | `/api/v1/inboxes/{inbox}/emails/{email}` | `inboxes:read` | `200` resource |
+| `GET` | `/api/v1/inboxes/{inbox}/emails/{email}/attachments/{attachment}` | `inboxes:read` | streamed binary |
+| `PATCH` | `/api/v1/inboxes/{inbox}/emails/{email}/read` | `inboxes:write` | `200` email resource |
+| `PATCH` | `/api/v1/inboxes/{inbox}/emails/{email}/unread` | `inboxes:write` | `200` email resource |
+
+`{inbox}`, `{email}`, and `{attachment}` are UUID route parameters. An API key can access only inboxes whose `user_id` is the key owner's user ID. Anonymous inboxes are not owner-visible. Expired, inactive, soft-deleted, foreign, or missing inbox/email records resolve as `404`; platform operator/admin catalog capability does not grant global email access.
+
+### Email list and show
+
+`GET /api/v1/inboxes/{inbox}/emails` supports `page` and `per_page`; `per_page` is bounded to a maximum of 100 and defaults to 15. The collection envelope is:
+
+```json
+{
+  "data": [],
+  "meta": {"current_page": 1, "per_page": 15, "total": 0, "last_page": 1}
+}
+```
+
+There is no top-level `links` member. A single email response uses `{"data": {...}}` and currently exposes email identity, sender/recipient display fields, subject, received time, optional body fields, safe visible attachments, and:
+
+```json
+{"is_read": false, "read_at": null}
+```
+
+Email body HTML is sanitized. Headers, raw MIME, internal metadata, processing logs, scanner details, and unsafe attachment records are not part of the response.
+
+### Attachment download
+
+`GET /api/v1/inboxes/{inbox}/emails/{email}/attachments/{attachment}` returns a streamed response only when all of these are true:
+
+- attachment scan status is `clean`;
+- `is_safe` is explicitly `true`;
+- the configured attachment disk is private; and
+- the private storage file exists and is within the configured attachment disk.
+
+The response uses the stored validated MIME type, a sanitized original filename, `Content-Disposition: attachment`, `Content-Length`, and `X-Content-Type-Options: nosniff`. No public URL, signed URL, storage path, checksum, scanner metadata, or file bytes are included in JSON. `pending`, `scanning`, `failed`, `infected`, missing-file, unsafe-path, and oversized downloads are denied as `404`; range requests are rejected with `416`.
+
+### Read state
+
+`PATCH .../read` marks the owner-visible email as read and sets `read_at` to the current timestamp. `PATCH .../unread` clears both `is_read` and `read_at`. Both operations are idempotent and return the normal email resource envelope. They do not alter body, headers, attachments, MIME, or read-state audit payloads. Missing `inboxes:write` returns `403` before ownership lookup.
