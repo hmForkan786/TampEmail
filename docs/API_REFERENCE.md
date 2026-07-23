@@ -211,3 +211,96 @@ The response uses the stored validated MIME type, a sanitized original filename,
 ### Read state
 
 `PATCH .../read` marks the owner-visible email as read and sets `read_at` to the current timestamp. `PATCH .../unread` clears both `is_read` and `read_at`. Both operations are idempotent and return the normal email resource envelope. They do not alter body, headers, attachments, MIME, or read-state audit payloads. Missing `inboxes:write` returns `403` before ownership lookup.
+
+## Inbound webhook contract
+
+The registered ingress route is:
+
+```text
+POST /api/v1/inbound/webhook
+```
+
+It is intentionally outside API-key authentication. The request must provide:
+
+- `X-Inbound-Provider`, matching a configured provider;
+- `X-Inbound-Timestamp`, a decimal Unix timestamp within the configured skew (default 300 seconds);
+- `X-Inbound-Signature`, an HMAC-SHA256 signature over the provider, timestamp, and exact request bytes using the configured provider secret;
+- `X-Inbound-Message-Id`, a non-empty provider message identifier; and
+- a JSON body containing a non-empty `recipient`.
+
+The webhook accepts the provider envelope and queues processing. It does not return email content or attachment content.
+
+| Status | Meaning |
+|---:|---|
+| `202` | Envelope accepted for asynchronous processing |
+| `401` | Missing, invalid, or expired signature/timestamp |
+| `413` | Empty or oversized request body |
+| `422` | Unsupported content type, missing message ID/recipient, or invalid received timestamp |
+| `429` | Provider/IP ingress rate limit exceeded |
+| `503` | Queue dispatch temporarily unavailable |
+
+Error bodies use `error.code`, `error.message`, and an empty `error.details` object where applicable. Signature values, request bytes, and raw MIME are never included in errors or metrics.
+
+## Inbound lifecycle and operations
+
+Processing is asynchronous. The operational metrics service aggregates safe counters from lifecycle logs, attachment state, replay audit events, and bounded ingress counters over the last 5 minutes, hour, and 24 hours. The supported lifecycle codes are:
+
+```text
+received → queued → started → parsed → resolved → persisted
+                                      ├─ duplicate
+                                      ├─ rejected
+                                      └─ failed
+```
+
+Attachment processing uses:
+
+```text
+pending → scanning → clean | infected | failed
+```
+
+Duplicate provider message IDs are idempotent and do not create a second email. Recipient resolution can reject an envelope without persisting an email. Retry exhaustion records a redacted failure/DLQ entry with stage, code, attempts, IDs, and timestamps only.
+
+Replay is an admin operational action for eligible attachment-scan failures. It queues the scan job and records a safe audit event. Raw inbound MIME replay is unavailable because raw MIME is not retained. Replay availability does not expose a replay endpoint in this API reference.
+
+### Health command
+
+Run:
+
+```text
+php artisan inbound:health
+```
+
+The command prints JSON containing only status, breach names, thresholds, time windows, counters, latency aggregates, and backlog counts. It never prints message content, addresses, subjects, raw MIME, attachment bytes/paths, scanner output, exception traces, credentials, or hashes.
+
+Configured thresholds are:
+
+| Config key | Default |
+|---|---:|
+| `inbound_metrics.thresholds.failure_rate` | `0.10` |
+| `inbound_metrics.thresholds.queue_backlog` | `100` |
+| `inbound_metrics.thresholds.pending_scan_age_minutes` | `30` |
+| `inbound_metrics.thresholds.retry_exhaustion` | `1` |
+
+The command reports `healthy` when no threshold is breached and `degraded` otherwise. Metrics writes are best-effort and never block webhook acceptance, ingestion, scanning, or replay behavior.
+
+Attachment scanner readiness is a separate operational command:
+
+```text
+php artisan attachments:scanner-health [--json]
+```
+
+It reports `healthy`, `disabled`, `degraded`, or `failed` without scanning or exposing attachment data. A disabled or unavailable scanner is not a clean result; attachments remain pending or follow the scanner retry/failure lifecycle.
+
+### Rate limiting and request logging
+
+Email and attachment API routes use the API-key-specific rate limiter after authentication and scope checks. Read-state routes use the same limiter with `inboxes:write`. The webhook has its own provider/IP limiter, defaulting to 60 requests per minute. API request logs retain method, route, status, duration, sizes, IP, API-key/owner IDs, and safe throttling metadata only. Authorization headers, credential values, hashes, bodies, raw MIME, and response payloads are not logged.
+
+### Retention, legal holds, and scanner limitation
+
+Inbound retention and cleanup remain governed by the existing inbound retention configuration and legal-hold behavior. Metrics do not change retention, cleanup, email ownership, or attachment quarantine rules. Audit logs and API request logs remain separate retention classes; existing legal holds continue to apply to their respective records.
+
+The current default scanner backend is disabled. A real ClamAV or external scanner is not available in this deployment, so newly ingested attachments remain pending unless an approved scanner configuration and scan result marks them clean. No scanner implementation or external monitoring provider is part of this contract.
+
+### APIs not exposed
+
+This API reference does not define public API-key issuance or management; those operations are administrative and are not exposed as public `/api/v1` endpoints. Billing, customer subscription, SMTP-management, and raw-MIME replay endpoints are also not exposed. Do not infer these capabilities from internal services, admin pages, webhook processing, or operational commands.
