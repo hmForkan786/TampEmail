@@ -1,269 +1,87 @@
-# API Convention
+# API conventions
 
-For the implementation-accurate MailServer endpoint reference, see [`docs/API_REFERENCE.md`](API_REFERENCE.md). Retention details are in [`docs/LOG_RETENTION_POLICY.md`](LOG_RETENTION_POLICY.md).
+This document defines shared protocol behavior for the implemented `/api/v1` owner API. Endpoint-specific fields and status details remain authoritative in [`API_REFERENCE.md`](API_REFERENCE.md).
 
-Operational request-log retention is defined separately in [`docs/LOG_RETENTION_POLICY.md`](LOG_RETENTION_POLICY.md). API request logs are short-lived operational records; audit logs are a separate, longer-lived security/compliance class and must not be purged together.
+## Prefix and authentication
 
-Status: proposed implementation convention, established by Prompt 293.
-
-This document records the convention supported by the current codebase. It does not claim that the API is implemented.
-
-## Evidence and decisions
-
-The project is Laravel 12 with PHP 8.2 and Filament 5. `composer.json` does not include `laravel/sanctum` or another token-authentication package. `config/auth.php` defines only the `web` session guard. The `User` model is an authenticatable Eloquent model, and the users migration contains sessions and password-reset storage but no API-token storage.
-
-The project already has an `ApiKey` model, migration, DTOs, actions, services, and repositories. API keys are hashed, owned by a user, optionally permission-scoped, revocable, expirable, and rate-limited. However, no middleware currently authenticates an API key, and no API routes or controllers exist.
-
-Therefore:
-
-- API routes will use `/api/v1`.
-- The project API will use its existing first-party `ApiKey` domain rather than Sanctum, because no Sanctum package is installed and the existing domain already models the required credential lifecycle.
-- Implementing the API-key guard/middleware, token issuance, permission checks, and migrations is deferred to a later implementation prompt.
-- Sanctum installation is not part of this convention task. If the project later chooses Sanctum, this document must be revised before implementation.
-
-The project specification requires versioned endpoints, explicit authorization, safe public errors, defined rate limits, and snake_case API JSON fields. Those requirements are authoritative for the conventions below.
-
-## Authentication flow
-
-Future requests should authenticate with:
+API routes use the `/api/v1` prefix. Protected routes require:
 
 ```http
-Authorization: Bearer <plain_api_key>
+Authorization: Bearer <api-key-value>
 ```
 
-The future API-key middleware must:
+The API-key middleware resolves the hashed key, rejects missing, invalid, revoked, or expired keys, and rejects inactive, suspended, banned, or soft-deleted owners. Plaintext keys are never logged or returned in errors. Public API-key issuance is not exposed through `/api/v1`.
 
-1. Extract the bearer token without logging it.
-2. Derive the stored key hash using the project’s API-key hashing policy.
-3. Resolve an available key: not revoked and not expired.
-4. Resolve the owning user and reject soft-deleted or inactive users.
-5. Attach both the authenticated user and the authenticated API-key context to the request.
-6. Record safe usage metadata only; never persist the plaintext token.
-7. Apply the key’s configured rate limit together with the global `config/abuse.php` API limit.
+The signed inbound webhook at `POST /api/v1/inbound/webhook` is intentionally outside API-key authentication and uses its provider signature contract instead.
 
-Unauthenticated API routes are not permitted for MailServer administration.
+## Scopes and middleware
 
-## Token abilities and scope names
+Scope middleware runs after API-key authentication. Implemented scopes are:
 
-Use stable, lowercase, colon-delimited permission names stored in the existing `api_keys.permissions` JSON field:
-
-| Scope | Meaning |
+| Scope | Routes |
 |---|---|
-| `mail_servers:read` | List and show platform MailServer records (operator/platform keys) |
-| `mail_servers:write` | Create and update platform MailServer records (operator/platform keys) |
-| `mail_servers:admin` | Administrative MailServer operations; implies other `mail_servers:*` scopes |
-| `inboxes:read` | Read owned inboxes |
-| `inboxes:write` | Create/update owned inboxes |
+| `mail_servers:read` | list/show platform MailServer records |
+| `mail_servers:write` | create/update platform MailServer records |
+| `mail_servers:admin` | administrative MailServer capability; satisfies other `mail_servers:*` checks |
+| `inboxes:read` | read owned inboxes, emails, and attachment downloads |
+| `inboxes:write` | create/delete/renew owned inboxes and change email read state |
 
-Canonical runtime allowlist: `App\Enums\ApiKeyScope` + `App\Services\ApiKey\ApiKeyScopeRegistry` (Prompt 321). Unknown, blank, non-string, and whitespace-padded scopes are rejected by `normalize()`. Pool entitlements (`mail_server_pools`, etc.) are not API-key scopes.
+Unknown or malformed scopes fail closed. `mail_servers:*` capabilities are operator/admin-gated; inbox scopes do not grant MailServer access. Rate limiting is applied to authenticated API routes after authentication and scope checks.
 
-**Legacy permissions:** Existing `api_keys.permissions` rows are not rewritten by the registry. Create/update paths normalize and authorize scopes against the owner. Scoped request middleware re-validates **all** stored scopes against the owner's current platform role/status (Prompt 323): unknown or unauthorized stored scopes fail closed with `403`. Missing or soft-deleted owners fail with `401`.
+## Ownership and soft 404s
 
-`mail_servers:admin` does not implicitly grant unrelated module permissions. `AuthenticatedApiKeyContext` already allows `mail_servers:admin` to satisfy other `mail_servers:*` scope checks. These scopes are not ordinary end-user product grants; see `docs/MAIL_SERVER_OWNERSHIP_POLICY.md` and `docs/PLATFORM_OPERATOR_POLICY.md`.
+MailServers are platform-managed global infrastructure. Inboxes, emails, and attachments are owner-scoped. A foreign, inactive, expired, deleted, or otherwise inaccessible owner resource is intentionally returned as `404 not_found` rather than disclosed. Authorization failures before resource lookup may return `403 forbidden`.
 
-Platform operator eligibility (`users.platform_role`: `user` | `operator` | `admin`) gates who may be issued and who may continue using `mail_servers:read` / `write` / `admin` at runtime. Ordinary users default to `user`. `mail_servers:admin` requires `admin`. Suspended, banned, pending, or soft-deleted users are never verified operators. Demotion must make privileged keys unusable at request time even if stored permissions are unchanged.
+## Fields and envelopes
 
-## Authorization and ownership
-
-MailServer ownership is decided in `docs/MAIL_SERVER_OWNERSHIP_POLICY.md` (Prompt 317).
-
-**Decision: Option A — platform-managed global MailServers.** There is no `user_id` / `team_id` / tenant owner on `mail_servers`. Inbox ownership (`inboxes.user_id`) is separate from MailServer infrastructure assignment (`inboxes.mail_server_id`). Pool access is entitlement-controlled (`mail_server_pools`) for authenticated users and config-controlled (`PUBLIC_MAIL_SERVER_POOL`) for anonymous provisioning.
-
-MailServer API endpoints are an operator/platform surface, not an ordinary user product API. Do not expose them through end-user inbox scopes. Never infer ownership from hostname, pool key, provider, or request input.
-
-| Caller | MailServer read | MailServer write | Cross-tenant MailServer rows |
-|---|---:|---:|---:|
-| Anonymous | deny | deny | n/a (no tenant ownership) |
-| Authenticated API key without `mail_servers:*` | deny | deny | n/a |
-| Authenticated API key with `mail_servers:read` | allow (global catalog; operator keys) | deny | n/a |
-| Authenticated API key with `mail_servers:write` | as needed for write | allow (global catalog; operator keys) | n/a |
-| Authenticated API key with `mail_servers:admin` | allow | allow | n/a (implies other `mail_servers:*`) |
-| API key with only `inboxes:*` | deny | deny | n/a |
-
-Tenant-owned MailServers (Option B) require an approved product decision, migration, and a revision of this document before implementation.
-
-## HTTP status and error responses
-
-API JSON fields and error codes use `snake_case`.
-
-MailServer API success and error envelopes are standardized (Prompt 302).
-
-Success responses use a stable envelope:
+External JSON fields use `snake_case`. Successful single-resource responses use:
 
 ```json
-{
-  "data": {
-    "id": "uuid",
-    "pool_key": "primary",
-    "max_inboxes": 100
-  }
-}
+{"data": {"id": "uuid"}}
 ```
 
-Collection responses use `data` plus pagination `meta` (no top-level `links`):
+Collections use `data` plus pagination metadata:
 
 ```json
-{
-  "data": [],
-  "meta": {
-    "current_page": 1,
-    "per_page": 15,
-    "total": 0,
-    "last_page": 1
-  }
-}
+{"data": [], "meta": {"current_page": 1, "per_page": 15, "total": 0, "last_page": 1}}
 ```
 
-Errors use:
+Resources do not expose credentials, raw message content, internal metadata, or private attachment paths. The streamed attachment endpoint returns binary content only after owner visibility, email/attachment relationship, safe-download, and range preconditions pass. Range responses use the standard partial-content behavior documented in [`API_REFERENCE.md`](API_REFERENCE.md).
+
+## Errors
+
+Errors use a stable envelope:
 
 ```json
-{
-  "error": {
-    "code": "validation_failed",
-    "message": "The given data was invalid.",
-    "details": {
-      "max_inboxes": ["The max inboxes field must be at least 1."]
-    }
-  }
-}
+{"error": {"code": "validation_failed", "message": "The given data was invalid.", "details": {}}}
 ```
 
-| Status | Code | Use |
-|---:|---|---|
-| 401 | `unauthenticated` | Missing, invalid, expired, or revoked API credential |
-| 403 | `forbidden` | Valid credential lacks required scope or ownership |
-| 404 | `not_found` | Resource is absent or intentionally hidden by ownership policy |
-| 409 | `conflict` | State or uniqueness conflict |
-| 422 | `validation_failed` | Request validation failure (`error.details` is field-wise) |
-| 429 | `rate_limit_exceeded` | API or key rate limit exceeded |
-| 500 | `server_error` | Safe generic unexpected failure (no internal exception text in production) |
+| Status | Meaning |
+|---:|---|
+| `401` | missing, invalid, revoked, or expired API key |
+| `403` | authenticated key lacks the required scope or capability |
+| `404` | absent or intentionally hidden resource |
+| `422` | request validation failure; field details are included |
+| `429` | API-key or route rate limit exceeded |
+| `500` | safe generic server failure without internal exception text |
 
-API-key middleware already returns the `error.code` / `error.message` envelope for 401/403 and must not be altered by resource formatting. Validation and not-found responses include `error.details` (empty object when unused). Plain API tokens must never appear in error bodies.
+Validation details are field-keyed and use `snake_case`. Error bodies never contain bearer tokens, credentials, raw bodies, headers, attachment bytes, or stack traces.
 
-Do not reveal whether an inaccessible MailServer exists. Ownership failures should normally resolve as `404`; missing scope without resource lookup may resolve as `403`.
+## Pagination and filtering
 
-## Pagination and routes
+Paginated endpoints accept `page` and endpoint-bounded `per_page` values. Inbox listing filters and sorts are restricted to the allowlist implemented by their request objects. Unsupported filters, sort values, or malformed pagination input fail with `422`; pagination metadata never includes top-level `links` unless an endpoint-specific contract explicitly adds them.
 
-Use Laravel pagination parameters `page` and `per_page`, bounded by the endpoint. Response metadata uses the envelope above.
+## MailServer boundary
 
-Route names use dot notation and the versioned prefix:
+MailServer records are global platform infrastructure, not tenant-owned resources. `mail_servers:read` and `mail_servers:write` are not ordinary inbox-user grants. Pool entitlements affect capacity/selection behavior and do not substitute for API scopes or operator capability.
 
-```text
-api.v1.mail-servers.index
-api.v1.mail-servers.show
-api.v1.mail-servers.store
-api.v1.mail-servers.update
-```
+## Unsupported public APIs
 
-Future MailServer blueprint:
+The public API does not expose:
 
-```text
-GET    /api/v1/mail-servers
-GET    /api/v1/mail-servers/{mail_server}
-POST   /api/v1/mail-servers
-PUT    /api/v1/mail-servers/{mail_server}
-PATCH  /api/v1/mail-servers/{mail_server}
-```
+- API-key issuance or management;
+- customer billing or subscription APIs;
+- native SMTP or LMTP endpoints;
+- raw-MIME replay or arbitrary SMTP administration.
 
-Use UUID route binding and never expose an unscoped model lookup before authorization.
-
-## Field and DTO mapping
-
-The external API follows the project’s documented snake_case convention:
-
-```text
-pool_key     → CreateMailServerData::poolKey / UpdateMailServerData::poolKey
-max_inboxes  → CreateMailServerData::maxInboxes / UpdateMailServerData::maxInboxes
-```
-
-`max_inboxes: null` means unlimited capacity. An absent update field means “leave unchanged.” Explicit nullable clearing remains a separate DTO concern and must not be silently introduced by endpoint code.
-
-MailServer API resources emit snake_case fields consistently, including `pool_key`, `max_inboxes`, `is_active`, `max_connections`, `timeout_seconds`, `last_health_check_at`, `created_at`, and `updated_at`. The internal MailServer `metadata` column is never included in API responses; it may remain accepted on the write side for compatibility, but it has no public response schema and must never contain credentials or request/response payloads. An audit found no frontend or internal API consumer depending on the previous camelCase response names, so this is a compatible standardization for the current project state.
-
-All audit payloads pass through `AuditPayloadSanitizer` at the writer boundary. Sensitive keys are removed recursively, including token, hash, secret, credential, authorization, request/response body, header, cookie, and raw-payload variants. Values are limited to scalar values, ISO-8601 dates, and bounded nested arrays; unsupported values and excessive depth are discarded.
-
-## Controller data flow
-
-Controllers must remain thin:
-
-```text
-API request
-  → FormRequest validation
-  → DTO::fromArray($request->validated())
-  → Controller
-  → MailServerService
-  → MailServer Action
-  → Repository
-  → Database
-  → MailServerResource
-  → success envelope
-```
-
-Controllers must not implement pool selection, capacity calculation, persistence mapping, or authorization decisions. Authorization belongs in the future API-key middleware and policy/authorization layer.
-
-## Filament alignment
-
-Filament is an authenticated admin surface under the existing `admin` panel. A future MailServer Resource must follow Option A: platform-managed catalog under the same operator capability boundary as the MailServer API. It must not treat Filament access as permission to bypass API policy. Admin-only operations should use `mail_servers:admin` or the project’s eventual equivalent capability.
-
-## Required follow-up implementation
-
-Historical checklist from the convention’s introduction (several items are already implemented):
-
-1. API-key bearer authentication middleware/guard and request user context.
-2. API-key issuance/revocation flow and secure hash verification policy.
-3. Scope checking middleware or policy integration.
-4. MailServer ownership decision: **resolved as Option A** (platform-managed; see `docs/MAIL_SERVER_OWNERSHIP_POLICY.md`). No ownership schema change is required for that baseline.
-5. Versioned API route registration and controller base response handling.
-6. A resource implementation that emits snake_case fields, correcting any prior camelCase mapping if that mapping is not intentionally retained.
-7. Feature tests for authentication, scope checks, error envelopes, pagination, and rate limits.
-
-No API route, controller, middleware, policy, token migration, or package installation is part of documentation-only prompts.
-
-## API-key generation format
-
-Newly issued keys use `te_live_<base64url-random-secret>`, with 43 cryptographically random URL-safe characters. The stored `key_prefix` is the first 16 token characters. The stored `key_hash` is `v1:` followed by an HMAC-SHA256 digest of the complete plaintext token using the dedicated `API_KEY_HASH_SECRET` value.
-
-`API_KEY_HASH_SECRET` is required; there is no `APP_KEY` fallback. Existing records are not rewritten and remain legacy/unresolvable until a separately approved compatibility policy exists. Plaintext is returned only through the creation-only issuance result and is never persisted, serialized from the model, or logged. Hash verification uses a timing-safe comparison.
-
-## Anonymous mail-server pool configuration
-
-Anonymous/public inbox provisioning uses a dedicated configuration contract documented in `docs/ANONYMOUS_MAIL_SERVER_POOL.md`.
-
-- Environment variable: `PUBLIC_MAIL_SERVER_POOL`
-- Config key: `inbox.public_mail_server_pool`
-- Empty or unset values disable anonymous mail-server assignment.
-- Only servers whose `pool_key` exactly matches the configured value may be used; `pool_key = null` servers are never eligible.
-- Authenticated entitlement pool resolution (`mail_server_pools`) is unchanged and independent of this setting.
-
-## Platform operator capability
-
-MailServer API scopes are operator/admin-gated per `docs/PLATFORM_OPERATOR_POLICY.md` (Prompt 319):
-
-- Recommended model: `users.platform_role` ∈ {`user`, `operator`, `admin`} (default `user`; not yet migrated).
-- `mail_servers:read` / `mail_servers:write` → verified `operator` or `admin` owners only.
-- `mail_servers:admin` → verified `admin` only.
-- Missing capability, inactive lifecycle, or demotion → fail closed; privileged keys must not remain usable.
-- Pool entitlements never grant operator capability.
-
-## API-key ownership policy
-
-### Decision
-
-The supported policy is **Option A: user-owned API keys only**. The `api_keys.user_id` foreign key is required and cascades on user deletion; `ApiKey::user()` is the ownership relationship. There is currently no separate system-owner, team-owner, or platform-owner representation.
-
-Every persisted API key therefore requires a valid user owner. Administrative or background issuance may issue a key on behalf of a specific user, but administrator status does not remove the owner or bypass that user's API-key quota.
-
-### User and payload resolution
-
-- If `$user` is supplied, its primary key must match the payload `userId`; a mismatch is rejected.
-- If `$user` is absent and `userId` is supplied, the user is resolved from the database and locked before quota evaluation and insertion.
-- A missing, empty, or invalid `userId` is not a supported system-key request. It must fail closed before persistence rather than rely on the database foreign-key error.
-- Owner quota applies to every supported key. Missing entitlement or a `null` limit means unlimited; revoked keys do not consume quota, while expired but non-revoked keys continue to consume quota.
-
-### System-key ambiguity and future work
-
-The current nullable-looking `$user = null` path is an API ambiguity, not a valid unowned-key capability: a true unowned record cannot satisfy the non-null `user_id` schema constraint. It must not be exposed as a system-key issuance path.
-
-If explicit system keys are later required, the implementation sequence is: choose an ownership representation and migration/backfill strategy; define an authenticated admin actor and audit trail; define separate quota, scope, rotation, revocation, and serialization rules; then add authorization and relational concurrency tests. Existing user-owned records must remain compatible, and no existing record should be rehashed or reclassified by assumption.
-
-Until that design is approved and implemented, API-key creation, issuance, and API authentication should assume a valid user owner and reject ownerless requests.
+Filament and Artisan operations are separate administrative surfaces and do not expand the public API contract. The API reference is the authority for the currently registered endpoint set.
