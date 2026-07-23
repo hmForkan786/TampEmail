@@ -49,7 +49,7 @@ it('leaves unavailable scanner outcomes pending for queue retry', function (): v
     expect($attachment->fresh()->scan_status)->toBe(AttachmentScanStatus::Pending);
 });
 
-it('persists one terminal event for a successful job transition', function (): void {
+it('persists one terminal event without emitting duplicate job metrics', function (): void {
     config(['attachments.scanner_backend' => 'clamav']);
     Storage::fake('attachments');
     $attachment = scanJobAttachment();
@@ -58,7 +58,7 @@ it('persists one terminal event for a successful job transition', function (): v
         public function scan(AttachmentScanRequest $request): AttachmentScanResultData { return new AttachmentScanResultData(AttachmentScanResult::Infected, 'test-signature'); }
     });
     $job = new ScanInboundAttachmentJob((string) $attachment->id);
-    $job->handle(app(AttachmentScanService::class), app(App\Services\Inbound\InboundMetricsRecorder::class));
+    $job->handle(app(AttachmentScanService::class));
     expect($attachment->fresh()->scan_status)->toBe(AttachmentScanStatus::Infected)->and($attachment->fresh()->is_safe)->toBeFalse()->and(App\Models\EmailProcessingLog::query()->where('worker', 'attachment-scanner')->count())->toBe(1);
     app(AttachmentScanService::class)->scan($attachment->fresh());
     expect(App\Models\EmailProcessingLog::query()->where('worker', 'attachment-scanner')->count())->toBe(1);
