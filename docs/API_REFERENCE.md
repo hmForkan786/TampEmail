@@ -299,7 +299,7 @@ Email and attachment API routes use the API-key-specific rate limiter after auth
 
 Inbound retention and cleanup remain governed by the existing inbound retention configuration and legal-hold behavior. Metrics do not change retention, cleanup, email ownership, or attachment quarantine rules. Audit logs and API request logs remain separate retention classes; existing legal holds continue to apply to their respective records.
 
-The current default scanner backend is disabled. A real ClamAV or external scanner is not available in this deployment, so newly ingested attachments remain pending unless an approved scanner configuration and scan result marks them clean. No scanner implementation or external monitoring provider is part of this contract.
+The current default scanner backend is `disabled`. The committed scanner implementation supports ClamAV behind the configured scanner boundary, but this deployment must explicitly configure and verify an approved backend before attachments can become clean. A disabled or unavailable scanner is never treated as clean: attachments remain pending/retryable or reach a deterministic terminal failure. See [`CLAMAV_INTEGRATION_TESTING.md`](CLAMAV_INTEGRATION_TESTING.md) and [`PRODUCTION_RUNBOOK.md`](PRODUCTION_RUNBOOK.md) for enablement and operational requirements.
 
 ### APIs not exposed
 
