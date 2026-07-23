@@ -1,59 +1,148 @@
-<p align="center"><a href="https://laravel.com" target="_blank"><img src="https://raw.githubusercontent.com/laravel/art/master/logo-lockup/5%20SVG/2%20CMYK/1%20Full%20Color/laravel-logolockup-cmyk-red.svg" width="400" alt="Laravel Logo"></a></p>
+# Temail
 
-<p align="center">
-<a href="https://github.com/laravel/framework/actions"><img src="https://github.com/laravel/framework/workflows/tests/badge.svg" alt="Build Status"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/dt/laravel/framework" alt="Total Downloads"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/v/laravel/framework" alt="Latest Stable Version"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/l/laravel/framework" alt="License"></a>
-</p>
+Temail is a self-hosted temporary-email platform for owner-scoped inboxes, inbound webhook processing, attachment handling, operational metrics, and Filament administration.
 
-## About Laravel
+## Product overview
 
-Laravel is a web application framework with expressive, elegant syntax. We believe development must be an enjoyable and creative experience to be truly fulfilling. Laravel takes the pain out of development by easing common tasks used in many web projects, such as:
+The current inbound boundary is a signed provider webhook. Messages are queued for asynchronous processing, stored against an owned inbox, and exposed through the owner API or administrator tools. Native SMTP/LMTP ingress is not implemented.
 
-- [Simple, fast routing engine](https://laravel.com/docs/routing).
-- [Powerful dependency injection container](https://laravel.com/docs/container).
-- Multiple back-ends for [session](https://laravel.com/docs/session) and [cache](https://laravel.com/docs/cache) storage.
-- Expressive, intuitive [database ORM](https://laravel.com/docs/eloquent).
-- Database agnostic [schema migrations](https://laravel.com/docs/migrations).
-- [Robust background job processing](https://laravel.com/docs/queues).
-- [Real-time event broadcasting](https://laravel.com/docs/broadcasting).
+## Architecture and stack
 
-Laravel is accessible, powerful, and provides tools required for large, robust applications.
+- PHP 8.2+ and Laravel 12
+- MySQL or another supported Laravel database driver; SQLite is useful for local tests
+- Database-backed queue by default, with Redis supported by configuration
+- Database cache by default, with Redis supported for process coordination
+- Filament 5 administration
+- Pest/PHPUnit feature, unit, integration, and relational-concurrency tests
+- Optional ClamAV attachment scanning, disabled by default
 
-## Learning Laravel
+## Implemented capabilities
 
-Laravel has the most extensive and thorough [documentation](https://laravel.com/docs) and video tutorial library of all modern web application frameworks, making it a breeze to get started with the framework. You can also check out [Laravel Learn](https://laravel.com/learn), where you will be guided through building a modern Laravel application.
+- Owner-scoped inbox, email, attachment, read-state, and mail-server API operations
+- API-key authentication with explicit read/write scopes and rate limiting
+- Signed, provider-neutral inbound webhook with bounded request validation
+- Asynchronous inbound processing and safe lifecycle/health metrics
+- Attachment scanning with clean, infected, retryable, and terminal-failure outcomes
+- Filament administration for operational inbound failures and related resources
+- Queue-worker and scheduler heartbeat/readiness reporting
+- Retention, expiration, audit, and request-log controls
 
-If you don't feel like reading, [Laracasts](https://laracasts.com) can help. Laracasts contains thousands of video tutorials on a range of topics including Laravel, modern PHP, unit testing, and JavaScript. Boost your skills by digging into our comprehensive video library.
+## Explicitly deferred or unavailable
 
-## Laravel Sponsors
+- Native SMTP/LMTP ingress is not implemented; the signed webhook is the inbound boundary.
+- Public API-key issuance is not exposed through the public API; administrative flows are separate.
+- Customer billing and subscription APIs are not exposed.
+- Raw-MIME replay and arbitrary SMTP management endpoints are not exposed.
+- ClamAV is disabled unless explicitly configured and approved.
 
-We would like to extend our thanks to the following sponsors for funding Laravel development. If you are interested in becoming a sponsor, please visit the [Laravel Partners program](https://partners.laravel.com).
+## Requirements
 
-### Premium Partners
+Install PHP 8.2 or newer with the extensions required by Laravel 12, Composer, a database, and Node.js/npm if frontend assets are built. Queue workers and one scheduler process are operational requirements for asynchronous processing and scheduled maintenance. Anonymous or scheduled features may be feature-flagged and fail closed.
 
-- **[Vehikl](https://vehikl.com)**
-- **[Tighten Co.](https://tighten.co)**
-- **[Kirschbaum Development Group](https://kirschbaumdevelopment.com)**
-- **[64 Robots](https://64robots.com)**
-- **[Curotec](https://www.curotec.com/services/technologies/laravel)**
-- **[DevSquad](https://devsquad.com/hire-laravel-developers)**
-- **[Redberry](https://redberry.international/laravel-development)**
-- **[Active Logic](https://activelogic.com)**
+## Local installation
 
-## Contributing
+```text
+composer install
+copy .env.example .env
+php artisan key:generate
+php artisan migrate --force
+npm install
+npm run build
+```
 
-Thank you for considering contributing to the Laravel framework! The contribution guide can be found in the [Laravel documentation](https://laravel.com/docs/contributions).
+On Unix-like systems, use `cp .env.example .env` instead of `copy`. The repository also provides `composer setup` for the standard setup sequence.
 
-## Code of Conduct
+## Environment configuration
 
-In order to ensure that the Laravel community is welcoming to all, please review and abide by the [Code of Conduct](https://laravel.com/docs/contributions#code-of-conduct).
+Copy `.env.example` and set the application URL, database connection, queue connection, cache store, mail settings, and provider webhook configuration for the environment. Keep secrets only in environment or approved secret-manager storage. Do not commit `.env`, API keys, webhook secrets, scanner credentials, or private service addresses.
 
-## Security Vulnerabilities
+The default queue connection and cache store are database-backed. Redis can be selected when the deployment provides it. Configure `ATTACHMENT_SCANNER_BACKEND=clamav` only after the ClamAV enablement gate in the integration guide and production runbook is satisfied.
 
-If you discover a security vulnerability within Laravel, please send an e-mail to Taylor Otwell via [taylor@laravel.com](mailto:taylor@laravel.com). All security vulnerabilities will be promptly addressed.
+## Database migration and seeding
 
-## License
+Run migrations with:
 
-The Laravel framework is open-sourced software licensed under the [MIT license](https://opensource.org/licenses/MIT).
+```text
+php artisan migrate --force
+```
+
+Use `php artisan db:seed` only when the deployment has reviewed the configured seeders. Never run destructive refresh commands against production data.
+
+## Queue worker operation
+
+Run the configured worker using the deployment's queue supervisor. For local development, the repository's `composer dev` script starts `php artisan queue:listen --tries=1 --timeout=0`. Production workers must use bounded process settings, restart supervision, and the configured queue connection. Check readiness with:
+
+```text
+php artisan processes:health --json
+```
+
+## Scheduler operation
+
+Run exactly one scheduler strategy per environment, using the deployment supervisor or the framework scheduler. The application schedules process heartbeats and optional cleanup/expiration tasks. Verify scheduler freshness with `php artisan processes:health --json`; stale heartbeats are degraded or failed operational states.
+
+## Signed inbound webhook
+
+The current inbound endpoint is `POST /api/v1/inbound/webhook`. It uses provider, timestamp, message-ID, and HMAC signature headers, validates a bounded JSON envelope, and queues processing. It is intentionally outside API-key authentication. The complete contract and response codes are documented in [`docs/API_REFERENCE.md`](docs/API_REFERENCE.md).
+
+## Owner API authentication and scopes
+
+Public API routes use API-key authentication and scope checks. Inbox and email reads use `inboxes:read`; inbox mutations and read-state changes use `inboxes:write`; mail-server reads and mutations use `mail_servers:read` and `mail_servers:write`. Ownership checks return a safe not-found response for records outside the caller's visibility. See [`docs/API_REFERENCE.md`](docs/API_REFERENCE.md) for the authoritative endpoint contract.
+
+## Filament administration
+
+Filament is for authorized administrative and operational users. Configure the approved platform/admin access path before exposing it. Normal API users do not gain Filament access merely by possessing an API key.
+
+## ClamAV warning
+
+ClamAV is disabled by default. An unavailable scanner must never be treated as clean; attachments remain pending or enter the bounded retry and terminal-failure lifecycle. Local and CI integration instructions are in [`docs/CLAMAV_INTEGRATION_TESTING.md`](docs/CLAMAV_INTEGRATION_TESTING.md).
+
+## Test commands
+
+```text
+php artisan test
+php artisan test --filter=InboundWebhook
+php artisan test --filter=ClamAv
+php artisan test --filter=AttachmentScannerHealth
+php artisan test --filter=ScanInboundAttachment
+```
+
+The full quality workflow is available through `composer quality` when its required tools are installed. ClamAV integration tests are guarded and skip without `RUN_CLAMAV_TESTS=1`; CI runs them against its service and fails on an unexpected skip.
+
+## Relational concurrency tests
+
+Run the focused scenarios with:
+
+```text
+php artisan test --filter=RelationalInboxConcurrencyTest
+php artisan test --filter=RelationalApiKeyConcurrencyTest
+```
+
+These tests may be environment-gated when the required relational database and concurrency harness are unavailable.
+
+## Health and operations commands
+
+```text
+php artisan inbound:health
+php artisan attachments:scanner-health --json
+php artisan processes:health --json
+```
+
+Health commands fail closed. `healthy` is not reported when the relevant dependency is unavailable; degraded/failed output requires operator investigation.
+
+## Documentation index
+
+- [`docs/API_REFERENCE.md`](docs/API_REFERENCE.md) — owner API and signed webhook contract
+- [`docs/CLAMAV_INTEGRATION_TESTING.md`](docs/CLAMAV_INTEGRATION_TESTING.md) — local/CI scanner integration
+- [`docs/PROCESS_OPERATIONS.md`](docs/PROCESS_OPERATIONS.md) — worker and scheduler operations
+- [`docs/PROCESS_RUNTIME_VERIFICATION.md`](docs/PROCESS_RUNTIME_VERIFICATION.md) — readiness verification
+- [`docs/INBOUND_RETENTION_POLICY.md`](docs/INBOUND_RETENTION_POLICY.md) — retention and legal holds
+- [`docs/RELATIONAL_TEST_MATRIX.md`](docs/RELATIONAL_TEST_MATRIX.md) — concurrency coverage
+- [`docs/PRODUCTION_RUNBOOK.md`](docs/PRODUCTION_RUNBOOK.md) — deployment and incident operations
+
+## Security defaults
+
+The application uses scoped API keys, owner isolation, bounded inputs, safe error responses, private attachment storage, signed webhook requests, redacted operational output, and fail-closed health behavior. Keep debug mode disabled in production and never place credentials or message content in logs, metrics, documentation, or test artifacts.
+
+## Known production prerequisites
+
+Before production traffic, provide reviewed database and queue capacity, a supervised worker fleet, exactly one scheduler strategy, fresh heartbeat monitoring, HTTPS and reverse-proxy limits, private attachment storage, backups and restore drills, retention/legal-hold procedures, signed provider secrets, and an approved scanner decision. Anonymous or scheduled capabilities must be explicitly enabled and tested; otherwise they should fail closed.
