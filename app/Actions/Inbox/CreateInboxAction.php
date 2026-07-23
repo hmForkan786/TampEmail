@@ -5,15 +5,18 @@ declare(strict_types=1);
 namespace App\Actions\Inbox;
 
 use App\DTOs\Inbox\CreateInboxData;
+use App\DTOs\Inbox\InboxMutationContext;
 use App\Exceptions\EligibleMailServerUnavailableException;
 use App\Exceptions\InboxQuotaExceededException;
 use App\Models\Inbox;
 use App\Models\User;
 use App\Repositories\Contracts\InboxRepositoryInterface;
 use App\Repositories\Contracts\MailServerRepositoryInterface;
+use App\Services\Audit\AuditLogWriter;
 use App\Services\Entitlement\EntitlementService;
 use App\Services\MailServer\MailServerSelectionService;
 use Illuminate\Support\Facades\DB;
+use InvalidArgumentException;
 
 /**
  * Create and persist a new inbox from validated input data.
@@ -24,32 +27,26 @@ use Illuminate\Support\Facades\DB;
  */
 final class CreateInboxAction
 {
-    /**
-     * @param InboxRepositoryInterface   $inboxRepository            Inbox persistence contract.
-     * @param EntitlementService         $entitlementService         Feature entitlement resolution service.
-     * @param MailServerSelectionService $mailServerSelectionService Entitled mail server selection service.
-     */
     public function __construct(
         private readonly InboxRepositoryInterface $inboxRepository,
         private readonly EntitlementService $entitlementService,
         private readonly MailServerSelectionService $mailServerSelectionService,
         private readonly MailServerRepositoryInterface $mailServerRepository,
+        private readonly AuditLogWriter $auditLogWriter,
     ) {}
 
     /**
      * Create and persist a new inbox.
      *
-     * @param CreateInboxData $data Validated inbox creation data.
-     * @param User|null       $user Authenticated user for quota enforcement, if any.
-     *
-     * @return Inbox The created inbox.
-     *
-     * @throws InboxQuotaExceededException When the user's inbox quota is exhausted.
-     * @throws EligibleMailServerUnavailableException When no eligible mail server is available.
+     * @throws InboxQuotaExceededException
+     * @throws EligibleMailServerUnavailableException
+     * @throws InvalidArgumentException When the mutation context is invalid for this flow.
      */
-    public function execute(CreateInboxData $data, ?User $user = null): Inbox
+    public function execute(CreateInboxData $data, ?User $user, InboxMutationContext $context): Inbox
     {
-        return DB::transaction(function () use ($data, $user): Inbox {
+        $this->assertContextAllowsCreate($data, $user, $context);
+
+        return DB::transaction(function () use ($data, $user, $context): Inbox {
             if ($user !== null) {
                 $user = $this->lockUserForUpdate($user);
                 $this->enforceQuota($user);
@@ -78,20 +75,50 @@ final class CreateInboxAction
                 $data = $data->withMailServerId($mailServer->id);
             }
 
-            return $this->inboxRepository->create($data);
+            $inbox = $this->inboxRepository->create($data);
+            $inbox->refresh();
+            $at = now();
+            $this->auditLogWriter->write('inbox.created', $context->actorUserId, $inbox, [], [
+                'is_active' => $inbox->is_active,
+                'expires_at' => $inbox->expires_at,
+            ], [
+                'source' => $context->source,
+                'api_key_id' => $context->apiKeyId,
+                'domain_id' => $inbox->domain_id,
+                'anonymous' => $context->isAnonymous(),
+                'changed_at' => $at->toIso8601String(),
+            ], $at);
+
+            return $inbox;
         });
     }
 
-    /**
-     * Lock the user row for update within the current transaction.
-     *
-     * Authenticated provisioning must acquire the user lock before quota
-     * checks and mail-server selection to keep lock ordering consistent.
-     *
-     * @param User $user The user to lock.
-     *
-     * @return User The locked user instance.
-     */
+    private function assertContextAllowsCreate(CreateInboxData $data, ?User $user, InboxMutationContext $context): void
+    {
+        if ($context->isScheduler()) {
+            throw new InvalidArgumentException('Scheduler context cannot create an inbox.');
+        }
+
+        if ($context->isApi()) {
+            if ($user === null) {
+                throw new InvalidArgumentException('API inbox creation requires an authenticated owner.');
+            }
+            $context->assertApiMutation((string) $user->getKey());
+            if ($data->userId === null || $data->userId === '' || $data->userId !== (string) $user->getKey()) {
+                throw new InvalidArgumentException('Create payload owner must match the mutation actor.');
+            }
+
+            return;
+        }
+
+        if ($context->isAnonymous()) {
+            $context->assertAnonymousCreate();
+            if ($user !== null || ($data->userId !== null && $data->userId !== '')) {
+                throw new InvalidArgumentException('Anonymous context cannot create a user-owned inbox.');
+            }
+        }
+    }
+
     private function lockUserForUpdate(User $user): User
     {
         return User::query()
@@ -100,16 +127,6 @@ final class CreateInboxAction
             ->firstOrFail();
     }
 
-    /**
-     * Enforce the max_inboxes entitlement for the given user.
-     *
-     * Unlimited plans (no resolved value, missing limit key, or null limit)
-     * skip counting entirely.
-     *
-     * @param User $user The locked user to enforce the quota for.
-     *
-     * @throws InboxQuotaExceededException When the user's inbox quota is exhausted.
-     */
     private function enforceQuota(User $user): void
     {
         $value = $this->entitlementService->featureValue($user, 'max_inboxes');

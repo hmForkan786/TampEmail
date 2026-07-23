@@ -2,6 +2,7 @@
 
 use App\Actions\Inbox\CreateInboxAction;
 use App\DTOs\Inbox\CreateInboxData;
+use App\DTOs\Inbox\InboxMutationContext;
 use App\Enums\InboxType;
 use App\Exceptions\EligibleMailServerUnavailableException;
 use App\Models\Domain;
@@ -22,6 +23,15 @@ function anonymousInboxData(string $domainId): CreateInboxData
         inboxType: InboxType::Temporary,
         expiresAt: now()->addHour(),
         metadata: null,
+    );
+}
+
+function createAnonymousInbox(string $domainId): Inbox
+{
+    return app(CreateInboxAction::class)->execute(
+        anonymousInboxData($domainId),
+        null,
+        InboxMutationContext::forAnonymous(),
     );
 }
 
@@ -59,7 +69,7 @@ it('selects and persists a server from the configured public pool', function ():
     config(['inbox.public_mail_server_pool' => 'public']);
     $server = eligibleMailServer();
 
-    $inbox = app(CreateInboxAction::class)->execute(anonymousInboxData($this->domain->id));
+    $inbox = createAnonymousInbox($this->domain->id);
 
     expect($inbox->mail_server_id)->toBe($server->id);
     $this->assertDatabaseHas('inboxes', ['id' => $inbox->id, 'mail_server_id' => $server->id]);
@@ -69,7 +79,7 @@ it('fails closed when the public pool is missing or blank', function (?string $p
     config(['inbox.public_mail_server_pool' => $pool]);
     eligibleMailServer();
 
-    expect(fn () => app(CreateInboxAction::class)->execute(anonymousInboxData($this->domain->id)))
+    expect(fn () => createAnonymousInbox($this->domain->id))
         ->toThrow(EligibleMailServerUnavailableException::class);
 })->with([null, '', '   ']);
 
@@ -78,7 +88,7 @@ it('does not select null or different pools', function (): void {
     eligibleMailServer(['pool_key' => null]);
     eligibleMailServer(['pool_key' => 'private']);
 
-    expect(fn () => app(CreateInboxAction::class)->execute(anonymousInboxData($this->domain->id)))
+    expect(fn () => createAnonymousInbox($this->domain->id))
         ->toThrow(EligibleMailServerUnavailableException::class);
 });
 
@@ -87,7 +97,7 @@ it('rejects a full public server', function (): void {
     $server = eligibleMailServer(['max_inboxes' => 1]);
     Inbox::create(anonymousInboxData($this->domain->id)->withMailServerId($server->id)->toArray());
 
-    expect(fn () => app(CreateInboxAction::class)->execute(anonymousInboxData($this->domain->id)))
+    expect(fn () => createAnonymousInbox($this->domain->id))
         ->toThrow(EligibleMailServerUnavailableException::class);
 });
 
@@ -104,7 +114,7 @@ it('does not count inactive, expired, or deleted inboxes toward capacity', funct
     $deleted = Inbox::create(anonymousInboxData($this->domain->id)->withMailServerId($server->id)->toArray());
     $deleted->delete();
 
-    $created = app(CreateInboxAction::class)->execute(anonymousInboxData($this->domain->id));
+    $created = createAnonymousInbox($this->domain->id);
 
     expect($created->mail_server_id)->toBe($server->id);
 });

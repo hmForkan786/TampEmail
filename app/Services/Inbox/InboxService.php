@@ -12,6 +12,7 @@ use App\Actions\Inbox\PaginateInboxesAction;
 use App\Actions\Inbox\UpdateInboxAction;
 use App\DTOs\Inbox\CreateInboxData;
 use App\DTOs\Inbox\InboxFiltersData;
+use App\DTOs\Inbox\InboxMutationContext;
 use App\DTOs\Inbox\UpdateInboxData;
 use App\Models\Inbox;
 use App\Models\User;
@@ -43,13 +44,14 @@ final class InboxService
      * Create and persist a new inbox.
      *
      * @param CreateInboxData $data Validated inbox creation data.
+     * @param InboxMutationContext $context Explicit mutation provenance.
      * @param User|null       $user Authenticated user for entitlement enforcement, if any.
      *
      * @return Inbox The created inbox.
      */
-    public function create(CreateInboxData $data, ?User $user = null): Inbox
+    public function create(CreateInboxData $data, InboxMutationContext $context, ?User $user = null): Inbox
     {
-        return $this->createInboxAction->execute($data, $user);
+        return $this->createInboxAction->execute($data, $user, $context);
     }
 
     /**
@@ -69,12 +71,13 @@ final class InboxService
      * Delete the given inbox.
      *
      * @param Inbox $inbox The inbox to delete.
+     * @param InboxMutationContext $context Explicit mutation provenance.
      *
      * @return bool Whether the inbox was deleted.
      */
-    public function delete(Inbox $inbox): bool
+    public function delete(Inbox $inbox, InboxMutationContext $context): bool
     {
-        return $this->deleteInboxAction->execute($inbox);
+        return $this->deleteInboxAction->execute($inbox, $context);
     }
 
     /**

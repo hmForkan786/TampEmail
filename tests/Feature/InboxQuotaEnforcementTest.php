@@ -2,6 +2,7 @@
 
 use App\Actions\Inbox\CreateInboxAction;
 use App\DTOs\Inbox\CreateInboxData;
+use App\DTOs\Inbox\InboxMutationContext;
 use App\Enums\BillingCycle;
 use App\Enums\InboxType;
 use App\Enums\SubscriptionStatus;
@@ -17,6 +18,7 @@ use App\Models\Subscription;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Str;
 
 uses(RefreshDatabase::class);
 
@@ -121,19 +123,33 @@ function authenticatedInboxData(Domain $domain, User $user): CreateInboxData
     );
 }
 
+function quotaApiContext(User $user): InboxMutationContext
+{
+    return InboxMutationContext::forApi((string) $user->id, (string) Str::uuid());
+}
+
+function createEntitledInbox(Domain $domain, User $user): Inbox
+{
+    return app(CreateInboxAction::class)->execute(
+        authenticatedInboxData($domain, $user),
+        $user,
+        quotaApiContext($user),
+    );
+}
+
 it('rejects inbox creation when the user quota is full', function (): void {
     ['user' => $user, 'domain' => $domain] = entitledInboxContext(inboxLimit: 1);
 
-    app(CreateInboxAction::class)->execute(authenticatedInboxData($domain, $user), $user);
+    createEntitledInbox($domain, $user);
 
-    expect(fn () => app(CreateInboxAction::class)->execute(authenticatedInboxData($domain, $user), $user))
+    expect(fn () => createEntitledInbox($domain, $user))
         ->toThrow(InboxQuotaExceededException::class);
 });
 
 it('creates an inbox when the user is within quota', function (): void {
     ['user' => $user, 'domain' => $domain, 'mailServer' => $mailServer] = entitledInboxContext(inboxLimit: 2);
 
-    $inbox = app(CreateInboxAction::class)->execute(authenticatedInboxData($domain, $user), $user);
+    $inbox = createEntitledInbox($domain, $user);
 
     expect($inbox->user_id)->toBe($user->id)
         ->and($inbox->mail_server_id)->toBe($mailServer->id);
@@ -143,10 +159,10 @@ it('creates an inbox when the user is within quota', function (): void {
 it('allows only the entitled number of inboxes at the quota boundary', function (): void {
     ['user' => $user, 'domain' => $domain] = entitledInboxContext(inboxLimit: 2);
 
-    app(CreateInboxAction::class)->execute(authenticatedInboxData($domain, $user), $user);
-    app(CreateInboxAction::class)->execute(authenticatedInboxData($domain, $user), $user);
+    createEntitledInbox($domain, $user);
+    createEntitledInbox($domain, $user);
 
-    expect(fn () => app(CreateInboxAction::class)->execute(authenticatedInboxData($domain, $user), $user))
+    expect(fn () => createEntitledInbox($domain, $user))
         ->toThrow(InboxQuotaExceededException::class);
 
     expect(Inbox::query()->where('user_id', $user->id)->count())->toBe(2);
@@ -155,10 +171,10 @@ it('allows only the entitled number of inboxes at the quota boundary', function 
 it('does not persist an inbox when quota enforcement fails', function (): void {
     ['user' => $user, 'domain' => $domain] = entitledInboxContext(inboxLimit: 1);
 
-    app(CreateInboxAction::class)->execute(authenticatedInboxData($domain, $user), $user);
+    createEntitledInbox($domain, $user);
 
     try {
-        app(CreateInboxAction::class)->execute(authenticatedInboxData($domain, $user), $user);
+        createEntitledInbox($domain, $user);
     } catch (InboxQuotaExceededException) {
         // expected
     }
@@ -169,28 +185,28 @@ it('does not persist an inbox when quota enforcement fails', function (): void {
 it('fails on user quota before mail-server capacity when the user quota is exhausted', function (): void {
     ['user' => $user, 'domain' => $domain] = entitledInboxContext(inboxLimit: 1, serverCapacity: null);
 
-    app(CreateInboxAction::class)->execute(authenticatedInboxData($domain, $user), $user);
+    createEntitledInbox($domain, $user);
 
-    expect(fn () => app(CreateInboxAction::class)->execute(authenticatedInboxData($domain, $user), $user))
+    expect(fn () => createEntitledInbox($domain, $user))
         ->toThrow(InboxQuotaExceededException::class);
 });
 
 it('enforces mail-server capacity even when user quota remains', function (): void {
     ['user' => $user, 'domain' => $domain] = entitledInboxContext(inboxLimit: 5, serverCapacity: 1);
 
-    app(CreateInboxAction::class)->execute(authenticatedInboxData($domain, $user), $user);
+    createEntitledInbox($domain, $user);
 
-    expect(fn () => app(CreateInboxAction::class)->execute(authenticatedInboxData($domain, $user), $user))
+    expect(fn () => createEntitledInbox($domain, $user))
         ->toThrow(EligibleMailServerUnavailableException::class);
 });
 
 it('does not count soft-deleted inboxes toward quota', function (): void {
     ['user' => $user, 'domain' => $domain] = entitledInboxContext(inboxLimit: 1);
 
-    $existing = app(CreateInboxAction::class)->execute(authenticatedInboxData($domain, $user), $user);
+    $existing = createEntitledInbox($domain, $user);
     $existing->delete();
 
-    $replacement = app(CreateInboxAction::class)->execute(authenticatedInboxData($domain, $user), $user);
+    $replacement = createEntitledInbox($domain, $user);
 
     expect($replacement->id)->not->toBe($existing->id);
 });
@@ -204,9 +220,9 @@ it('allows unlimited inbox creation when the entitlement limit is null', functio
         'feature_value' => ['limit' => null],
     ]);
 
-    app(CreateInboxAction::class)->execute(authenticatedInboxData($domain, $user), $user);
-    app(CreateInboxAction::class)->execute(authenticatedInboxData($domain, $user), $user);
-    $third = app(CreateInboxAction::class)->execute(authenticatedInboxData($domain, $user), $user);
+    createEntitledInbox($domain, $user);
+    createEntitledInbox($domain, $user);
+    $third = createEntitledInbox($domain, $user);
 
     expect($third)->toBeInstanceOf(Inbox::class);
 });
@@ -215,12 +231,12 @@ it('does not affect another user quota enforcement', function (): void {
     ['user' => $userA, 'domain' => $domainA] = entitledInboxContext(inboxLimit: 1);
     ['user' => $userB, 'domain' => $domainB] = entitledInboxContext(inboxLimit: 1);
 
-    app(CreateInboxAction::class)->execute(authenticatedInboxData($domainA, $userA), $userA);
+    createEntitledInbox($domainA, $userA);
 
-    expect(fn () => app(CreateInboxAction::class)->execute(authenticatedInboxData($domainA, $userA), $userA))
+    expect(fn () => createEntitledInbox($domainA, $userA))
         ->toThrow(InboxQuotaExceededException::class);
 
-    $userBInbox = app(CreateInboxAction::class)->execute(authenticatedInboxData($domainB, $userB), $userB);
+    $userBInbox = createEntitledInbox($domainB, $userB);
 
     expect($userBInbox->user_id)->toBe($userB->id);
 });
