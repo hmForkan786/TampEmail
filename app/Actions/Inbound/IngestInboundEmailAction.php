@@ -4,7 +4,6 @@ namespace App\Actions\Inbound;
 use App\DTOs\Inbound\InboundResolution;
 use App\DTOs\Inbound\ParsedInboundEmail;
 use App\Enums\EmailEventType;
-use App\Enums\ProcessingLogStatus;
 use App\Enums\ProcessingStage;
 use App\Enums\ProcessingStatus;
 use App\Models\Email;
@@ -17,14 +16,16 @@ use App\Services\Inbound\InboundHtmlSanitizer;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
 use App\Jobs\ScanInboundAttachmentJob;
+use App\Services\Inbound\InboundMetricsRecorder;
+use App\Enums\ProcessingLogStatus;
 final class IngestInboundEmailAction
 {
-    public function __construct(private readonly InboundHtmlSanitizer $sanitizer) {}
+    public function __construct(private readonly InboundHtmlSanitizer $sanitizer, private readonly InboundMetricsRecorder $metrics) {}
     public function execute(ParsedInboundEmail $parsed, InboundResolution $resolution): Email
     {
-        $storedPaths = [];
-        try { return DB::transaction(function () use ($parsed, $resolution, &$storedPaths): Email {
-            $existing = Email::query()->where('message_id', $parsed->messageId)->first(); if ($existing !== null) return $existing;
+        $storedPaths = []; $started = microtime(true);
+        try { return DB::transaction(function () use ($parsed, $resolution, &$storedPaths, $started): Email {
+            $existing = Email::query()->where('message_id', $parsed->messageId)->first(); if ($existing !== null) { $this->metrics->record((string) $existing->id, 'duplicate'); return $existing; }
             if ($resolution->inboxId === null) throw new \InvalidArgumentException('Recipient was not resolved.');
             $maxCount = (int) config('attachments.max_count', 20); $maxBytes = (int) config('attachments.max_bytes', 26214400); $maxTotal = (int) config('attachments.max_total_bytes', 52428800);
             if (count($parsed->attachments) > $maxCount || array_sum(array_map(fn ($a): int => $a->sizeBytes, $parsed->attachments)) > $maxTotal || collect($parsed->attachments)->contains(fn ($a): bool => $a->sizeBytes > $maxBytes)) throw new \InvalidArgumentException('Attachment limits exceeded.');
@@ -37,7 +38,9 @@ final class IngestInboundEmailAction
                 if (config('attachments.scanner_backend', 'disabled') !== 'disabled' && Storage::disk('attachments')->exists($path)) ScanInboundAttachmentJob::dispatch((string) $record->id)->afterCommit();
             }
             EmailEvent::query()->create(['email_id'=>$email->id,'event_type'=>EmailEventType::Received,'event_source'=>'ingestion','occurred_at'=>now(),'payload'=>['provider_message_id'=>$parsed->messageId]]);
-            EmailProcessingLog::query()->create(['email_id'=>$email->id,'stage'=>ProcessingStage::StoreBody,'status'=>ProcessingLogStatus::Success,'worker'=>'inbound','duration_ms'=>0]); return $email;
-        }); } catch (\Throwable $e) { foreach ($storedPaths as $path) Storage::disk('attachments')->delete($path); throw $e; }
+            EmailProcessingLog::query()->create(['email_id'=>$email->id,'stage'=>ProcessingStage::StoreBody,'status'=>ProcessingLogStatus::Success,'worker'=>'inbound','duration_ms'=>0]);
+            $this->metrics->record((string) $email->id, 'persisted', ProcessingStage::StoreBody, ProcessingLogStatus::Success, ['duration_ms' => (int) ((microtime(true) - $started) * 1000), 'transaction' => 'committed']);
+            return $email;
+        }); } catch (\Throwable $e) { foreach ($storedPaths as $path) Storage::disk('attachments')->delete($path); $this->metrics->record(null, 'failed', ProcessingStage::StoreBody, ProcessingLogStatus::Failed, ['transaction' => 'rolled_back']); throw $e; }
     }
 }
