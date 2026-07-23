@@ -23,6 +23,7 @@ storage/framework/phpstan/
 /public/hot
 /public/storage
 /storage/*.key
+/storage/test-results/
 /storage/pail
 /vendor
 Homestead.json
