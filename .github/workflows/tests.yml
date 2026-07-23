@@ -38,7 +38,9 @@ jobs:
           git diff --check
           find app bootstrap config routes tests -name '*.php' -print0 | xargs -0 -n1 php -l
       - name: Test suite
-        run: php artisan test --compact --log-junit storage/test-results/sqlite.xml
+        run: |
+          mkdir -p storage/test-results
+          php artisan test --compact --log-junit storage/test-results/sqlite.xml
       - name: Upload test report
         if: always()
         uses: actions/upload-artifact@v4
