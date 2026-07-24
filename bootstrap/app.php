@@ -17,6 +17,7 @@ use App\Services\Inbound\QueuedInboundWebhookDispatcher;
 use App\Contracts\AttachmentScannerInterface;
 use App\Services\Inbound\DisabledAttachmentScanner;
 use App\Services\Inbound\ClamAvAttachmentScanner;
+use App\Console\Commands\ProcessRuntimeSmoke;
 use Symfony\Component\HttpKernel\Exception\HttpExceptionInterface;
 use Symfony\Component\HttpKernel\Exception\NotFoundHttpException;
 
@@ -27,6 +28,9 @@ return Application::configure(basePath: dirname(__DIR__))
         commands: __DIR__.'/../routes/console.php',
         health: '/up',
     )
+    ->withCommands([
+        ProcessRuntimeSmoke::class,
+    ])
     ->withBindings([
         InboundWebhookDispatcher::class => fn (): QueuedInboundWebhookDispatcher => new QueuedInboundWebhookDispatcher(),
         AttachmentScannerInterface::class => fn (): AttachmentScannerInterface => config('attachments.scanner_backend', 'disabled') === 'clamav'

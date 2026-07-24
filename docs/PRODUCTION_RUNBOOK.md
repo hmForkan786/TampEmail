@@ -87,9 +87,13 @@ After a worker or scheduler restart, allow the warm-up window above before treat
 ## Process readiness verification
 
 ```bash
+php artisan processes:runtime-smoke
+php artisan processes:runtime-smoke --json
 php artisan processes:health
 php artisan processes:health --json
 ```
+
+The runtime smoke gate verifies configured queue/cache topology and emitted heartbeat evidence; it does not start workers or the scheduler. Healthy output requires live supervised processes and a reachable configured dependency.
 
 Treat stale worker or scheduler heartbeats, `sync` queue connections, incompatible lock stores, failed jobs, or queue backlog breaches as degraded or failed conditions requiring action. Use `--json` for automation and incident evidence; keep credentials, private hosts, process identifiers, and cache keys out of tickets.
 
