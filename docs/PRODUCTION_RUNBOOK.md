@@ -165,6 +165,18 @@ Review the existing retention and legal-hold policies before cleanup. Optional m
 
 Back up the database, protected attachment storage, and required configuration through the approved platform process. Test restores in an isolated environment, verify ownership and legal-hold metadata, and confirm queue/lock state is rebuilt safely. A restore must not expose backup contents or bypass retention controls.
 
+### Restore readiness gate
+
+Before accepting a release, run the non-destructive readiness command:
+
+```bash
+php artisan backup:restore-health --json
+```
+
+Require `status=ready` (exit `0`). `degraded` (exit `2`) means prerequisites may work but the operator-supplied backup manifest under the private `local` disk path `backup-restore/manifest.json` is missing. `failed` (exit `1`) means database connectivity, private attachment/message-body storage integrity, or manifest checksum validation failed. The command never exports production data, never restores backups, and never prints credentials, hosts, bucket names, or absolute paths.
+
+After an approved isolated restore drill, place a version-1 manifest that lists relative artifact paths and SHA-256 digests under `backup-restore/`, then rerun the gate. Keep secrets and `.env` material out of backup artifacts.
+
 ## Rollback procedure
 
 1. Stop or pause traffic according to the incident plan.
