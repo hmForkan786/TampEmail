@@ -74,16 +74,18 @@ it('does not dispatch a missing quarantine attachment and marks it failed', func
 });
 
 it('treats scanner exceptions as retryable failed state without unsafe details', function (): void {
-    config(['attachments.scanner_backend'=>'clamav']); Storage::fake('attachments');
+    config(['attachments.scanner_backend'=>'clamav']); Storage::fake('attachments'); Queue::fake();
     $fixture = rollbackFixture();
     $email = app(IngestInboundEmailAction::class)->execute($fixture[0], $fixture[1]);
     $attachment = $email->attachments()->first();
-    app()->bind(AttachmentScannerInterface::class, fn () => new class implements AttachmentScannerInterface {
+    expect(Storage::disk('attachments')->exists($attachment->storage_path))->toBeTrue();
+    app()->instance(AttachmentScannerInterface::class, new class implements AttachmentScannerInterface {
         public function scan(AttachmentScanRequest $request): AttachmentScanResultData { throw new RuntimeException('private scanner command'); }
     });
     $result = app(AttachmentScanService::class)->scan($attachment);
     expect($result->scan_status)->toBe(AttachmentScanStatus::Failed)->and($result->is_safe)->toBeNull()
-        ->and(json_encode($result))->not->toContain('private scanner command');
+        ->and(json_encode($result))->not->toContain('private scanner command')
+        ->and(Storage::disk('attachments')->exists($attachment->storage_path))->toBeTrue();
 });
 
 it('exposes job uniqueness without placing attachment bytes in its payload', function (): void {
