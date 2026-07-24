@@ -34,9 +34,7 @@ return Application::configure(basePath: dirname(__DIR__))
             : new DisabledAttachmentScanner(),
     ])
     ->withSchedule(function (Schedule $schedule): void {
-        $schedule->call(function (): void {
-            app(\App\Services\Ops\ProcessHeartbeatWriter::class)->schedulerTick();
-        })->name('processes:scheduler-heartbeat')->withoutOverlapping()->everyMinute();
+        $schedule->command('processes:scheduler-heartbeat')->withoutOverlapping()->everyMinute();
         $command = 'logs:cleanup --confirm';
         if (config('retention.audit_log_retention_cleanup_enabled', false) === true) {
             $command .= ' --confirm-audit-delete';
