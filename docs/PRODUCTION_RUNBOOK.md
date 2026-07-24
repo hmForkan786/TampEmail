@@ -28,31 +28,82 @@ Do not run destructive refresh, rollback, or seed operations against production 
 
 ## Queue worker deployment
 
-Deploy supervised queue workers using the configured queue connection and bounded process settings. Workers must restart on release, respect configured timeout/tries limits, and expose fresh heartbeats. Local `composer dev` uses `php artisan queue:listen --tries=1 --timeout=0`; production must use the deployment's reviewed worker configuration rather than copying local development settings.
+Deploy supervised queue workers using a durable queue connection (`redis` or `database`) and bounded process settings. The `sync` queue connection runs work inside the requesting process and does not prove worker readiness; worker heartbeat emission is skipped when the default queue connection is `sync`.
 
-Check readiness with:
+Worker heartbeats are emitted from queue lifecycle hooks (starting, looping, processed, failed, and stopping). Each worker process uses a separate process identity in the heartbeat registry, so multi-worker deployments are expected to show multiple fresh records when `QUEUE_WORKER_COUNT` is greater than one.
 
-```text
-php artisan processes:health --json
+Local `composer dev` uses `php artisan queue:listen --tries=1 --timeout=0`; production must use the deployment's reviewed worker configuration rather than copying local development settings. Example worker invocation shape (replace connection and queue names for the deployment):
+
+```bash
+php artisan queue:work redis \
+  --queue=process-verification \
+  --sleep=3 \
+  --tries=3 \
+  --timeout=110 \
+  --backoff=5
 ```
 
-Treat stale worker heartbeats, unavailable queue connections, failed jobs, or incompatible lock stores as degraded/failed conditions requiring action.
+Use the deployment Supervisor template under `deploy/supervisor/temail-worker.conf.example` for production placeholders. Workers must restart on release, respect configured timeout/tries limits, and expose fresh heartbeats.
 
 ## Scheduler deployment
 
-Run exactly one scheduler strategy. The application schedules the process heartbeat and optional retention/expiration tasks through Laravel scheduling. The scheduler must remain supervised and must produce fresh heartbeat records.
+Run exactly one scheduler strategy. Do not run supervised `schedule:work` and cron `schedule:run` together for the same application topology; dual strategies can duplicate maintenance work and confuse heartbeat freshness.
 
-Verify with:
+Supported strategy A — supervised long-running scheduler:
 
-```text
+```bash
+php artisan schedule:work
+```
+
+Supported strategy B — cron invoking the scheduler once per minute (substitute deployment paths only in the deployment system):
+
+```cron
+* * * * * cd /path/to/application && php artisan schedule:run >> /dev/null 2>&1
+```
+
+The application registers `processes:scheduler-heartbeat` every minute with overlap protection. Optional retention and inbox-expiration commands remain feature-flagged. The scheduler must remain supervised (or cron-driven) and must produce fresh heartbeat records.
+
+Manual scheduler heartbeat verification (does not replace the scheduled strategy):
+
+```bash
+php artisan processes:scheduler-heartbeat
+```
+
+## Heartbeat and readiness expectations
+
+Worker and scheduler heartbeats are operational evidence, not proof that every workload is healthy. Monitor freshness, status, failed jobs, queue backlog, and scheduler state. A stale heartbeat is degraded or failed and must not be hidden by a generic healthy fallback.
+
+Readiness rules confirmed by the repository:
+
+- Queue connection must not be `sync` for a healthy production readiness result.
+- Heartbeat cache/lock store must be `redis` or `database`; other stores are reported as incompatible.
+- Default heartbeat TTL is 180 seconds (`PROCESS_HEARTBEAT_TTL_SECONDS`).
+- Default worker heartbeat write interval is 30 seconds (`PROCESS_HEARTBEAT_WRITE_INTERVAL_SECONDS`).
+- Wait for at least one scheduler minute tick after starting the scheduler before expecting a fresh scheduler heartbeat.
+- `healthy` requires fresh worker and scheduler heartbeats within the configured TTL, plus non-breached backlog/failed-job thresholds.
+
+After a worker or scheduler restart, allow the warm-up window above before treating missing heartbeats as a regression. Stopped or expired worker records become stale after the TTL and no longer count toward the expected fresh worker count.
+
+## Process readiness verification
+
+```bash
+php artisan processes:health
 php artisan processes:health --json
 ```
 
-Do not run overlapping scheduler strategies unless explicitly reviewed; duplicate schedulers can duplicate maintenance work.
+Treat stale worker or scheduler heartbeats, `sync` queue connections, incompatible lock stores, failed jobs, or queue backlog breaches as degraded or failed conditions requiring action. Use `--json` for automation and incident evidence; keep credentials, private hosts, process identifiers, and cache keys out of tickets.
 
-## Heartbeat expectations
+## Process readiness deployment checklist
 
-Worker and scheduler heartbeats are operational evidence, not proof that every workload is healthy. Monitor freshness, status, failed jobs, queue backlog, and scheduler state. A stale heartbeat is degraded or failed and must not be hidden by a generic healthy fallback.
+- Durable queue backend configured (`redis` or `database`; not `sync`).
+- Shared cache/lock store configured (`redis` or `database`).
+- Worker supervisor running with the reviewed `queue:work` settings.
+- Exactly one scheduler strategy running (`schedule:work` or cron `schedule:run`).
+- Heartbeat warm-up completed (at least one scheduler minute tick; workers writing within the TTL).
+- `php artisan processes:health` / `--json` reports healthy.
+- Restart behavior verified (workers and scheduler reload cleanly; heartbeats refresh).
+- Stale process behavior verified (stopped workers fall outside freshness after TTL).
+- Logs and monitoring reviewed for restart loops, failed-job growth, backlog, and stale heartbeats.
 
 ## Signed webhook configuration
 
