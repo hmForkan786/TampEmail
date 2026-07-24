@@ -129,11 +129,14 @@ ClamAV is disabled by default. Enable it only when all of the following are true
 
 1. The approved daemon is reachable from the application runtime.
 2. `php artisan attachments:scanner-health --json` reports a green/healthy scanner state.
-3. The ClamAV integration suite passes against the intended daemon.
-4. Retryable unavailable outcomes and terminal infected/permanent-failure outcomes have been verified.
-5. Scanner failures cannot silently bypass scanning or mark attachments clean.
+3. `php artisan attachments:scanner-live-check --json` reports healthy after temporary clean and EICAR probes.
+4. The ClamAV integration suite passes against the intended daemon when operator evidence requires it.
+5. Retryable unavailable outcomes and terminal infected/permanent-failure outcomes have been verified.
+6. Scanner failures cannot silently bypass scanning or mark attachments clean.
 
 Use [`CLAMAV_INTEGRATION_TESTING.md`](CLAMAV_INTEGRATION_TESTING.md) for local and CI setup. An unavailable scanner is never a clean result; it remains pending/retryable or becomes a deterministic terminal failure after bounded exhaustion.
+
+`attachments:scanner-health` checks configuration and daemon reachability without scanning content. `attachments:scanner-live-check` verifies clean and infected behavior with temporary synthetic probes only; it does not process user attachments, persist business rows, or enable the production backend. Keep `ATTACHMENT_SCANNER_BACKEND=disabled` (fail closed) until both commands pass.
 
 ## Health-check commands
 
@@ -142,10 +145,13 @@ Run the confirmed application checks:
 ```text
 php artisan processes:health --json
 php artisan inbound:health
+php artisan attachments:scanner-health
 php artisan attachments:scanner-health --json
+php artisan attachments:scanner-live-check
+php artisan attachments:scanner-live-check --json
 ```
 
-The process command covers queue and scheduler readiness. The inbound command reports safe lifecycle metrics. The scanner command checks readiness without scanning an attachment. Non-healthy results require investigation.
+The process command covers queue and scheduler readiness. The inbound command reports safe lifecycle metrics. The scanner health command checks readiness without scanning an attachment. The scanner live-check command verifies temporary clean and EICAR probes only. Non-healthy results require investigation.
 
 ## Inbound health interpretation
 
