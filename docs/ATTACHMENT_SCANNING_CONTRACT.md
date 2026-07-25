@@ -51,6 +51,7 @@ Scanner signature/version may be retained as safe metadata. Malware signature na
 5. `clean` ⇒ `is_safe=true` and controlled download may be considered.
 6. `infected` ⇒ `is_safe=false`, retain quarantine evidence according to security policy, and block download.
 7. `failed` ⇒ `is_safe=null`, retry within the attempt limit, then retain blocked terminal failure for operations review.
+8. `skipped` ⇒ used only for an explicit configured policy (currently `ATTACHMENT_SCANNER_BACKEND=disabled`); `is_safe=null` and download remains blocked.
 
 Already-clean content with the same attachment checksum must not be scanned again unless an authorized manual rescan is requested. Duplicate message/attachment records must not create a second unsafe verdict for the same content.
 
@@ -70,6 +71,6 @@ Only `scan_status=clean` with `is_safe=true` and an existing private file may be
 
 ## Runtime and verification boundary
 
-The scanner backend defaults to `disabled` and must be explicitly configured before production scanning is enabled. Disabled or unavailable scanning is never equivalent to `clean`: attachments remain pending, retryable, or terminally failed and are not downloadable. Transient unavailable/timeout results remain retryable within the bounded attempt policy; infected, malformed, oversized, and other terminal failures remain blocked and fail closed.
+The scanner backend defaults to `disabled` and must be explicitly configured before production scanning is enabled. Disabled or unavailable scanning is never equivalent to `clean`. When the backend is explicitly configured as `disabled`, new attachments transition `pending → skipped` and remain undownloadable. Unavailable or timed-out scanning remains retryable within the bounded attempt policy; infected, malformed, oversized, and other terminal failures remain blocked and fail closed.
 
 The scanner health command and disposable integration-test setup are documented in [`CLAMAV_INTEGRATION_TESTING.md`](CLAMAV_INTEGRATION_TESTING.md). Production enablement, queue, storage, health, and operational requirements are documented in [`PRODUCTION_RUNBOOK.md`](PRODUCTION_RUNBOOK.md).

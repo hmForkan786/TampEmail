@@ -2,11 +2,11 @@
 
 use App\Actions\ApiKey\CreateApiKeyAction;
 use App\Enums\AttachmentScanStatus;
+use App\Models\ApiRequestLog;
 use App\Models\Attachment;
 use App\Models\Domain;
 use App\Models\Email;
 use App\Models\Inbox;
-use App\Models\ApiRequestLog;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Storage;
@@ -91,7 +91,7 @@ it('blocks unsafe scan states and missing files', function (): void {
     $url = fn (): string => '/api/v1/inboxes/'.$fixture['inbox']->id.'/emails/'.$fixture['email']->id.'/attachments/'.$fixture['attachment']->id;
     $token = attachmentDownloadKey($owner);
 
-    foreach ([AttachmentScanStatus::Pending, AttachmentScanStatus::Scanning, AttachmentScanStatus::Failed, AttachmentScanStatus::Infected] as $status) {
+    foreach ([AttachmentScanStatus::Pending, AttachmentScanStatus::Scanning, AttachmentScanStatus::Failed, AttachmentScanStatus::Infected, AttachmentScanStatus::Skipped] as $status) {
         $fixture['attachment']->update(['scan_status' => $status, 'is_safe' => false]);
         $this->withToken($token)->get($url())->assertNotFound();
     }
