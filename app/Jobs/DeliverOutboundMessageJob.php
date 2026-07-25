@@ -210,6 +210,8 @@ final class DeliverOutboundMessageJob implements ShouldBeUnique, ShouldQueue
             );
         }
 
+        // Rejected, permanent, and configuration failures are never retried.
+
         $this->markFailed(
             $claimed,
             $result->failureCode ?? 'transport_error',

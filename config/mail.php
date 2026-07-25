@@ -49,6 +49,29 @@ return [
             'local_domain' => env('MAIL_EHLO_DOMAIN', parse_url((string) env('APP_URL', 'http://localhost'), PHP_URL_HOST)),
         ],
 
+        /*
+        | Dedicated outbound inbox mailer. Uses OUTBOUND_SMTP_* exclusively so
+        | platform notification mail (MAIL_*) stays separate. Empty host means
+        | the outbound transport config validator will fail closed.
+        */
+        'outbound' => [
+            'transport' => 'smtp',
+            'scheme' => match (strtolower((string) env('OUTBOUND_SMTP_ENCRYPTION', 'tls'))) {
+                'ssl' => 'smtps',
+                'tls', 'starttls' => 'smtp',
+                'null', 'none', '' => null,
+                default => 'smtp',
+            },
+            'url' => null,
+            'host' => env('OUTBOUND_SMTP_HOST'),
+            'port' => env('OUTBOUND_SMTP_PORT', 587),
+            'username' => env('OUTBOUND_SMTP_USERNAME'),
+            'password' => env('OUTBOUND_SMTP_PASSWORD'),
+            'timeout' => env('OUTBOUND_SMTP_TIMEOUT', 30),
+            'local_domain' => env('OUTBOUND_SMTP_LOCAL_DOMAIN', parse_url((string) env('APP_URL', 'http://localhost'), PHP_URL_HOST)),
+            'verify_peer' => filter_var(env('OUTBOUND_SMTP_VERIFY_PEER', true), FILTER_VALIDATE_BOOL),
+        ],
+
         'ses' => [
             'transport' => 'ses',
         ],

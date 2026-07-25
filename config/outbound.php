@@ -35,7 +35,38 @@ return [
 
     'transport' => env('OUTBOUND_TRANSPORT', 'unavailable'),
 
-    'mailer' => env('OUTBOUND_MAILER', env('MAIL_MAILER', 'smtp')),
+    /*
+    | Dedicated outbound mailer name. Defaults to the dedicated "outbound"
+    | mailer (see config/mail.php). Do not silently inherit MAIL_MAILER=log.
+    */
+    'mailer' => env('OUTBOUND_MAILER', 'outbound'),
+
+    /*
+    |--------------------------------------------------------------------------
+    | Dedicated SMTP settings (production outbound)
+    |--------------------------------------------------------------------------
+    |
+    | Used by the dedicated "outbound" mailer. Empty credentials are never
+    | treated as valid when require_auth is true. Passwords must only live in
+    | environment / secret stores — never in logs or audit metadata.
+    |
+    */
+
+    'smtp' => [
+        'host' => env('OUTBOUND_SMTP_HOST'),
+        'port' => ($port = filter_var(env('OUTBOUND_SMTP_PORT', 587), FILTER_VALIDATE_INT, [
+            'options' => ['min_range' => 1, 'max_range' => 65535],
+        ])) === false ? 587 : $port,
+        'username' => env('OUTBOUND_SMTP_USERNAME'),
+        'password' => env('OUTBOUND_SMTP_PASSWORD'),
+        'encryption' => strtolower((string) env('OUTBOUND_SMTP_ENCRYPTION', 'tls')),
+        'timeout' => ($timeout = filter_var(env('OUTBOUND_SMTP_TIMEOUT', 30), FILTER_VALIDATE_INT, [
+            'options' => ['min_range' => 1, 'max_range' => 300],
+        ])) === false ? 30 : $timeout,
+        'local_domain' => env('OUTBOUND_SMTP_LOCAL_DOMAIN'),
+        'verify_peer' => filter_var(env('OUTBOUND_SMTP_VERIFY_PEER', true), FILTER_VALIDATE_BOOL),
+        'require_auth' => filter_var(env('OUTBOUND_SMTP_REQUIRE_AUTH', true), FILTER_VALIDATE_BOOL),
+    ],
 
     /*
     |--------------------------------------------------------------------------

@@ -69,6 +69,16 @@ final readonly class OutboundDeliveryResult
         );
     }
 
+    public static function configurationFailure(string $failureCode, ?string $failureMessage = null, ?string $provider = null): self
+    {
+        return new self(
+            result: OutboundTransportResult::ConfigurationFailure,
+            provider: $provider,
+            failureCode: self::sanitizeCode($failureCode),
+            failureMessage: self::sanitizeMessage($failureMessage),
+        );
+    }
+
     /**
      * @return array<string, mixed>
      */

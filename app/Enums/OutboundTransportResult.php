@@ -13,6 +13,7 @@ enum OutboundTransportResult: string
     case Rejected = 'rejected';
     case TemporaryFailure = 'temporary_failure';
     case PermanentFailure = 'permanent_failure';
+    case ConfigurationFailure = 'configuration_failure';
 
     /**
      * @return array<string, string>
@@ -24,6 +25,7 @@ enum OutboundTransportResult: string
             self::Rejected->value => 'Rejected',
             self::TemporaryFailure->value => 'Temporary failure',
             self::PermanentFailure->value => 'Permanent failure',
+            self::ConfigurationFailure->value => 'Configuration failure',
         ];
     }
 
@@ -53,7 +55,7 @@ enum OutboundTransportResult: string
             self::TemporaryFailure => $scheduleRetry
                 ? OutboundMessageState::Queued
                 : OutboundMessageState::Failed,
-            self::Rejected, self::PermanentFailure => OutboundMessageState::Failed,
+            self::Rejected, self::PermanentFailure, self::ConfigurationFailure => OutboundMessageState::Failed,
         };
     }
 }

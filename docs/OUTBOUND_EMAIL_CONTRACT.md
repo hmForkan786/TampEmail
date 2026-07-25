@@ -229,7 +229,8 @@ Results distinguish:
 | `accepted` | Provider accepted message | No (success → `sent`) |
 | `rejected` | Permanent policy/content rejection | No |
 | `temporary_failure` | Transient transport/provider issue | Yes, while attempts remain |
-| `permanent_failure` | Non-retryable transport/config/auth failure | No |
+| `permanent_failure` | Non-retryable transport failure | No |
+| `configuration_failure` | Missing/invalid SMTP or mailer config | No |
 
 Initial provider strategy:
 
@@ -336,11 +337,23 @@ A domain column may be added when send foundation lands if needed for per-domain
 | `OUTBOUND_ENABLED` | Global kill switch | `false` |
 | `OUTBOUND_SEND_ENABLED` / `OUTBOUND_REPLY_ENABLED` / `OUTBOUND_FORWARD_ENABLED` | Per-operation flags | `false` |
 | `OUTBOUND_TRANSPORT` | `unavailable`, `array`, `smtp`, `mail` | `unavailable` |
-| `OUTBOUND_MAILER` | Laravel mailer name for smtp/mail | `MAIL_MAILER` |
+| `OUTBOUND_MAILER` | Dedicated Laravel mailer name | `outbound` |
+| `OUTBOUND_SMTP_HOST` | Dedicated SMTP host (required for smtp) | empty |
+| `OUTBOUND_SMTP_PORT` | SMTP port | `587` |
+| `OUTBOUND_SMTP_USERNAME` / `OUTBOUND_SMTP_PASSWORD` | SMTP auth | empty |
+| `OUTBOUND_SMTP_ENCRYPTION` | `tls`, `ssl`, `starttls`, `none` | `tls` |
+| `OUTBOUND_SMTP_TIMEOUT` | Seconds | `30` |
+| `OUTBOUND_SMTP_LOCAL_DOMAIN` | EHLO / Message-ID domain | APP_URL host |
+| `OUTBOUND_SMTP_VERIFY_PEER` | TLS peer verification | `true` |
+| `OUTBOUND_SMTP_REQUIRE_AUTH` | Require username+password | `true` |
 | `OUTBOUND_SEND_MAX_ATTEMPTS` | Bounded delivery attempts | `3` |
 | `OUTBOUND_SEND_BACKOFF_SECONDS` | Comma-separated backoff | `60,300,900` |
 
-Missing or unknown transport fails closed. Never silently use local `log`/`sendmail` in production.
+Missing or unknown transport fails closed. Never silently use local `log`/`sendmail` in production. Platform `MAIL_*` remains separate from inbox outbound (`OUTBOUND_SMTP_*` + mailer `outbound`).
+
+Transport results: `accepted`, `rejected`, `temporary_failure`, `permanent_failure`, `configuration_failure`.
+
+Readiness validates transport selection, mailer existence, host/port/encryption/credentials without sending mail.
 
 ## Status meanings
 

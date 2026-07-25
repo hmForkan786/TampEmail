@@ -50,9 +50,11 @@ it('maps transport results to message states', function (): void {
     expect(OutboundTransportResult::Accepted->toMessageState())->toBe(OutboundMessageState::Sent)
         ->and(OutboundTransportResult::Rejected->toMessageState())->toBe(OutboundMessageState::Failed)
         ->and(OutboundTransportResult::PermanentFailure->toMessageState())->toBe(OutboundMessageState::Failed)
+        ->and(OutboundTransportResult::ConfigurationFailure->toMessageState())->toBe(OutboundMessageState::Failed)
         ->and(OutboundTransportResult::TemporaryFailure->toMessageState(scheduleRetry: true))->toBe(OutboundMessageState::Queued)
         ->and(OutboundTransportResult::TemporaryFailure->toMessageState(scheduleRetry: false))->toBe(OutboundMessageState::Failed)
         ->and(OutboundTransportResult::TemporaryFailure->isRetryable())->toBeTrue()
+        ->and(OutboundTransportResult::ConfigurationFailure->isRetryable())->toBeFalse()
         ->and(OutboundTransportResult::Accepted->isSuccess())->toBeTrue();
 });
 

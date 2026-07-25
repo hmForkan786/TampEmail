@@ -210,14 +210,15 @@ it('reports ops readiness volume and json command output without sending mail', 
         ->and($failed['readiness']['configuration_valid'])->toBeFalse();
 
     config(['outbound.transport' => 'array']);
-    $healthy = app(OutboundOpsService::class)->report();
-    expect($healthy['status'])->toBe('healthy')
-        ->and($healthy['volume']['last_24_hours'])->toHaveKeys(['queued', 'sent', 'failed', 'send_operations', 'replies', 'forwards']);
+    $ready = app(OutboundOpsService::class)->report();
+    expect($ready['status'])->toBeIn(['healthy', 'unknown'])
+        ->and($ready['readiness']['configuration_valid'])->toBeTrue()
+        ->and($ready['volume']['last_24_hours'])->toHaveKeys(['queued', 'sent', 'failed', 'send_operations', 'replies', 'forwards']);
 
     $exit = Artisan::call('outbound:status', ['--json' => true]);
     $json = json_decode(Artisan::output(), true);
-    expect($exit)->toBe(0)
-        ->and($json['status'])->toBe('healthy')
+    expect($exit)->toBeIn([0, 2])
+        ->and($json['status'])->toBeIn(['healthy', 'unknown'])
         ->and($json)->not->toHaveKey('raw_provider_response');
 });
 

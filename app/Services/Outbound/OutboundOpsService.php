@@ -51,20 +51,20 @@ final class OutboundOpsService
         if (! config('outbound.enabled', false)) {
             return [
                 'transport' => (string) config('outbound.transport', 'unavailable'),
+                'mailer' => (string) config('outbound.mailer', 'outbound'),
                 'configuration_valid' => false,
                 'state' => 'unknown',
                 'failure_code' => 'outbound_disabled',
+                'checks' => [],
                 'recent_sent_at' => null,
                 'recent_failed_at' => null,
                 'recent_failure_code' => null,
             ];
         }
 
-        $transport = (string) config('outbound.transport', 'unavailable');
-        $valid = in_array($transport, ['smtp', 'mail', 'array'], true);
-        if ($transport === 'unavailable') {
-            $valid = false;
-        }
+        $validation = app(OutboundTransportConfigValidator::class)->validate();
+        $transport = $validation['transport'];
+        $valid = $validation['valid'];
 
         $recentSent = OutboundMessage::query()
             ->where('state', OutboundMessageState::Sent->value)
@@ -75,16 +75,25 @@ final class OutboundOpsService
             ->orderByDesc('failed_at')
             ->first(['failed_at', 'failure_code']);
 
+        $temporaryRecent = AuditLog::query()
+            ->where('action', 'outbound.retry_scheduled')
+            ->where('created_at', '>=', now()->subHour())
+            ->count();
+
         $state = match (true) {
             ! $valid => 'failed',
-            default => 'healthy',
+            $temporaryRecent >= (int) config('outbound.ops.temporary_failure_rate_threshold', 10) => 'degraded',
+            $recentSent !== null => 'healthy',
+            default => 'unknown',
         };
 
         return [
             'transport' => $transport,
+            'mailer' => $validation['mailer'],
             'configuration_valid' => $valid,
             'state' => $state,
-            'failure_code' => $valid ? null : 'invalid_config',
+            'failure_code' => $valid ? null : ($validation['failure_code'] ?? 'invalid_config'),
+            'checks' => $validation['checks'],
             'recent_sent_at' => $recentSent?->toIso8601String(),
             'recent_failed_at' => $recentFailed?->failed_at?->toIso8601String(),
             'recent_failure_code' => $recentFailed?->failure_code,
@@ -205,13 +214,17 @@ final class OutboundOpsService
     private function overallStatus(array $readiness, array $issues): string
     {
         $state = (string) ($readiness['state'] ?? 'unknown');
+        if ($state === 'unknown' && ! ($readiness['configuration_valid'] ?? false)
+            && ($readiness['failure_code'] ?? null) === 'outbound_disabled') {
+            return 'unknown';
+        }
         if ($state === 'unknown') {
             return 'unknown';
         }
         if ($state === 'failed' || in_array('invalid_config', $issues, true)) {
             return 'failed';
         }
-        if ($issues !== []) {
+        if ($state === 'degraded' || $issues !== []) {
             return 'degraded';
         }
 
