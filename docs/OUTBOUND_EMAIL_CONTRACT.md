@@ -451,6 +451,43 @@ When no SPF/DKIM expectations are configured (e.g. empty DKIM tokens + generic p
 
 Audit: `outbound.domain_verification_started`, `outbound.domain_verified`, `outbound.domain_degraded`, `outbound.domain_verification_failed`.
 
+## Delivery attempts, timeline, and reconciliation (Prompt 614)
+
+### Delivery attempts
+
+Each transport submission appends an `outbound_delivery_attempts` row (unique on `outbound_message_id` + `attempt_number`). Rows store transport name, normalized result, safe failure category, provider message id, ambiguous flag, and timings — never body, BCC, raw SMTP responses, or credentials. Retries create new attempt rows; prior attempts are never overwritten.
+
+### Message timeline
+
+`GET /api/v1/outbound-messages/{id}/timeline` (`outbound_messages:read`) builds a read model from audit logs and provider events.
+
+| Audience | Visible | Hidden |
+|---|---|---|
+| Owner (user) | created, queued, sending, retry_scheduled, sent, delivered, delayed, failed, cancelled, manual_retry | bounce diagnostics, complaint metadata, suppression source, BCC, raw provider ids/signatures, admin-only actions |
+| Platform admin | above plus bounced/complained labels, safe failure categories, reconciliation flags | secrets, bodies, raw webhook payloads, attachment paths |
+
+Filament: **Operations → Outbound Message Timeline** (admin).
+
+### State precedence (enforced)
+
+Illustrative order (higher wins; temporary failure never overwrites delivered; complaint after delivery stays visible and triggers suppression without undoing `delivered`):
+
+```text
+cancelled > delivered > permanent failure / bounced / rejected > sent > temporary failure / delayed > queued
+```
+
+Duplicate provider events are idempotent. Ambiguous transport acceptance is flagged for manual review — never auto-resent.
+
+### Reconciliation
+
+```bash
+php artisan outbound:reconcile-events
+```
+
+Orchestrates unmatched provider-event retry, out-of-order repair, expired unmatched terminalization, missing-attempt backfill, and impossible-state detection. Bounded batches + locks; safe deterministic fixes only; otherwise `reconciliation_flagged_at` / `reconciliation_note`. Related: `outbound:reconcile-stale-sending`, `outbound:reconcile-unmatched-events` (see `docs/OUTBOUND_WORKER_DEPLOYMENT.md`).
+
+Retention follows existing audit / provider-event retention policy; timeline entries are derived, not a second store of message bodies.
+
 ## Foundational code (Prompt 601)
 
 | Artifact | Role |

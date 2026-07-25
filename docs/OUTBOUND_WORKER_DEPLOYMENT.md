@@ -184,6 +184,9 @@ Registered in `bootstrap/app.php`, each with `withoutOverlapping()`:
 | `outbound:verify-domains` | hourly | SPF/DKIM/DMARC readiness (existing) |
 | `outbound:reconcile-stale-sending` | every 5 minutes | Stale `sending` requeue/flag |
 | `outbound:reconcile-unmatched-events` | every 15 minutes | Unmatched provider-event retry |
+| `outbound:reconcile-events` | every 15 minutes | Full orchestration: unmatched + out-of-order + attempt backfill + impossible-state flags |
+
+`outbound:reconcile-events` composes the unmatched/out-of-order paths with delivery-attempt repair and impossible-state detection. It never auto-resends ambiguous messages. See Prompt 614 section in `docs/OUTBOUND_EMAIL_CONTRACT.md` for timeline and precedence.
 
 All outbound maintenance commands are bounded (explicit `--limit`, default
 from config), take a short-lived cache lock, and never log message bodies,
