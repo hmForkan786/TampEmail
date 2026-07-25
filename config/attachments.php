@@ -23,4 +23,11 @@ return [
         // Existing production contract defaults; override via ATTACHMENT_SCAN_BACKOFF_SECONDS.
         'backoff_seconds' => env('ATTACHMENT_SCAN_BACKOFF_SECONDS', '60,300,900'),
     ],
+    'ops' => [
+        'pending_backlog_threshold' => (int) env('ATTACHMENT_SCAN_PENDING_BACKLOG_THRESHOLD', 100),
+        'oldest_pending_seconds_threshold' => (int) env('ATTACHMENT_SCAN_OLDEST_PENDING_SECONDS', 600),
+        'failed_scans_last_hour_threshold' => (int) env('ATTACHMENT_SCAN_FAILED_LAST_HOUR_THRESHOLD', 5),
+        'retry_exhausted_surge_threshold' => (int) env('ATTACHMENT_SCAN_RETRY_EXHAUSTED_SURGE', 10),
+        'live_check_per_minute' => (int) env('ATTACHMENT_SCAN_LIVE_CHECK_PER_MINUTE', 1),
+    ],
 ];

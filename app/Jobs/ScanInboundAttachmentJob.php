@@ -26,7 +26,10 @@ final class ScanInboundAttachmentJob implements ShouldBeUnique, ShouldQueue
 
     public int $uniqueFor = 3600;
 
-    public function __construct(public readonly string $attachmentId) {}
+    public function __construct(public readonly string $attachmentId)
+    {
+        $this->onQueue((string) config('queue.workloads.attachment_scanning', 'attachment-scanning'));
+    }
 
     public function uniqueId(): string
     {

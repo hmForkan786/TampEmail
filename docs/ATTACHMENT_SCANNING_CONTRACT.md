@@ -74,3 +74,23 @@ Only `scan_status=clean` with `is_safe=true` and an existing private file may be
 The scanner backend defaults to `disabled` and must be explicitly configured before production scanning is enabled. Disabled or unavailable scanning is never equivalent to `clean`. When the backend is explicitly configured as `disabled`, new attachments transition `pending → skipped` and remain undownloadable. Unavailable or timed-out scanning remains retryable within the bounded attempt policy; infected, malformed, oversized, and other terminal failures remain blocked and fail closed.
 
 The scanner health command and disposable integration-test setup are documented in [`CLAMAV_INTEGRATION_TESTING.md`](CLAMAV_INTEGRATION_TESTING.md). Production enablement, queue, storage, health, and operational requirements are documented in [`PRODUCTION_RUNBOOK.md`](PRODUCTION_RUNBOOK.md).
+
+## Operations monitoring
+
+Authorized platform admins can review scanner operations in the Filament **Operations → Attachment Scanner** page. Page load uses the lightweight health probe only and never runs the EICAR live-check automatically.
+
+Operational commands:
+
+```bash
+php artisan attachments:scanner-health --json
+php artisan attachments:scanner-live-check --json
+php artisan attachments:scanner-status --json
+```
+
+| Command | Purpose |
+|---|---|
+| `attachments:scanner-health` | Lightweight readiness (PING / config). Safe for frequent monitoring. |
+| `attachments:scanner-live-check` | Explicit clean + EICAR content probes in memory. Rate-limit in UI; do not schedule continuously. |
+| `attachments:scanner-status` | Aggregate readiness, 24h/7d counts, queue health, and quarantine overview. |
+
+Expected readiness states: `healthy`, `degraded`, `failed`, `unknown` (disabled backend). Queue workers must consume the configured attachment scanning queue (`QUEUE_ATTACHMENT_SCANNING`, default `attachment-scanning`). Quarantined infected/failed attachments are reviewed in **Platform → Quarantined Attachments**. Common failure codes include `unavailable`, `timeout`, `invalid_config`, `unsupported`, `retry_exhausted`, and `health_unavailable`. Never log attachment bytes, storage paths, or raw scanner responses while troubleshooting.
