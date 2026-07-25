@@ -41,6 +41,7 @@ final class OutboundLaunchReadinessService
         private readonly OutboundProviderEventParserRegistry $parserRegistry,
         private readonly OutboundLaunchControlService $launchControl,
         private readonly OutboundCanaryService $canaries,
+        private readonly OutboundProviderRegistry $providers,
     ) {}
 
     /**
@@ -207,7 +208,7 @@ final class OutboundLaunchReadinessService
     }
 
     /**
-     * @return array{provider: string, parser_resolves: bool, webhook_secret_present: bool}
+     * @return array{provider: string, parser_resolves: bool, webhook_secret_present: bool, secondary_provider: string|null, secondary: array<string, mixed>|null, failover_enabled: bool}
      */
     private function providerReadiness(): array
     {
@@ -224,10 +225,18 @@ final class OutboundLaunchReadinessService
             ? trim((string) config('outbound.delivery_webhook.providers.ses.topic_arn', '')) !== ''
             : trim((string) config('outbound.delivery_webhook.providers.generic.secret', '')) !== '';
 
+        $secondary = $this->providers->secondaryProvider();
+
         return [
             'provider' => $provider,
             'parser_resolves' => $parserResolves,
             'webhook_secret_present' => $webhookSecretPresent,
+            // Secondary readiness is informational only — it never gates
+            // overall launch `status` because no automatic failover exists
+            // to depend on it. Only the manual retry action reads it live.
+            'secondary_provider' => $secondary,
+            'secondary' => $secondary !== null ? $this->providers->readiness($secondary) : null,
+            'failover_enabled' => $this->providers->failoverEnabled(),
         ];
     }
 

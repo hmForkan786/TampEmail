@@ -25,6 +25,9 @@ use App\Services\Dns\PhpDnsResolver;
 use App\Services\Ops\ProcessHeartbeatWriter;
 use App\Services\Outbound\GenericOutboundProviderEventParser;
 use App\Services\Outbound\OutboundProviderEventParserRegistry;
+use App\Services\Outbound\OutboundProviderRegistry;
+use App\Services\Outbound\OutboundTransportConfigValidator;
+use App\Services\Outbound\OutboundTransportManager;
 use App\Services\Outbound\SesOutboundProviderEventParser;
 use Illuminate\Cache\RateLimiting\Limit;
 use Illuminate\Console\Events\ScheduledTaskFailed;
@@ -103,6 +106,18 @@ class AppServiceProvider extends ServiceProvider
                 $app->make(GenericOutboundProviderEventParser::class),
                 $app->make(SesOutboundProviderEventParser::class),
             ]);
+        });
+
+        // Prompt 619: single source of truth for provider identity, capability,
+        // and readiness lookups. Depends only on already-bound/autowireable
+        // services, so this binding exists mainly to document intent and give
+        // a stable resolution point for tests/ops.
+        $this->app->singleton(OutboundProviderRegistry::class, function ($app): OutboundProviderRegistry {
+            return new OutboundProviderRegistry(
+                $app->make(OutboundTransportManager::class),
+                $app->make(OutboundProviderEventParserRegistry::class),
+                $app->make(OutboundTransportConfigValidator::class),
+            );
         });
     }
 

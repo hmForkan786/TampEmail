@@ -19,6 +19,7 @@ final class OutboundLaunchConfigValidator
         private readonly OutboundTransportConfigValidator $transportValidator,
         private readonly OutboundQueueReadinessService $queueReadiness,
         private readonly OutboundLaunchControlService $launchControl,
+        private readonly OutboundProviderRegistry $providers,
     ) {}
 
     /**
@@ -79,6 +80,14 @@ final class OutboundLaunchConfigValidator
             $warnings[] = 'emergency_stop_active_with_live_rollout_mode';
         }
 
+        // Prompt 619: provider portability config errors (unsupported
+        // primary/secondary, duplicated identity, failover enabled without a
+        // usable secondary) always fail the overall validation, regardless
+        // of rollout mode — a broken provider configuration is never safe to
+        // ship live traffic against.
+        $providerErrors = $this->providers->configErrors();
+        $errors = [...$errors, ...$providerErrors];
+
         return [
             'valid' => $errors === [],
             'errors' => $errors,
@@ -95,6 +104,10 @@ final class OutboundLaunchConfigValidator
                 'queue_valid' => $queueValid,
                 'verified_domain_count' => $verifiedDomainCount,
                 'webhook_secret_present' => $webhookSecretPresent,
+                'primary_provider' => $this->providers->primaryProvider(),
+                'secondary_provider' => $this->providers->secondaryProvider(),
+                'failover_enabled' => $this->providers->failoverEnabled(),
+                'provider_config_errors' => $providerErrors,
             ],
         ];
     }

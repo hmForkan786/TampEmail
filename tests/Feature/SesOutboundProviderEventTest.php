@@ -10,9 +10,9 @@ use App\Models\Domain;
 use App\Models\Inbox;
 use App\Models\OutboundMessage;
 use App\Models\OutboundProviderEvent;
-use App\Models\OutboundRecipientSuppression;
 use App\Models\User;
 use App\Services\Outbound\OutboundProviderEventProcessor;
+use App\Services\Outbound\OutboundSuppressionService;
 use App\Services\Outbound\SesOutboundProviderEventParser;
 use App\Services\Outbound\SesSnsSignatureVerifier;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -292,8 +292,8 @@ it('maps SES event types to normalized outbound types', function (): void {
         ->toBe(OutboundProviderEventType::TemporaryFailure);
 });
 
-it('correlates SES events to smtp-accepted messages and extracts message ids', function (): void {
-    $message = seedSesSentMessage('<corr@example.test>', 'smtp');
+it('correlates SES events to ses-tagged messages and extracts message ids', function (): void {
+    $message = seedSesSentMessage('<corr@example.test>', 'ses');
     $envelope = sesNotificationEnvelope([
         'notificationType' => 'Delivery',
         'mail' => [
@@ -310,6 +310,49 @@ it('correlates SES events to smtp-accepted messages and extracts message ids', f
     expect($result['outcome'])->toBe('delivered')
         ->and($message->fresh()->state)->toBe(OutboundMessageState::Delivered)
         ->and($data->providerMessageId)->toBe('<corr@example.test>');
+});
+
+it('does not correlate SES events to a different provider-tagged message by default (provider isolation)', function (): void {
+    // Prompt 619: transport_aliases defaults to empty — a secondary/other
+    // provider's events must never mutate a message attributed to a
+    // different provider identity via a provider-message-id collision.
+    $message = seedSesSentMessage('<isolated@example.test>', 'smtp');
+    $envelope = sesNotificationEnvelope([
+        'notificationType' => 'Delivery',
+        'mail' => [
+            'messageId' => 'ses-internal-isolated',
+            'commonHeaders' => ['messageId' => 'isolated@example.test'],
+        ],
+        'delivery' => ['timestamp' => now()->toIso8601String()],
+    ], 'sns-isolated-1');
+
+    $data = app(SesOutboundProviderEventParser::class)
+        ->parse(request(), 'ses', json_encode($envelope, JSON_THROW_ON_ERROR));
+
+    $result = app(OutboundProviderEventProcessor::class)->ingest($data);
+    expect($result['outcome'])->toBe('unmatched')
+        ->and($message->fresh()->state)->toBe(OutboundMessageState::Sent);
+});
+
+it('correlates SES events to legacy transport-tagged messages only when an alias is explicitly configured', function (): void {
+    config(['outbound.delivery_webhook.providers.ses.transport_aliases' => ['smtp']]);
+
+    $message = seedSesSentMessage('<alias-corr@example.test>', 'smtp');
+    $envelope = sesNotificationEnvelope([
+        'notificationType' => 'Delivery',
+        'mail' => [
+            'messageId' => 'ses-internal-alias',
+            'commonHeaders' => ['messageId' => 'alias-corr@example.test'],
+        ],
+        'delivery' => ['timestamp' => now()->toIso8601String()],
+    ], 'sns-alias-corr-1');
+
+    $data = app(SesOutboundProviderEventParser::class)
+        ->parse(request(), 'ses', json_encode($envelope, JSON_THROW_ON_ERROR));
+
+    $result = app(OutboundProviderEventProcessor::class)->ingest($data);
+    expect($result['outcome'])->toBe('delivered')
+        ->and($message->fresh()->state)->toBe(OutboundMessageState::Delivered);
 });
 
 it('stores unmatched SES events and remains idempotent on duplicates', function (): void {
@@ -339,7 +382,7 @@ it('suppresses on SES bounce and complaint but not temporary delay', function ()
     $delayMessage->forceFill(['to_recipients' => ['delay@example.test']])->save();
     $processor = app(OutboundProviderEventProcessor::class);
     $parser = app(SesOutboundProviderEventParser::class);
-    $suppressions = app(\App\Services\Outbound\OutboundSuppressionService::class);
+    $suppressions = app(OutboundSuppressionService::class);
 
     $bounce = $parser->parse(request(), 'ses', json_encode(sesNotificationEnvelope([
         'notificationType' => 'Bounce',

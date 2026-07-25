@@ -37,16 +37,42 @@ return [
 
     /*
     |--------------------------------------------------------------------------
-    | Delivery provider identity (Prompt 611)
+    | Delivery provider identity (Prompt 611, extended 619)
     |--------------------------------------------------------------------------
     |
     | Identifies which vendor adapter correlates provider events with accepted
     | SMTP submissions. Supported: generic, ses. Unsupported values fail closed
     | for provider-event readiness (transport may still use smtp).
     |
+    | `provider` is kept as a back-compat alias for `primary_provider`: when
+    | `OUTBOUND_PRIMARY_PROVIDER` is unset, it falls back to `OUTBOUND_PROVIDER`
+    | so every existing single-provider call site that reads
+    | `config('outbound.provider')` automatically gets primary-provider
+    | semantics without any code changes. See OutboundProviderRegistry and
+    | docs/OUTBOUND_PROVIDER_PORTABILITY.md.
+    |
+    | A secondary provider may be configured for failover *readiness* only
+    | (see OutboundFailoverEligibility / RetryOutboundMessageWithProviderAction).
+    | Automatic cross-provider retry is never enabled by this config alone —
+    | `failover_enabled` only gates a defense-in-depth check inside code paths
+    | that also independently verify eligibility, readiness, and domain auth.
+    | No automatic cross-provider retry exists in DeliverOutboundMessageJob
+    | today; only the manual, audited admin action honors this flag.
+    |
     */
 
-    'provider' => strtolower((string) env('OUTBOUND_PROVIDER', 'generic')),
+    'provider' => strtolower(trim((string) env('OUTBOUND_PRIMARY_PROVIDER', env('OUTBOUND_PROVIDER', 'generic')))),
+
+    'primary_provider' => strtolower(trim((string) env('OUTBOUND_PRIMARY_PROVIDER', env('OUTBOUND_PROVIDER', 'generic')))),
+
+    'secondary_provider' => ($outboundSecondaryProvider = strtolower(trim((string) env('OUTBOUND_SECONDARY_PROVIDER', '')))) !== ''
+        ? $outboundSecondaryProvider
+        : null,
+
+    // Defaults to false: automatic cross-provider retry has not been proven
+    // duplicate-safe for ambiguous acceptance and is not implemented in
+    // DeliverOutboundMessageJob. See docs/OUTBOUND_PROVIDER_PORTABILITY.md.
+    'failover_enabled' => filter_var(env('OUTBOUND_FAILOVER_ENABLED', false), FILTER_VALIDATE_BOOL),
 
     /*
     | Dedicated outbound mailer name. Defaults to the dedicated "outbound"
@@ -262,8 +288,19 @@ return [
                 'auto_confirm_subscriptions' => false,
                 'content_types' => ['application/json', 'text/plain'],
                 'max_body_bytes' => (int) env('OUTBOUND_SES_WEBHOOK_MAX_BODY_BYTES', 262144),
-                // SMTP relay submissions store transport driver names; allow correlation.
-                'transport_aliases' => ['smtp', 'mail', 'ses', 'array'],
+                // Empty by default (Prompt 619): with the provider registry,
+                // messages sent through the ses vendor path are always
+                // tagged provider=ses at write time, so no alias is needed.
+                // Left configurable (never widened automatically) for
+                // operators migrating historical transport-driver-tagged
+                // rows; a non-empty list here is an explicit, audited
+                // opt-in, not a default, because a wide alias list lets a
+                // secondary provider's events mutate a primary-attributed
+                // message via provider-message-id collision.
+                'transport_aliases' => array_values(array_filter(array_map(
+                    'trim',
+                    explode(',', (string) env('OUTBOUND_SES_TRANSPORT_ALIASES', '')),
+                ))),
             ],
         ], static fn ($value) => is_array($value)),
     ],

@@ -338,17 +338,20 @@ First vendor-specific adapter. Selected because the project already stubs AWS/SE
 | Auth | Amazon SNS signature verification (RSA, SigningCertURL) |
 | Content-Type | `text/plain` or `application/json` (SNS default is text/plain) |
 | Correlation | Prefer `mail.commonHeaders.messageId`; fall back to `mail.messageId` |
-| Transport identity | Set `OUTBOUND_PROVIDER=ses` so accepted SMTP messages store `provider=ses` (SMTP aliases still correlate) |
+| Transport identity | Set `OUTBOUND_PRIMARY_PROVIDER=ses` (or `OUTBOUND_PROVIDER=ses` for back-compat) so accepted SMTP messages store `provider=ses` |
 
 **Environment**
 
 | Env | Purpose | Default |
 |---|---|---|
-| `OUTBOUND_PROVIDER` | `generic` or `ses` | `generic` |
+| `OUTBOUND_PROVIDER` | Back-compat alias/fallback for `OUTBOUND_PRIMARY_PROVIDER` | `generic` |
+| `OUTBOUND_PRIMARY_PROVIDER` | `generic` or `ses` | falls back to `OUTBOUND_PROVIDER` |
+| `OUTBOUND_SECONDARY_PROVIDER` | Optional second provider identity (see Prompt 619 below) | empty |
 | `OUTBOUND_SES_SNS_TOPIC_ARN` | Optional TopicArn allowlist | empty |
 | `OUTBOUND_SES_CERT_CACHE_TTL_SECONDS` | SNS signing cert cache TTL | `3600` |
 | `OUTBOUND_SES_SUBSCRIPTION_CACHE_TTL_SECONDS` | Pending SubscribeURL cache | `3600` |
 | `OUTBOUND_SES_WEBHOOK_MAX_BODY_BYTES` | Body limit for SES | `262144` |
+| `OUTBOUND_SES_TRANSPORT_ALIASES` | Comma-separated legacy transport-driver names (e.g. `smtp`) whose messages should still correlate with SES webhooks (Prompt 619 migration opt-in) | empty (no aliases; provider-scoped only) |
 
 **Signature verification**
 
@@ -456,6 +459,10 @@ Audit: `outbound.domain_verification_started`, `outbound.domain_verified`, `outb
 ## Subscription usage / entitlement metering (Prompt 618)
 
 Beyond the boolean `send_email`/`reply_email`/`forward_email` gates above, outbound activity is metered against optional per-period plan limits: `outbound_messages_per_period`, `outbound_recipients_per_period`, `outbound_attachment_bytes_per_period`. A plan without one of these features attached is **unlimited** for that dimension (never a silent default) — see `docs/OUTBOUND_USAGE_ACCOUNTING.md` for the full design, reservation lifecycle, release policy, reconciliation command (`php artisan outbound:reconcile-usage`), and the user-visible `GET /api/v1/outbound-usage` endpoint (`outbound_messages:read`). This is entitlement/quota accounting only — no payment collection, invoicing, or metered billing export. Fully independent from the abuse controls (`OutboundRateLimiter`) documented below.
+
+## Provider portability / secondary failover foundation (Prompt 619)
+
+A secondary provider identity can now be configured (`OUTBOUND_SECONDARY_PROVIDER`) alongside the primary, with per-provider capability/readiness lookups (`OutboundProviderRegistry`), provider-scoped webhook correlation, and per-provider domain-authentication records. **Automatic cross-provider retry is not implemented anywhere** — duplicate-safety cannot be proven for every failure shape, so only an audited, platform-admin-only manual action (`RetryOutboundMessageWithProviderAction`) can resend a message through a different provider, and only for a narrow set of provably-safe pre-acceptance failures. See `docs/OUTBOUND_PROVIDER_PORTABILITY.md` for the full design, the eligibility rules, and the explicit list of what is and is not covered.
 
 ## Delivery attempts, timeline, and reconciliation (Prompt 614)
 

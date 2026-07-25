@@ -19,10 +19,12 @@ use Illuminate\Support\Carbon;
  * @property string $outbound_message_id
  * @property int $attempt_number
  * @property string|null $transport
+ * @property string|null $provider
  * @property OutboundDeliveryAttemptState $state
  * @property string|null $result
  * @property string|null $failure_category
  * @property string|null $provider_message_id
+ * @property string|null $failover_reason_code
  * @property bool $ambiguous
  * @property Carbon|null $started_at
  * @property Carbon|null $completed_at
@@ -42,10 +44,12 @@ class OutboundDeliveryAttempt extends BaseModel
         'outbound_message_id',
         'attempt_number',
         'transport',
+        'provider',
         'state',
         'result',
         'failure_category',
         'provider_message_id',
+        'failover_reason_code',
         'ambiguous',
         'started_at',
         'completed_at',

@@ -332,6 +332,28 @@ final class OutboundProviderEventProcessor
         });
     }
 
+    /**
+     * Built-in, non-configurable aliases for a provider's own historical
+     * tagging quirks — distinct from operator-configured aliases in
+     * config/outbound.php, which exist only for explicit migration opt-in.
+     *
+     * `OutboundTransportManager::providerIdentity()` tags messages sent while
+     * `OUTBOUND_PROVIDER`/`OUTBOUND_PRIMARY_PROVIDER` is `generic` with the
+     * raw local mailer driver name (`smtp`, `mail`, `array`) rather than the
+     * literal string `generic`, for legacy readability. Those raw driver
+     * names are still exclusively "generic vendor" identities — no other
+     * provider is ever tagged with them — so a generic-provider webhook event
+     * must keep matching them to avoid breaking correlation for every
+     * generic-provider message ever sent. This is safe: it never grants `ses`
+     * (or any future provider) access to another provider's messages.
+     *
+     * @return list<string>
+     */
+    private function builtInAliases(string $provider): array
+    {
+        return $provider === 'generic' ? ['smtp', 'mail', 'array'] : [];
+    }
+
     private function resolveMessage(OutboundProviderEventData $data): ?OutboundMessage
     {
         if ($data->providerMessageId === null || $data->providerMessageId === '') {
@@ -343,22 +365,25 @@ final class OutboundProviderEventProcessor
             return null;
         }
 
-        $aliases = config("outbound.delivery_webhook.providers.{$data->provider}.transport_aliases", []);
-        $aliases = is_array($aliases) ? array_values(array_filter(array_map('strval', $aliases))) : [];
+        $configuredAliases = config("outbound.delivery_webhook.providers.{$data->provider}.transport_aliases", []);
+        $configuredAliases = is_array($configuredAliases) ? array_values(array_filter(array_map('strval', $configuredAliases))) : [];
+        $aliases = array_values(array_unique([...$this->builtInAliases($data->provider), ...$configuredAliases]));
 
+        // Provider-scoped by default, with no exception for any provider
+        // name (including generic): a webhook event may only correlate to
+        // messages attributed to its own provider identity, or to an
+        // explicitly configured/built-in alias. This is what prevents
+        // provider B's events from mutating provider A's attempt via a
+        // provider-message-id collision once a secondary provider is
+        // configured.
         $matches = OutboundMessage::query()
             ->whereIn('provider_message_id', $candidates)
-            ->when(
-                $data->provider !== 'generic' && $aliases === [],
-                fn ($query) => $query->where('provider', $data->provider),
-            )
-            ->when(
-                $aliases !== [],
-                fn ($query) => $query->where(function ($inner) use ($data, $aliases): void {
-                    $inner->where('provider', $data->provider)
-                        ->orWhereIn('provider', $aliases);
-                }),
-            )
+            ->where(function ($inner) use ($data, $aliases): void {
+                $inner->where('provider', $data->provider);
+                if ($aliases !== []) {
+                    $inner->orWhereIn('provider', $aliases);
+                }
+            })
             ->lockForUpdate()
             ->get();
 

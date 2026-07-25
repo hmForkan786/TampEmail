@@ -198,13 +198,24 @@ final class OutboundDomainAuthenticationService
         return $auth->fresh();
     }
 
-    public function assertDomainReady(Domain $domain): void
+    /**
+     * @param  string|null  $provider  Named provider to check readiness for.
+     *                                 Defaults to the primary provider.
+     *                                 Passing a secondary provider checks
+     *                                 that provider's own domain-auth
+     *                                 record — primary DKIM/SPF being
+     *                                 verified never implies the secondary
+     *                                 is ready; each provider identity has
+     *                                 an independent record.
+     */
+    public function assertDomainReady(Domain $domain, ?string $provider = null): void
     {
         if (! config('outbound.domain_authentication.enforce', true)) {
             return;
         }
 
-        $expected = $this->expectedRecordsFor($domain);
+        $provider = $this->resolveProvider($provider);
+        $expected = $this->expectedRecordsFor($domain, $provider);
         $hasMandatory = ($expected['spf'] ?? null) !== null || ($expected['dkim'] ?? []) !== [];
         if (! $hasMandatory) {
             // No provider DNS expectations configured yet — do not block send path.
@@ -213,11 +224,11 @@ final class OutboundDomainAuthenticationService
 
         $auth = OutboundDomainAuthentication::query()
             ->where('domain_id', $domain->getKey())
-            ->where('provider', $this->resolveProvider())
+            ->where('provider', $provider)
             ->first();
 
         if ($auth === null) {
-            $auth = $this->ensureRecord($domain);
+            $auth = $this->ensureRecord($domain, $provider);
         }
 
         if ($auth->allowsSending()) {
@@ -236,6 +247,22 @@ final class OutboundDomainAuthenticationService
             'Domain authentication is not ready for outbound email.',
             403,
         );
+    }
+
+    /**
+     * Non-throwing readiness check for a named provider, used by call sites
+     * (manual provider retry, ops) that need a boolean rather than an
+     * exception. Mirrors {@see assertDomainReady()}'s logic exactly.
+     */
+    public function isDomainReady(Domain $domain, ?string $provider = null): bool
+    {
+        try {
+            $this->assertDomainReady($domain, $provider);
+
+            return true;
+        } catch (OutboundSendException) {
+            return false;
+        }
     }
 
     public function manualRecheck(Domain $domain, string $actorId): OutboundDomainAuthentication

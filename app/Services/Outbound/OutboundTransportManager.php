@@ -12,16 +12,26 @@ final class OutboundTransportManager
         private readonly OutboundTransportConfigValidator $configValidator,
     ) {}
 
-    public function resolve(): OutboundTransportInterface
+    /**
+     * @param  string|null  $provider  Explicit provider identity to tag the
+     *                                 transport result with (e.g. when
+     *                                 resolving on behalf of a specific
+     *                                 provider via {@see OutboundProviderRegistry}).
+     *                                 Defaults to the configured primary
+     *                                 provider identity when omitted, so the
+     *                                 default binding in bootstrap/app.php
+     *                                 keeps working unmodified.
+     */
+    public function resolve(?string $provider = null): OutboundTransportInterface
     {
         $driver = strtolower(trim((string) config('outbound.transport', 'unavailable')));
 
         return match ($driver) {
             'array' => new LaravelMailOutboundTransport(
                 mailer: 'array',
-                providerName: $this->providerIdentity('array'),
+                providerName: $provider ?? $this->providerIdentity('array'),
             ),
-            'smtp', 'mail' => $this->resolveProductionMailer($driver),
+            'smtp', 'mail' => $this->resolveProductionMailer($driver, $provider),
             'unavailable' => new UnavailableOutboundTransport,
             default => new UnavailableOutboundTransport(
                 failureCode: 'invalid_config',
@@ -31,7 +41,7 @@ final class OutboundTransportManager
         };
     }
 
-    private function resolveProductionMailer(string $driver): OutboundTransportInterface
+    private function resolveProductionMailer(string $driver, ?string $provider = null): OutboundTransportInterface
     {
         $validation = $this->configValidator->validate($driver);
         if (! $validation['valid']) {
@@ -46,7 +56,7 @@ final class OutboundTransportManager
 
         return new LaravelMailOutboundTransport(
             mailer: $mailer,
-            providerName: $this->providerIdentity($driver),
+            providerName: $provider ?? $this->providerIdentity($driver),
         );
     }
 

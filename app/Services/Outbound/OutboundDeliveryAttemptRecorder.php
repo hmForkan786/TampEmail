@@ -25,9 +25,20 @@ final class OutboundDeliveryAttemptRecorder
     /**
      * Record the start of a new attempt. Idempotent: replaying the same
      * (message, attempt_number) pair never creates a duplicate row.
+     *
+     * `$provider` is the vendor identity *selected for this attempt right
+     * now* (e.g. from {@see OutboundProviderRegistry}).
+     * It is captured once, at creation time, and never re-derived from live
+     * config later — so an attempt row stays attributable to the provider
+     * that was actually used even after `OUTBOUND_PRIMARY_PROVIDER` /
+     * `OUTBOUND_SECONDARY_PROVIDER` change.
      */
-    public function start(OutboundMessage $message, ?string $transport): OutboundDeliveryAttempt
-    {
+    public function start(
+        OutboundMessage $message,
+        ?string $transport,
+        ?string $provider = null,
+        ?string $failoverReasonCode = null,
+    ): OutboundDeliveryAttempt {
         return OutboundDeliveryAttempt::query()->firstOrCreate(
             [
                 'outbound_message_id' => $message->getKey(),
@@ -35,7 +46,9 @@ final class OutboundDeliveryAttemptRecorder
             ],
             [
                 'transport' => $transport,
+                'provider' => $provider,
                 'state' => OutboundDeliveryAttemptState::Attempted->value,
+                'failover_reason_code' => $failoverReasonCode,
                 'started_at' => now(),
             ],
         );
@@ -53,6 +66,7 @@ final class OutboundDeliveryAttemptRecorder
         ?string $result = null,
         ?string $failureCode = null,
         ?string $providerMessageId = null,
+        ?string $failoverReasonCode = null,
     ): void {
         $attempt = $this->current($message);
         if ($attempt === null || $attempt->state->isTerminal()) {
@@ -66,6 +80,9 @@ final class OutboundDeliveryAttemptRecorder
             'result' => $result,
             'failure_category' => $failureCode !== null ? $this->categories->categorize($failureCode) : null,
             'provider_message_id' => $providerMessageId,
+            // Never wipes a reason code already recorded at start() — only
+            // overwrites when the caller explicitly supplies a new one.
+            'failover_reason_code' => $failoverReasonCode ?? $attempt->failover_reason_code,
             'completed_at' => $completedAt,
             'duration_ms' => $attempt->started_at !== null
                 ? max(0, $attempt->started_at->diffInMilliseconds($completedAt))
@@ -89,6 +106,20 @@ final class OutboundDeliveryAttemptRecorder
             'state' => OutboundDeliveryAttemptState::Ambiguous->value,
             'ambiguous' => true,
         ])->save();
+    }
+
+    /**
+     * The most recent attempt row for a message, regardless of state.
+     * Exposed for read-only policy checks (e.g.
+     * {@see OutboundFailoverEligibility}) that need
+     * to inspect the last recorded outcome without duplicating this query.
+     */
+    public function latestAttempt(OutboundMessage $message): ?OutboundDeliveryAttempt
+    {
+        return OutboundDeliveryAttempt::query()
+            ->where('outbound_message_id', $message->getKey())
+            ->orderByDesc('attempt_number')
+            ->first();
     }
 
     private function current(OutboundMessage $message): ?OutboundDeliveryAttempt

@@ -8,6 +8,7 @@ use App\Enums\OutboundMessageState;
 use App\Enums\OutboundOperation;
 use App\Models\AuditLog;
 use App\Models\OutboundAbuseBlock;
+use App\Models\OutboundDeliveryAttempt;
 use App\Models\OutboundMessage;
 use App\Models\OutboundProviderEvent;
 use App\Models\OutboundRecipientSuppression;
@@ -18,6 +19,7 @@ final class OutboundOpsService
 {
     public function __construct(
         private readonly OutboundQueueReadinessService $queueReadiness,
+        private readonly OutboundProviderRegistry $providers,
     ) {}
 
     /**
@@ -30,6 +32,7 @@ final class OutboundOpsService
         $volume7d = $this->volume(now()->subDays(7));
         $retries = $this->retryMetrics();
         $provider = $this->providerMetrics(now()->subDay());
+        $providers = $this->providersReport();
         $suppressions = $this->suppressionMetrics();
         $abuse = $this->abuseMetrics();
         $queue = $this->queueReadiness->report();
@@ -46,6 +49,7 @@ final class OutboundOpsService
             ],
             'retries' => $retries,
             'provider' => $provider,
+            'providers' => $providers,
             'suppressions' => $suppressions,
             'abuse' => $abuse,
             'issues' => $issues,
@@ -204,6 +208,71 @@ final class OutboundOpsService
             'provider_events_received' => OutboundProviderEvent::query()->where('received_at', '>=', $since)->count(),
             'terminal_unmatched_events' => OutboundProviderEvent::query()->whereNotNull('terminal_unmatched_at')->where('received_at', '>=', $since)->count(),
             'out_of_order_pending' => OutboundProviderEvent::query()->where('outcome', 'ignored_state')->whereNotNull('outbound_message_id')->count(),
+        ];
+    }
+
+    /**
+     * Multi-provider portability view (Prompt 619): primary/secondary
+     * identity, readiness, per-provider domain-auth coverage, and manual
+     * failover counters. Secret-free — see {@see OutboundProviderRegistry::readiness()}.
+     *
+     * Counters (`failover.*`) start at zero on a fresh install since no
+     * automatic cross-provider retry exists; they only move via the
+     * audited manual retry action.
+     *
+     * @return array<string, mixed>
+     */
+    public function providersReport(): array
+    {
+        $primary = $this->providers->primaryProvider();
+        $secondary = $this->providers->secondaryProvider();
+
+        $entries = [$primary];
+        if ($secondary !== null) {
+            $entries[] = $secondary;
+        }
+
+        $perProvider = [];
+        foreach (array_unique($entries) as $name) {
+            $perProvider[$name] = $this->providers->readiness($name);
+        }
+
+        return [
+            'primary_provider' => $primary,
+            'secondary_provider' => $secondary,
+            'failover_enabled' => $this->providers->failoverEnabled(),
+            'config_errors' => $this->providers->configErrors(),
+            'readiness' => $perProvider,
+            'attempts_by_provider_24h' => $this->attemptsByProvider(now()->subDay()),
+            'failover' => $this->failoverMetrics(now()->subDay()),
+        ];
+    }
+
+    /**
+     * @return array<string, int>
+     */
+    private function attemptsByProvider(\DateTimeInterface $since): array
+    {
+        return OutboundDeliveryAttempt::query()
+            ->where('started_at', '>=', $since)
+            ->whereNotNull('provider')
+            ->selectRaw('provider, count(*) as attempt_count')
+            ->groupBy('provider')
+            ->pluck('attempt_count', 'provider')
+            ->map(static fn ($count): int => (int) $count)
+            ->all();
+    }
+
+    /**
+     * @return array{attempts_requested: int, succeeded: int, failed: int, blocked: int}
+     */
+    private function failoverMetrics(\DateTimeInterface $since): array
+    {
+        return [
+            'attempts_requested' => AuditLog::query()->where('action', 'outbound.manual_provider_retry_requested')->where('created_at', '>=', $since)->count(),
+            'succeeded' => AuditLog::query()->where('action', 'outbound.manual_provider_retry_succeeded')->where('created_at', '>=', $since)->count(),
+            'failed' => AuditLog::query()->where('action', 'outbound.manual_provider_retry_failed')->where('created_at', '>=', $since)->count(),
+            'blocked' => AuditLog::query()->where('action', 'outbound.manual_provider_retry_blocked')->where('created_at', '>=', $since)->count(),
         ];
     }
 
