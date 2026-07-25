@@ -1,23 +1,25 @@
 <?php
 
-use App\Http\Middleware\ApplySecurityHeaders;
+use App\Console\Commands\ProcessRuntimeSmoke;
+use App\Contracts\AttachmentScannerInterface;
+use App\Contracts\InboundWebhookDispatcher;
+use App\Contracts\OutboundTransportInterface;
 use App\Http\Middleware\ApiRequestLogger;
+use App\Http\Middleware\ApplySecurityHeaders;
 use App\Http\Middleware\AuthenticateApiKey;
 use App\Http\Middleware\RequireApiKeyScope;
 use App\Http\Middleware\ThrottleApiKey;
 use App\Http\Responses\ApiErrorResponse;
+use App\Services\Inbound\ClamAvAttachmentScanner;
+use App\Services\Inbound\DisabledAttachmentScanner;
+use App\Services\Inbound\QueuedInboundWebhookDispatcher;
+use App\Services\Outbound\UnavailableOutboundTransport;
+use Illuminate\Console\Scheduling\Schedule;
 use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
 use Illuminate\Foundation\Configuration\Middleware;
-use Illuminate\Console\Scheduling\Schedule;
 use Illuminate\Http\Exceptions\HttpResponseException;
 use Illuminate\Http\Request;
-use App\Contracts\InboundWebhookDispatcher;
-use App\Services\Inbound\QueuedInboundWebhookDispatcher;
-use App\Contracts\AttachmentScannerInterface;
-use App\Services\Inbound\DisabledAttachmentScanner;
-use App\Services\Inbound\ClamAvAttachmentScanner;
-use App\Console\Commands\ProcessRuntimeSmoke;
 use Symfony\Component\HttpKernel\Exception\HttpExceptionInterface;
 use Symfony\Component\HttpKernel\Exception\NotFoundHttpException;
 
@@ -32,10 +34,11 @@ return Application::configure(basePath: dirname(__DIR__))
         ProcessRuntimeSmoke::class,
     ])
     ->withBindings([
-        InboundWebhookDispatcher::class => fn (): QueuedInboundWebhookDispatcher => new QueuedInboundWebhookDispatcher(),
+        InboundWebhookDispatcher::class => fn (): QueuedInboundWebhookDispatcher => new QueuedInboundWebhookDispatcher,
         AttachmentScannerInterface::class => fn (): AttachmentScannerInterface => config('attachments.scanner_backend', 'disabled') === 'clamav'
-            ? new ClamAvAttachmentScanner()
-            : new DisabledAttachmentScanner(),
+            ? new ClamAvAttachmentScanner
+            : new DisabledAttachmentScanner,
+        OutboundTransportInterface::class => UnavailableOutboundTransport::class,
     ])
     ->withSchedule(function (Schedule $schedule): void {
         $schedule->command('processes:scheduler-heartbeat')->withoutOverlapping()->everyMinute();
@@ -79,7 +82,7 @@ return Application::configure(basePath: dirname(__DIR__))
             );
         });
 
-        $exceptions->render(function (\Throwable $e, Request $request) {
+        $exceptions->render(function (Throwable $e, Request $request) {
             if (! $request->is('api/*')) {
                 return null;
             }

@@ -132,6 +132,7 @@ return [
         'mail_parsing' => env('QUEUE_MAIL_PARSING', 'mail-parsing'),
         'mail_storage' => env('QUEUE_MAIL_STORAGE', 'mail-storage'),
         'attachment_scanning' => env('QUEUE_ATTACHMENT_SCANNING', 'attachment-scanning'),
+        'outbound_delivery' => env('QUEUE_OUTBOUND_DELIVERY', 'outbound-delivery'),
         'abuse_analysis' => env('QUEUE_ABUSE_ANALYSIS', 'abuse-analysis'),
         'retention' => env('QUEUE_RETENTION', 'retention'),
         'notifications' => env('QUEUE_NOTIFICATIONS', 'notifications'),
