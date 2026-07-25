@@ -4,21 +4,28 @@ declare(strict_types=1);
 
 use App\DTOs\Outbound\OutboundDeliveryResult;
 use App\DTOs\Outbound\OutboundProviderEventData;
+use App\Enums\BillingCycle;
 use App\Enums\OutboundMessageState;
 use App\Enums\OutboundOperation;
 use App\Enums\OutboundProviderEventType;
+use App\Enums\SubscriptionStatus;
+use App\Enums\ValueType;
 use App\Exceptions\OutboundSendException;
 use App\Jobs\DeliverOutboundMessageJob;
 use App\Models\AuditLog;
 use App\Models\Domain;
+use App\Models\Feature;
 use App\Models\Inbox;
 use App\Models\OutboundMessage;
 use App\Models\OutboundRecipientSuppression;
+use App\Models\Plan;
+use App\Models\Subscription;
 use App\Models\User;
 use App\Services\Audit\AuditLogWriter;
 use App\Services\Outbound\FakeOutboundTransport;
 use App\Services\Outbound\OutboundAttachmentSelector;
 use App\Services\Outbound\OutboundAuthorizationService;
+use App\Services\Outbound\OutboundDeliveryAttemptRecorder;
 use App\Services\Outbound\OutboundOpsService;
 use App\Services\Outbound\OutboundProviderEventProcessor;
 use App\Services\Outbound\OutboundSuppressionService;
@@ -169,7 +176,7 @@ it('rechecks suppression in the delivery job after queueing', function (): void 
     ]);
 
     $ctx = suppressionContext();
-    $plan = App\Models\Plan::query()->create([
+    $plan = Plan::query()->create([
         'slug' => 'sup-'.uniqid(),
         'name' => 'Sup Plan',
         'price_monthly' => '0.00',
@@ -179,11 +186,11 @@ it('rechecks suppression in the delivery job after queueing', function (): void 
         'is_active' => true,
         'display_order' => 1,
     ]);
-    $feature = App\Models\Feature::query()->firstOrCreate(
+    $feature = Feature::query()->firstOrCreate(
         ['key' => 'send_email'],
         [
             'name' => 'Send Email',
-            'value_type' => App\Enums\ValueType::Boolean,
+            'value_type' => ValueType::Boolean,
             'default_value' => ['enabled' => true],
             'is_active' => true,
             'display_order' => 10,
@@ -192,11 +199,11 @@ it('rechecks suppression in the delivery job after queueing', function (): void 
     $plan->features()->syncWithoutDetaching([
         $feature->id => ['feature_value' => ['enabled' => true]],
     ]);
-    App\Models\Subscription::query()->create([
+    Subscription::query()->create([
         'user_id' => $ctx['user']->id,
         'plan_id' => $plan->id,
-        'status' => App\Enums\SubscriptionStatus::Active,
-        'billing_cycle' => App\Enums\BillingCycle::Monthly,
+        'status' => SubscriptionStatus::Active,
+        'billing_cycle' => BillingCycle::Monthly,
         'starts_at' => now()->subDay(),
         'auto_renew' => true,
         'price' => '0.00',
@@ -228,6 +235,7 @@ it('rechecks suppression in the delivery job after queueing', function (): void 
         app(AuditLogWriter::class),
         app(OutboundAttachmentSelector::class),
         app(OutboundSuppressionService::class),
+        app(OutboundDeliveryAttemptRecorder::class),
     );
 
     expect($message->fresh()->state)->toBe(OutboundMessageState::Failed)

@@ -7,6 +7,7 @@ namespace App\Models;
 use App\Enums\OutboundMessageState;
 use App\Enums\OutboundOperation;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Support\Carbon;
 
 /**
@@ -133,6 +134,16 @@ class OutboundMessage extends BaseModel
     public function sourceEmail(): BelongsTo
     {
         return $this->belongsTo(Email::class, 'source_email_id');
+    }
+
+    public function deliveryAttempts(): HasMany
+    {
+        return $this->hasMany(OutboundDeliveryAttempt::class)->orderBy('attempt_number');
+    }
+
+    public function providerEvents(): HasMany
+    {
+        return $this->hasMany(OutboundProviderEvent::class)->orderBy('received_at');
     }
 
     public function recipientCount(): int

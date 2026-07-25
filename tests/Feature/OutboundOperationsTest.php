@@ -22,6 +22,7 @@ use App\Services\Audit\AuditLogWriter;
 use App\Services\Outbound\FakeOutboundTransport;
 use App\Services\Outbound\OutboundAttachmentSelector;
 use App\Services\Outbound\OutboundAuthorizationService;
+use App\Services\Outbound\OutboundDeliveryAttemptRecorder;
 use App\Services\Outbound\OutboundOpsService;
 use App\Services\Outbound\OutboundSuppressionService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -99,6 +100,7 @@ it('schedules retryable failures and exhausts permanently', function (): void {
             app(AuditLogWriter::class),
             app(OutboundAttachmentSelector::class),
             app(OutboundSuppressionService::class),
+            app(OutboundDeliveryAttemptRecorder::class),
         );
     } catch (RuntimeException) {
         // expected for Laravel retry
@@ -114,6 +116,7 @@ it('schedules retryable failures and exhausts permanently', function (): void {
         app(AuditLogWriter::class),
         app(OutboundAttachmentSelector::class),
         app(OutboundSuppressionService::class),
+        app(OutboundDeliveryAttemptRecorder::class),
     );
 
     expect(OutboundMessage::query()->find($id)->state)->toBe(OutboundMessageState::Failed)
@@ -144,6 +147,7 @@ it('cancels queued messages and rejects cancel after sent', function (): void {
         app(AuditLogWriter::class),
         app(OutboundAttachmentSelector::class),
         app(OutboundSuppressionService::class),
+        app(OutboundDeliveryAttemptRecorder::class),
     );
     expect($ctx['transport']->sent)->toHaveCount(0);
 
@@ -161,6 +165,7 @@ it('cancels queued messages and rejects cancel after sent', function (): void {
         app(AuditLogWriter::class),
         app(OutboundAttachmentSelector::class),
         app(OutboundSuppressionService::class),
+        app(OutboundDeliveryAttemptRecorder::class),
     );
 
     $this->withToken($ctx['token'])->postJson('/api/v1/outbound-messages/'.$sentId.'/cancel')
@@ -187,6 +192,7 @@ it('allows manual retry for failed messages and revalidates entitlements', funct
         app(AuditLogWriter::class),
         app(OutboundAttachmentSelector::class),
         app(OutboundSuppressionService::class),
+        app(OutboundDeliveryAttemptRecorder::class),
     );
 
     $this->withToken($ctx['token'])->postJson('/api/v1/outbound-messages/'.$id.'/retry')

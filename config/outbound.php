@@ -161,7 +161,7 @@ return [
 
     /*
     |--------------------------------------------------------------------------
-    | Stale sending / provider-event reconciliation (Prompt 613)
+    | Stale sending / provider-event reconciliation (Prompt 613, extended 614)
     |--------------------------------------------------------------------------
     |
     | A message stuck in `sending` past the threshold means the delivery
@@ -169,6 +169,13 @@ return [
     | never invoked for the stuck attempt; otherwise the outcome is
     | ambiguous and must wait for a provider event or admin reconciliation
     | — never blindly resent.
+    |
+    | Prompt 614 adds bounded, idempotent reconciliation for out-of-order
+    | provider events (matched to a message but ignored because the
+    | message had not yet reached the expected state), terminal marking of
+    | unmatched events once they age out of the correlation window, and a
+    | safety-net repair pass for delivery-attempt rows that are missing for
+    | an otherwise-settled message (e.g. rows predating this feature).
     */
 
     'reconciliation' => [
@@ -176,6 +183,11 @@ return [
         'stale_sending_batch_size' => (int) env('OUTBOUND_STALE_SENDING_BATCH_SIZE', 50),
         'unmatched_event_window_hours' => (int) env('OUTBOUND_UNMATCHED_EVENT_WINDOW_HOURS', 24),
         'unmatched_event_batch_size' => (int) env('OUTBOUND_UNMATCHED_EVENT_BATCH_SIZE', 50),
+        'out_of_order_window_hours' => (int) env('OUTBOUND_OUT_OF_ORDER_WINDOW_HOURS', 24),
+        'out_of_order_batch_size' => (int) env('OUTBOUND_OUT_OF_ORDER_BATCH_SIZE', 50),
+        'out_of_order_max_attempts' => (int) env('OUTBOUND_OUT_OF_ORDER_MAX_ATTEMPTS', 10),
+        'impossible_state_batch_size' => (int) env('OUTBOUND_IMPOSSIBLE_STATE_BATCH_SIZE', 100),
+        'attempt_repair_batch_size' => (int) env('OUTBOUND_ATTEMPT_REPAIR_BATCH_SIZE', 100),
     ],
 
     /*

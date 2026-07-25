@@ -202,6 +202,8 @@ final class OutboundOpsService
             'invalid_signature_attempts' => (int) Cache::get('outbound.metrics.invalid_signature_attempts', 0),
             'event_processing_failures' => (int) Cache::get('outbound.metrics.event_processing_failures', 0),
             'provider_events_received' => OutboundProviderEvent::query()->where('received_at', '>=', $since)->count(),
+            'terminal_unmatched_events' => OutboundProviderEvent::query()->whereNotNull('terminal_unmatched_at')->where('received_at', '>=', $since)->count(),
+            'out_of_order_pending' => OutboundProviderEvent::query()->where('outcome', 'ignored_state')->whereNotNull('outbound_message_id')->count(),
         ];
     }
 

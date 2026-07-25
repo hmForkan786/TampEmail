@@ -27,6 +27,7 @@ final class OutboundStaleSendingReconciliationService
 {
     public function __construct(
         private readonly AuditLogWriter $audit,
+        private readonly OutboundDeliveryAttemptRecorder $attempts,
     ) {}
 
     /**
@@ -172,6 +173,8 @@ final class OutboundStaleSendingReconciliationService
         if ($updated !== 1) {
             return 'skipped';
         }
+
+        $this->attempts->markAmbiguous($message);
 
         $this->audit->write(
             'outbound.stale_sending_flagged_ambiguous',

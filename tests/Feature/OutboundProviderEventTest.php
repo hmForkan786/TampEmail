@@ -283,6 +283,139 @@ it('never delivers cancelled messages and stores unmatched events', function ():
         ->and(AuditLog::query()->where('action', 'outbound.provider_event_unmatched')->exists())->toBeTrue();
 });
 
+it('resolves an out-of-order delivered event once the message reaches sent', function (): void {
+    $user = User::factory()->create();
+    $domain = Domain::query()->create([
+        'domain' => 'ooo-'.bin2hex(random_bytes(3)).'.test',
+        'display_name' => 'OutOfOrder',
+        'is_active' => true,
+        'is_public' => true,
+        'allow_registration' => true,
+        'is_healthy' => true,
+        'outbound_enabled' => true,
+        'retention_hours' => 24,
+    ]);
+    $inbox = Inbox::query()->create([
+        'domain_id' => $domain->id,
+        'user_id' => $user->id,
+        'local_part' => 'sender',
+        'full_address' => 'sender@'.$domain->domain,
+        'inbox_type' => 'temporary',
+        'is_active' => true,
+    ]);
+    $message = OutboundMessage::query()->create([
+        'user_id' => $user->id,
+        'inbox_id' => $inbox->id,
+        'operation' => OutboundOperation::Send,
+        'state' => OutboundMessageState::Sending,
+        'idempotency_key' => 'ooo-'.uniqid(),
+        'request_fingerprint' => hash('sha256', 'fp-'.uniqid()),
+        'from_address' => $inbox->full_address,
+        'to_recipients' => ['to@example.test'],
+        'subject' => 'Race',
+        'text_body' => 'Body',
+        'provider' => 'generic',
+        'provider_message_id' => '<ooo@example.test>',
+        'attempt_count' => 1,
+    ]);
+
+    $result = app(OutboundProviderEventProcessor::class)->ingest(new OutboundProviderEventData(
+        provider: 'generic',
+        providerEventId: 'evt-ooo-1',
+        providerMessageId: '<ooo@example.test>',
+        eventType: OutboundProviderEventType::Delivered,
+        providerEventAt: now(),
+    ));
+
+    expect($result['outcome'])->toBe('ignored_state')
+        ->and($message->fresh()->state)->toBe(OutboundMessageState::Sending);
+
+    $message->forceFill(['state' => OutboundMessageState::Sent, 'sent_at' => now()])->save();
+
+    $summary = app(OutboundProviderEventProcessor::class)->reconcileOutOfOrder();
+
+    expect($summary)->toBe(['evaluated' => 1, 'resolved' => 1])
+        ->and($message->fresh()->state)->toBe(OutboundMessageState::Delivered)
+        ->and(AuditLog::query()->where('action', 'outbound.provider_event_out_of_order_resolved')->exists())->toBeTrue();
+});
+
+it('stops retrying an out-of-order event once it exceeds the attempt cap', function (): void {
+    config(['outbound.reconciliation.out_of_order_max_attempts' => 1]);
+    $user = User::factory()->create();
+    $domain = Domain::query()->create([
+        'domain' => 'cap-'.bin2hex(random_bytes(3)).'.test',
+        'display_name' => 'Capped',
+        'is_active' => true,
+        'is_public' => true,
+        'allow_registration' => true,
+        'is_healthy' => true,
+        'outbound_enabled' => true,
+        'retention_hours' => 24,
+    ]);
+    $inbox = Inbox::query()->create([
+        'domain_id' => $domain->id,
+        'user_id' => $user->id,
+        'local_part' => 'sender',
+        'full_address' => 'sender@'.$domain->domain,
+        'inbox_type' => 'temporary',
+        'is_active' => true,
+    ]);
+    $message = OutboundMessage::query()->create([
+        'user_id' => $user->id,
+        'inbox_id' => $inbox->id,
+        'operation' => OutboundOperation::Send,
+        'state' => OutboundMessageState::Sending,
+        'idempotency_key' => 'cap-'.uniqid(),
+        'request_fingerprint' => hash('sha256', 'fp-'.uniqid()),
+        'from_address' => $inbox->full_address,
+        'to_recipients' => ['to@example.test'],
+        'subject' => 'Never resolves',
+        'text_body' => 'Body',
+        'provider' => 'generic',
+        'provider_message_id' => '<capped@example.test>',
+        'attempt_count' => 1,
+    ]);
+
+    app(OutboundProviderEventProcessor::class)->ingest(new OutboundProviderEventData(
+        provider: 'generic',
+        providerEventId: 'evt-capped',
+        providerMessageId: '<capped@example.test>',
+        eventType: OutboundProviderEventType::Delivered,
+        providerEventAt: now(),
+    ));
+
+    $first = app(OutboundProviderEventProcessor::class)->reconcileOutOfOrder();
+    expect($first)->toBe(['evaluated' => 1, 'resolved' => 0])
+        ->and($message->fresh()->state)->toBe(OutboundMessageState::Sending);
+
+    $second = app(OutboundProviderEventProcessor::class)->reconcileOutOfOrder();
+    expect($second)->toBe(['evaluated' => 0, 'resolved' => 0]);
+});
+
+it('marks unmatched events terminal once they age out of the correlation window', function (): void {
+    $event = OutboundProviderEvent::query()->create([
+        'provider' => 'generic',
+        'provider_event_id' => 'evt-expired',
+        'provider_message_id' => '<expired@example.test>',
+        'outbound_message_id' => null,
+        'event_type' => OutboundProviderEventType::Delivered,
+        'normalized_status' => OutboundProviderEventType::Delivered->value,
+        'received_at' => now()->subHours(48),
+        'provider_event_at' => now()->subHours(48),
+        'processed_at' => now()->subHours(48),
+        'signature_state' => 'verified',
+    ]);
+
+    $summary = app(OutboundProviderEventProcessor::class)->finalizeExpiredUnmatched();
+
+    expect($summary)->toBe(['evaluated' => 1, 'terminal' => 1])
+        ->and($event->fresh()->terminal_unmatched_at)->not->toBeNull()
+        ->and(AuditLog::query()->where('action', 'outbound.provider_event_terminal_unmatched')->exists())->toBeTrue();
+
+    $again = app(OutboundProviderEventProcessor::class)->finalizeExpiredUnmatched();
+    expect($again)->toBe(['evaluated' => 0, 'terminal' => 0]);
+});
+
 it('updates operations metrics for provider events', function (): void {
     seedSentOutboundMessage('<ops@example.test>');
     app(OutboundProviderEventProcessor::class)->ingest(new OutboundProviderEventData(

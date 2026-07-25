@@ -89,7 +89,7 @@ final class OutboundProviderEventProcessor
 
             $outcome = $this->applyTransition($event, $message, $data);
 
-            $event->forceFill(['processed_at' => now()])->save();
+            $event->forceFill(['processed_at' => now(), 'outcome' => $outcome])->save();
 
             return [
                 'event' => $event->fresh(),
@@ -155,6 +155,7 @@ final class OutboundProviderEventProcessor
 
             $event->forceFill(['outbound_message_id' => $message->getKey()])->save();
             $outcome = $this->applyTransition($event, $message, $data);
+            $event->forceFill(['outcome' => $outcome])->save();
 
             $this->audit->write(
                 'outbound.provider_event_reconciled',
@@ -167,6 +168,163 @@ final class OutboundProviderEventProcessor
                     'event_type' => $data->eventType->value,
                     'provider_event_id_hash' => hash('sha256', $data->providerEventId),
                     'outcome' => $outcome,
+                ],
+            );
+
+            return true;
+        });
+    }
+
+    /**
+     * Retries the transition for events that were already matched to a
+     * message but ignored because the message had not yet reached the
+     * expected state (e.g. a `delivered` webhook arriving while the
+     * delivery job's `sent` update has not yet committed). Bounded by
+     * both a recent window and a per-event attempt cap so a permanently
+     * inapplicable event (e.g. the message was legitimately cancelled)
+     * cannot be retried forever. Never re-applies an already-terminal
+     * outcome — {@see applyTransition} itself is idempotent per message
+     * state, so replays are always safe.
+     *
+     * @return array{evaluated: int, resolved: int}
+     */
+    public function reconcileOutOfOrder(?int $limit = null): array
+    {
+        $limit = max(1, $limit ?? (int) config('outbound.reconciliation.out_of_order_batch_size', 50));
+        $windowHours = max(1, (int) config('outbound.reconciliation.out_of_order_window_hours', 24));
+        $maxAttempts = max(1, (int) config('outbound.reconciliation.out_of_order_max_attempts', 10));
+        $since = now()->subHours($windowHours);
+
+        $summary = ['evaluated' => 0, 'resolved' => 0];
+
+        $eventIds = OutboundProviderEvent::query()
+            ->where('outcome', 'ignored_state')
+            ->whereNotNull('outbound_message_id')
+            ->where('reconciliation_attempts', '<', $maxAttempts)
+            ->where('received_at', '>=', $since)
+            ->orderBy('received_at')
+            ->limit($limit)
+            ->pluck('id');
+
+        foreach ($eventIds as $eventId) {
+            $summary['evaluated']++;
+            if ($this->reconcileOutOfOrderOne((string) $eventId)) {
+                $summary['resolved']++;
+            }
+        }
+
+        return $summary;
+    }
+
+    private function reconcileOutOfOrderOne(string $eventId): bool
+    {
+        return DB::transaction(function () use ($eventId): bool {
+            $event = OutboundProviderEvent::query()->whereKey($eventId)->lockForUpdate()->first();
+            if ($event === null || $event->outcome !== 'ignored_state' || $event->outbound_message_id === null) {
+                return false;
+            }
+
+            $message = OutboundMessage::query()->whereKey($event->outbound_message_id)->lockForUpdate()->first();
+            if ($message === null) {
+                $event->forceFill(['reconciliation_attempts' => $event->reconciliation_attempts + 1])->save();
+
+                return false;
+            }
+
+            $data = new OutboundProviderEventData(
+                provider: $event->provider,
+                providerEventId: $event->provider_event_id,
+                providerMessageId: $event->provider_message_id,
+                eventType: $event->event_type,
+                providerEventAt: $event->provider_event_at ?? $event->received_at,
+            );
+
+            $outcome = $this->applyTransition($event, $message, $data);
+
+            $event->forceFill([
+                'outcome' => $outcome,
+                'reconciliation_attempts' => $event->reconciliation_attempts + 1,
+            ])->save();
+
+            if ($outcome === 'ignored_state') {
+                return false;
+            }
+
+            $this->audit->write(
+                'outbound.provider_event_out_of_order_resolved',
+                (string) $message->user_id,
+                $event,
+                null,
+                null,
+                [
+                    'provider' => $data->provider,
+                    'event_type' => $data->eventType->value,
+                    'provider_event_id_hash' => hash('sha256', $data->providerEventId),
+                    'outcome' => $outcome,
+                ],
+            );
+
+            return true;
+        });
+    }
+
+    /**
+     * Marks unmatched events terminal once they age out of the correlation
+     * window so reconciliation stops scanning them. Terminal events are
+     * never deleted — they remain visible to ops/admins as evidence of an
+     * event that never found its message (e.g. dropped submission, id
+     * mismatch), which is itself an operational signal worth keeping.
+     *
+     * @return array{evaluated: int, terminal: int}
+     */
+    public function finalizeExpiredUnmatched(?int $limit = null): array
+    {
+        $limit = max(1, $limit ?? (int) config('outbound.reconciliation.unmatched_event_batch_size', 50));
+        $windowHours = max(1, (int) config('outbound.reconciliation.unmatched_event_window_hours', 24));
+        $cutoff = now()->subHours($windowHours);
+
+        $summary = ['evaluated' => 0, 'terminal' => 0];
+
+        $eventIds = OutboundProviderEvent::query()
+            ->whereNull('outbound_message_id')
+            ->whereNull('terminal_unmatched_at')
+            ->where('received_at', '<', $cutoff)
+            ->orderBy('received_at')
+            ->limit($limit)
+            ->pluck('id');
+
+        foreach ($eventIds as $eventId) {
+            $summary['evaluated']++;
+            if ($this->finalizeExpiredUnmatchedOne((string) $eventId)) {
+                $summary['terminal']++;
+            }
+        }
+
+        return $summary;
+    }
+
+    private function finalizeExpiredUnmatchedOne(string $eventId): bool
+    {
+        return DB::transaction(function () use ($eventId): bool {
+            $event = OutboundProviderEvent::query()->whereKey($eventId)->lockForUpdate()->first();
+            if ($event === null || $event->outbound_message_id !== null || $event->terminal_unmatched_at !== null) {
+                return false;
+            }
+
+            $event->forceFill(['terminal_unmatched_at' => now()])->save();
+
+            Cache::increment('outbound.metrics.terminal_unmatched_events');
+
+            $this->audit->write(
+                'outbound.provider_event_terminal_unmatched',
+                null,
+                $event,
+                null,
+                null,
+                [
+                    'provider' => $event->provider,
+                    'event_type' => $event->event_type->value,
+                    'provider_event_id_hash' => hash('sha256', $event->provider_event_id),
                 ],
             );
 

@@ -6,6 +6,7 @@ namespace App\Jobs;
 
 use App\Contracts\OutboundTransportInterface;
 use App\DTOs\Outbound\OutboundMessageData;
+use App\Enums\OutboundDeliveryAttemptState;
 use App\Enums\OutboundMessageState;
 use App\Enums\OutboundOperation;
 use App\Enums\OutboundTransportResult;
@@ -15,6 +16,7 @@ use App\Models\OutboundMessage;
 use App\Services\Audit\AuditLogWriter;
 use App\Services\Outbound\OutboundAttachmentSelector;
 use App\Services\Outbound\OutboundAuthorizationService;
+use App\Services\Outbound\OutboundDeliveryAttemptRecorder;
 use App\Services\Outbound\OutboundSuppressionService;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldBeUnique;
@@ -61,6 +63,7 @@ final class DeliverOutboundMessageJob implements ShouldBeUnique, ShouldQueue
         AuditLogWriter $audit,
         OutboundAttachmentSelector $attachmentSelector,
         OutboundSuppressionService $suppressions,
+        OutboundDeliveryAttemptRecorder $attempts,
     ): void {
         $claimed = DB::transaction(function (): ?OutboundMessage {
             $message = OutboundMessage::query()
@@ -100,6 +103,8 @@ final class DeliverOutboundMessageJob implements ShouldBeUnique, ShouldQueue
             return;
         }
 
+        $attempts->start($claimed, (string) config('outbound.transport'));
+
         $audit->write(
             'outbound.message_sending',
             (string) $claimed->user_id,
@@ -118,7 +123,7 @@ final class DeliverOutboundMessageJob implements ShouldBeUnique, ShouldQueue
 
         try {
             if ($claimed->user === null || $claimed->user->status !== UserStatus::Active) {
-                $this->markFailed($claimed, 'user_inactive', 'User is no longer active.', $audit);
+                $this->markFailed($claimed, 'user_inactive', 'User is no longer active.', $audit, $attempts);
 
                 return;
             }
@@ -131,7 +136,7 @@ final class DeliverOutboundMessageJob implements ShouldBeUnique, ShouldQueue
             ], $claimed->user);
         } catch (\Throwable $exception) {
             $code = property_exists($exception, 'errorCode') ? (string) $exception->errorCode : 'authorization_failed';
-            $this->markFailed($claimed, $code, 'Authorization failed before transport submission.', $audit);
+            $this->markFailed($claimed, $code, 'Authorization failed before transport submission.', $audit, $attempts);
 
             return;
         }
@@ -147,7 +152,7 @@ final class DeliverOutboundMessageJob implements ShouldBeUnique, ShouldQueue
                 $transportAttachments = $attachmentSelector->toTransportPayload($selected);
             } catch (\Throwable $exception) {
                 $code = property_exists($exception, 'errorCode') ? (string) $exception->errorCode : 'attachment_unsafe';
-                $this->markFailed($claimed, $code, 'Attachment revalidation failed before transport submission.', $audit);
+                $this->markFailed($claimed, $code, 'Attachment revalidation failed before transport submission.', $audit, $attempts);
 
                 return;
             }
@@ -180,7 +185,7 @@ final class DeliverOutboundMessageJob implements ShouldBeUnique, ShouldQueue
         $result = $transport->send($payload);
 
         if ($result->result === OutboundTransportResult::Accepted) {
-            $this->markSent($claimed, $result->provider, $result->providerMessageId, $audit);
+            $this->markSent($claimed, $result->provider, $result->providerMessageId, $audit, $attempts);
 
             return;
         }
@@ -199,6 +204,13 @@ final class DeliverOutboundMessageJob implements ShouldBeUnique, ShouldQueue
                         'updated_at' => now(),
                     ]);
 
+                $attempts->complete(
+                    $claimed,
+                    OutboundDeliveryAttemptState::TemporaryFailure,
+                    result: $result->result->value,
+                    failureCode: $result->failureCode,
+                );
+
                 $audit->write(
                     'outbound.retry_scheduled',
                     (string) $claimed->user_id,
@@ -215,6 +227,13 @@ final class DeliverOutboundMessageJob implements ShouldBeUnique, ShouldQueue
                 throw new \RuntimeException('Outbound temporary transport failure; retrying.');
             }
 
+            $attempts->complete(
+                $claimed,
+                OutboundDeliveryAttemptState::TemporaryFailure,
+                result: $result->result->value,
+                failureCode: $result->failureCode,
+            );
+
             $audit->write(
                 'outbound.retry_exhausted',
                 (string) $claimed->user_id,
@@ -227,6 +246,18 @@ final class DeliverOutboundMessageJob implements ShouldBeUnique, ShouldQueue
                     'provider' => $result->provider,
                 ],
             );
+
+            $this->markFailed(
+                $claimed,
+                $result->failureCode ?? 'transport_error',
+                $result->failureMessage ?? 'Transport submission failed.',
+                $audit,
+                $attempts,
+                $result->provider,
+                skipAttemptCompletion: true,
+            );
+
+            return;
         }
 
         // Rejected, permanent, and configuration failures are never retried.
@@ -236,7 +267,9 @@ final class DeliverOutboundMessageJob implements ShouldBeUnique, ShouldQueue
             $result->failureCode ?? 'transport_error',
             $result->failureMessage ?? 'Transport submission failed.',
             $audit,
+            $attempts,
             $result->provider,
+            attemptResult: $result->result,
         );
     }
 
@@ -245,6 +278,7 @@ final class DeliverOutboundMessageJob implements ShouldBeUnique, ShouldQueue
         ?string $provider,
         ?string $providerMessageId,
         AuditLogWriter $audit,
+        OutboundDeliveryAttemptRecorder $attempts,
     ): void {
         $updated = OutboundMessage::query()
             ->whereKey($message->getKey())
@@ -262,6 +296,13 @@ final class DeliverOutboundMessageJob implements ShouldBeUnique, ShouldQueue
         if ($updated !== 1) {
             return;
         }
+
+        $attempts->complete(
+            $message,
+            OutboundDeliveryAttemptState::Accepted,
+            result: OutboundTransportResult::Accepted->value,
+            providerMessageId: $providerMessageId,
+        );
 
         $fresh = $message->fresh();
         $audit->write(
@@ -285,7 +326,10 @@ final class DeliverOutboundMessageJob implements ShouldBeUnique, ShouldQueue
         string $failureCode,
         string $failureMessage,
         AuditLogWriter $audit,
+        OutboundDeliveryAttemptRecorder $attempts,
         ?string $provider = null,
+        bool $skipAttemptCompletion = false,
+        OutboundTransportResult $attemptResult = OutboundTransportResult::PermanentFailure,
     ): void {
         $updated = OutboundMessage::query()
             ->whereKey($message->getKey())
@@ -301,6 +345,15 @@ final class DeliverOutboundMessageJob implements ShouldBeUnique, ShouldQueue
 
         if ($updated !== 1) {
             return;
+        }
+
+        if (! $skipAttemptCompletion) {
+            $attempts->complete(
+                $message,
+                OutboundDeliveryAttemptState::PermanentFailure,
+                result: $attemptResult->value,
+                failureCode: $failureCode,
+            );
         }
 
         $fresh = $message->fresh();

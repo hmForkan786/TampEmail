@@ -14,6 +14,7 @@ use App\Http\Resources\OutboundMessageResource;
 use App\Http\Responses\ApiErrorResponse;
 use App\Models\OutboundMessage;
 use App\Models\User;
+use App\Services\Outbound\OutboundMessageTimelineBuilder;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
@@ -23,6 +24,7 @@ final class OutboundMessageController
         private readonly CreateOutboundSendAction $createOutboundSend,
         private readonly CancelOutboundMessageAction $cancelOutboundMessage,
         private readonly RetryOutboundMessageAction $retryOutboundMessage,
+        private readonly OutboundMessageTimelineBuilder $timelineBuilder,
     ) {}
 
     public function store(StoreOutboundMessageRequest $request): OutboundMessageResource|JsonResponse
@@ -69,6 +71,34 @@ final class OutboundMessageController
         }
 
         return new OutboundMessageResource($outbound);
+    }
+
+    /**
+     * Safe, redacted delivery timeline for the message owner. Never
+     * exposes raw provider payloads, secrets, BCC, message bodies, bounce
+     * diagnostics, complaint metadata, or provider signature details.
+     */
+    public function timeline(string $message): JsonResponse
+    {
+        /** @var User $owner */
+        $owner = request()->attributes->get('apiKeyOwner');
+
+        $outbound = OutboundMessage::query()
+            ->whereKey($message)
+            ->where('user_id', $owner->getKey())
+            ->first();
+
+        if ($outbound === null) {
+            return ApiErrorResponse::make('not_found', 'Outbound message not found.', 404);
+        }
+
+        return response()->json([
+            'data' => [
+                'id' => (string) $outbound->getKey(),
+                'state' => $outbound->state?->value,
+                'timeline' => $this->timelineBuilder->build($outbound, admin: false),
+            ],
+        ]);
     }
 
     public function cancel(Request $request, string $message): OutboundMessageResource|JsonResponse

@@ -23,6 +23,9 @@ use Illuminate\Support\Carbon;
  * @property Carbon|null $processed_at
  * @property string $signature_state
  * @property array<string, mixed>|null $metadata
+ * @property string|null $outcome
+ * @property int $reconciliation_attempts
+ * @property Carbon|null $terminal_unmatched_at
  * @property Carbon|null $created_at
  */
 class OutboundProviderEvent extends BaseModel
@@ -48,6 +51,9 @@ class OutboundProviderEvent extends BaseModel
         'processed_at',
         'signature_state',
         'metadata',
+        'outcome',
+        'reconciliation_attempts',
+        'terminal_unmatched_at',
     ];
 
     /**
@@ -61,6 +67,8 @@ class OutboundProviderEvent extends BaseModel
             'provider_event_at' => 'datetime',
             'processed_at' => 'datetime',
             'metadata' => 'array',
+            'reconciliation_attempts' => 'integer',
+            'terminal_unmatched_at' => 'datetime',
         ]);
     }
 
