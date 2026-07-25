@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 use App\Contracts\AttachmentScannerInterface;
+use App\Contracts\ContentAttachmentScannerInterface;
 use App\DTOs\Attachment\AttachmentScanRequest;
 use App\DTOs\Attachment\AttachmentScanResultData;
 use App\Enums\AttachmentScanResult;
@@ -29,11 +30,21 @@ function liveScannerReturning(AttachmentScanResultData ...$results): callable
     $queue = new ArrayObject(array_values($results));
 
     return function () use ($queue): AttachmentScannerInterface {
-        return new class($queue) implements AttachmentScannerInterface
+        return new class($queue) implements AttachmentScannerInterface, ContentAttachmentScannerInterface
         {
             public function __construct(private ArrayObject $queue) {}
 
             public function scan(AttachmentScanRequest $request): AttachmentScanResultData
+            {
+                return $this->nextResult();
+            }
+
+            public function scanContent(string $content, ?string $filename = null): AttachmentScanResultData
+            {
+                return $this->nextResult();
+            }
+
+            private function nextResult(): AttachmentScanResultData
             {
                 $values = $this->queue->getArrayCopy();
 
@@ -201,9 +212,14 @@ it('cleans temporary probe files even when the scanner throws', function (): voi
     Storage::fake('attachments');
     config(['attachments.scanner_backend' => 'clamav']);
     bindLiveScanner(function (): AttachmentScannerInterface {
-        return new class implements AttachmentScannerInterface
+        return new class implements AttachmentScannerInterface, ContentAttachmentScannerInterface
         {
             public function scan(AttachmentScanRequest $request): AttachmentScanResultData
+            {
+                throw new RuntimeException('socket error at 127.0.0.1:3310 password=secret');
+            }
+
+            public function scanContent(string $content, ?string $filename = null): AttachmentScanResultData
             {
                 throw new RuntimeException('socket error at 127.0.0.1:3310 password=secret');
             }

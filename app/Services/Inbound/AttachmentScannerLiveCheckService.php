@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Services\Inbound;
 
 use App\Contracts\AttachmentScannerInterface;
+use App\Contracts\ContentAttachmentScannerInterface;
 use App\DTOs\Attachment\AttachmentScanRequest;
 use App\DTOs\Attachment\AttachmentScanResultData;
 use App\Enums\AttachmentScanResult;
@@ -83,8 +84,11 @@ final class AttachmentScannerLiveCheckService
                 ]);
             }
 
-            $filesystem->put($infectedPath, self::EICAR);
-            $infectedResult = $scanner->scan($this->request($disk, $infectedPath, self::EICAR));
+            $eicar = $this->eicarFixture();
+            if (! $scanner instanceof ContentAttachmentScannerInterface) {
+                return array_merge($base, ['status' => 'failed', 'issues' => ['scanner_stream_unsupported']]);
+            }
+            $infectedResult = $scanner->scanContent($eicar, 'clamav-eicar.txt');
             $infectedProbe = $this->probeLabel($infectedResult);
             $base['infected_probe'] = $infectedProbe;
 
@@ -123,6 +127,22 @@ final class AttachmentScannerLiveCheckService
         }
 
         return app(AttachmentScannerInterface::class);
+    }
+
+    private function eicarFixture(): string
+    {
+        $path = base_path('resources/testing/clamav-eicar.txt.b64');
+        if (! is_file($path) || ! is_readable($path)) {
+            throw new \RuntimeException('ClamAV EICAR fixture is missing or unreadable.');
+        }
+
+        $encoded = trim((string) file_get_contents($path));
+        $decoded = base64_decode($encoded, true);
+        if (! is_string($decoded) || $decoded !== self::EICAR) {
+            throw new \RuntimeException('ClamAV EICAR fixture is invalid.');
+        }
+
+        return $decoded;
     }
 
     private function request(string $disk, string $path, string $payload): AttachmentScanRequest
