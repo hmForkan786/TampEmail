@@ -166,6 +166,8 @@ php artisan outbound:reconcile-usage --confirm --batch=100
 
 Dry-run by default (same convention as `outbound:prune`); `--confirm` is required to mutate anything. Bounded per `--batch` (default `config('outbound_usage.reconcile.batch_size')`, 200).
 
+Registered in the scheduler (`bootstrap/app.php`) every 15 minutes **without** `--confirm`, so the scheduled run only ever reports drift for operator review — it never auto-repairs. An operator (or a follow-up automation change, not implemented here) must run `--confirm` explicitly to apply the deterministic repairs listed below.
+
 Checks performed, **repaired only when deterministic**:
 
 | Check | Repair |
