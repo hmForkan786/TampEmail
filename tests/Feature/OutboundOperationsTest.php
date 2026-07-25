@@ -213,7 +213,7 @@ it('reports ops readiness volume and json command output without sending mail', 
     $ready = app(OutboundOpsService::class)->report();
     expect($ready['status'])->toBeIn(['healthy', 'unknown'])
         ->and($ready['readiness']['configuration_valid'])->toBeTrue()
-        ->and($ready['volume']['last_24_hours'])->toHaveKeys(['queued', 'sent', 'failed', 'send_operations', 'replies', 'forwards']);
+        ->and($ready['volume']['last_24_hours'])->toHaveKeys(['queued', 'sent', 'delivered', 'failed', 'send_operations', 'replies', 'forwards']);
 
     $exit = Artisan::call('outbound:status', ['--json' => true]);
     $json = json_decode(Artisan::output(), true);

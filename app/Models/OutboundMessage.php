@@ -36,6 +36,7 @@ use Illuminate\Support\Carbon;
  * @property Carbon|null $queued_at
  * @property Carbon|null $sending_at
  * @property Carbon|null $sent_at
+ * @property Carbon|null $delivered_at
  * @property Carbon|null $failed_at
  * @property Carbon|null $cancelled_at
  * @property string|null $failure_code
@@ -79,6 +80,7 @@ class OutboundMessage extends BaseModel
         'queued_at',
         'sending_at',
         'sent_at',
+        'delivered_at',
         'failed_at',
         'cancelled_at',
         'failure_code',
@@ -104,6 +106,7 @@ class OutboundMessage extends BaseModel
             'queued_at' => 'datetime',
             'sending_at' => 'datetime',
             'sent_at' => 'datetime',
+            'delivered_at' => 'datetime',
             'failed_at' => 'datetime',
             'cancelled_at' => 'datetime',
         ]);

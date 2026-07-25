@@ -21,10 +21,12 @@ use App\Repositories\Eloquent\EloquentMailServerRepository;
 use App\Repositories\Eloquent\EloquentPlanRepository;
 use App\Repositories\Eloquent\EloquentSubscriptionRepository;
 use App\Services\Ops\ProcessHeartbeatWriter;
+use App\Services\Outbound\GenericOutboundProviderEventParser;
+use App\Services\Outbound\OutboundProviderEventParserRegistry;
+use Illuminate\Cache\RateLimiting\Limit;
 use Illuminate\Console\Events\ScheduledTaskFailed;
 use Illuminate\Console\Events\ScheduledTaskFinished;
 use Illuminate\Console\Events\ScheduledTaskStarting;
-use Illuminate\Cache\RateLimiting\Limit;
 use Illuminate\Http\Request;
 use Illuminate\Queue\Events\JobFailed;
 use Illuminate\Queue\Events\JobProcessed;
@@ -90,6 +92,12 @@ class AppServiceProvider extends ServiceProvider
             FeatureRepositoryInterface::class,
             EloquentFeatureRepository::class,
         );
+
+        $this->app->singleton(OutboundProviderEventParserRegistry::class, function ($app): OutboundProviderEventParserRegistry {
+            return new OutboundProviderEventParserRegistry([
+                $app->make(GenericOutboundProviderEventParser::class),
+            ]);
+        });
     }
 
     /**

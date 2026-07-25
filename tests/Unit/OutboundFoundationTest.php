@@ -31,9 +31,13 @@ it('defines outbound message state values and transitions', function (): void {
         ->and(OutboundMessageState::Sending->canTransitionTo(OutboundMessageState::Failed))->toBeTrue()
         ->and(OutboundMessageState::Sending->canTransitionTo(OutboundMessageState::Queued))->toBeTrue()
         ->and(OutboundMessageState::Failed->canTransitionTo(OutboundMessageState::Queued))->toBeTrue()
-        ->and(OutboundMessageState::Sent->canTransitionTo(OutboundMessageState::Failed))->toBeFalse()
-        ->and(OutboundMessageState::Sent->isTerminal())->toBeTrue()
+        ->and(OutboundMessageState::Sent->canTransitionTo(OutboundMessageState::Delivered))->toBeTrue()
+        ->and(OutboundMessageState::Sent->canTransitionTo(OutboundMessageState::Failed))->toBeTrue()
+        ->and(OutboundMessageState::Sent->canTransitionTo(OutboundMessageState::Failed))->toBeTrue()
+        ->and(OutboundMessageState::Delivered->canTransitionTo(OutboundMessageState::Failed))->toBeFalse()
+        ->and(OutboundMessageState::Delivered->isTerminal())->toBeTrue()
         ->and(OutboundMessageState::Failed->blocksStaleJobMutation())->toBeTrue()
+        ->and(OutboundMessageState::Sent->blocksStaleJobMutation())->toBeTrue()
         ->and(OutboundMessageState::Queued->blocksStaleJobMutation())->toBeFalse();
 });
 

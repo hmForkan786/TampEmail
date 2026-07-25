@@ -8,7 +8,7 @@ namespace App\Enums;
  * Lifecycle states for outbound messages.
  *
  * {@see sent} means the configured transport accepted the message.
- * {@see delivered} is reserved for verified provider delivery confirmation and
+ * {@see delivered} requires a trusted provider delivery event and
  * must not be set from SMTP/provider acceptance alone.
  */
 enum OutboundMessageState: string
@@ -42,9 +42,13 @@ enum OutboundMessageState: string
         return self::labels()[$this->value];
     }
 
+    /**
+     * Terminal for the send/retry pipeline. Sent may still receive delivery events.
+     */
     public function isTerminal(): bool
     {
-        return in_array($this, [self::Sent, self::Delivered, self::Cancelled], true);
+        return in_array($this, [self::Delivered, self::Cancelled], true)
+            || ($this === self::Failed);
     }
 
     /**
@@ -64,8 +68,9 @@ enum OutboundMessageState: string
             self::Draft => [self::Queued],
             self::Queued => [self::Sending, self::Cancelled],
             self::Sending => [self::Sent, self::Failed, self::Queued],
+            self::Sent => [self::Delivered, self::Failed],
             self::Failed => [self::Queued],
-            self::Sent, self::Delivered, self::Cancelled => [],
+            self::Delivered, self::Cancelled => [],
         };
     }
 

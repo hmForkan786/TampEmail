@@ -9,6 +9,7 @@ use App\Http\Controllers\Api\V1\InboxController;
 use App\Http\Controllers\Api\V1\InboxEmailController;
 use App\Http\Controllers\Api\V1\MailServerController;
 use App\Http\Controllers\Api\V1\OutboundMessageController;
+use App\Http\Controllers\Api\V1\OutboundWebhookController;
 use Illuminate\Support\Facades\Route;
 
 Route::prefix('v1')->name('api.v1.')->middleware(['api.request-log', 'api.key'])->group(function (): void {
@@ -76,3 +77,5 @@ Route::prefix('v1')->name('api.v1.')->middleware(['api.request-log', 'api.key'])
 });
 
 Route::post('v1/inbound/webhook', InboundWebhookController::class)->name('api.v1.inbound.webhook');
+Route::post('v1/webhooks/outbound/{provider}', OutboundWebhookController::class)
+    ->name('api.v1.webhooks.outbound');

@@ -8,6 +8,8 @@ use App\Enums\OutboundMessageState;
 use App\Enums\OutboundOperation;
 use App\Models\AuditLog;
 use App\Models\OutboundMessage;
+use App\Models\OutboundProviderEvent;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 
 final class OutboundOpsService
@@ -111,6 +113,7 @@ final class OutboundOpsService
             'queued' => (clone $base)->where('state', OutboundMessageState::Queued->value)->count(),
             'sending' => (clone $base)->where('state', OutboundMessageState::Sending->value)->count(),
             'sent' => (clone $base)->where('state', OutboundMessageState::Sent->value)->count(),
+            'delivered' => (clone $base)->where('state', OutboundMessageState::Delivered->value)->count(),
             'failed' => (clone $base)->where('state', OutboundMessageState::Failed->value)->count(),
             'cancelled' => (clone $base)->where('state', OutboundMessageState::Cancelled->value)->count(),
             'send_operations' => (clone $base)->where('operation', OutboundOperation::Send->value)->count(),
@@ -175,9 +178,17 @@ final class OutboundOpsService
     {
         return [
             'accepted' => OutboundMessage::query()->where('state', OutboundMessageState::Sent->value)->where('sent_at', '>=', $since)->count(),
+            'delivered' => OutboundMessage::query()->where('state', OutboundMessageState::Delivered->value)->where('delivered_at', '>=', $since)->count(),
+            'bounced' => AuditLog::query()->where('action', 'outbound.bounce_received')->where('created_at', '>=', $since)->count(),
+            'complained' => AuditLog::query()->where('action', 'outbound.complaint_received')->where('created_at', '>=', $since)->count(),
+            'unmatched_provider_events' => AuditLog::query()->where('action', 'outbound.provider_event_unmatched')->where('created_at', '>=', $since)->count(),
+            'duplicate_events' => (int) Cache::get('outbound.metrics.duplicate_events', 0),
             'temporary_rejections' => AuditLog::query()->where('action', 'outbound.retry_scheduled')->where('created_at', '>=', $since)->count(),
             'permanent_rejections' => OutboundMessage::query()->where('state', OutboundMessageState::Failed->value)->where('failed_at', '>=', $since)->count(),
             'rate_limits' => OutboundMessage::query()->where('failure_code', 'rate_limit')->where('failed_at', '>=', $since)->count(),
+            'invalid_signature_attempts' => (int) Cache::get('outbound.metrics.invalid_signature_attempts', 0),
+            'event_processing_failures' => (int) Cache::get('outbound.metrics.event_processing_failures', 0),
+            'provider_events_received' => OutboundProviderEvent::query()->where('received_at', '>=', $since)->count(),
         ];
     }
 

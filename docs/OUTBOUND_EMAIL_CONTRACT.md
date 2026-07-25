@@ -296,9 +296,14 @@ A domain column may be added when send foundation lands if needed for per-domain
 
 ## Future delivery / webhook support
 
-- Persist provider message ids now so delivery webhooks can correlate later.
-- Introduce `delivered` / bounce / complaint states only when signed provider events are verified.
-- Do not invent delivery from SMTP accept.
+- Persist provider message ids on transport acceptance for correlation.
+- `POST /api/v1/webhooks/outbound/{provider}` accepts HMAC-signed delivery events (`X-Outbound-Timestamp`, `X-Outbound-Signature`).
+- Normalized event types: `accepted`, `delivered`, `temporary_failure`, `permanent_failure`, `bounced`, `complained`, `rejected`, `unknown`.
+- State precedence: `sent → delivered`; permanent bounce/reject may mark `failed` if not already delivered; temporary failures never overwrite delivered; complaints are recorded even after delivery; cancelled never becomes delivered; unmatched events remain stored.
+- Duplicate `(provider, provider_event_id)` is idempotent. Unsigned events are rejected in production (missing secret fails closed).
+- `sent` ≠ `delivered`: only verified provider `delivered` events set `delivered_at`.
+
+Required secret: `OUTBOUND_GENERIC_DELIVERY_WEBHOOK_SECRET` (and future per-provider secrets under `outbound.delivery_webhook.providers`).
 
 ## Foundational code (Prompt 601)
 

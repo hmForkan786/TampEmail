@@ -121,4 +121,25 @@ return [
         'temporary_failure_rate_threshold' => (int) env('OUTBOUND_OPS_TEMPORARY_FAILURE_RATE', 10),
     ],
 
+    /*
+    |--------------------------------------------------------------------------
+    | Delivery webhook / provider events (Prompt 607)
+    |--------------------------------------------------------------------------
+    |
+    | SMTP acceptance alone never marks messages delivered. Only verified
+    | provider events may transition sent → delivered.
+    |
+    */
+
+    'delivery_webhook' => [
+        'timestamp_skew_seconds' => (int) env('OUTBOUND_DELIVERY_WEBHOOK_TIMESTAMP_SKEW_SECONDS', 300),
+        'max_body_bytes' => (int) env('OUTBOUND_DELIVERY_WEBHOOK_MAX_BODY_BYTES', 65536),
+        'rate_limit_per_minute' => (int) env('OUTBOUND_DELIVERY_WEBHOOK_RATE_LIMIT_PER_MINUTE', 60),
+        'providers' => [
+            'generic' => [
+                'secret' => env('OUTBOUND_GENERIC_DELIVERY_WEBHOOK_SECRET'),
+            ],
+        ],
+    ],
+
 ];
