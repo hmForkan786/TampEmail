@@ -78,6 +78,7 @@ final class OutboundMessageResource extends JsonResource
             'failure_category' => $this->failure_code !== null ? $categories->userSafeCategory($this->failure_code) : null,
             'can_cancel' => $access->canCancel($this->resource),
             'can_retry' => $access->canRetry($this->resource),
+            'can_delete' => $access->canDelete($this->resource),
             'created_at' => $this->created_at,
             'updated_at' => $this->updated_at,
         ];

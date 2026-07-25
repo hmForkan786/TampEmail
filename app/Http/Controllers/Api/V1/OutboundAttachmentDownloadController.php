@@ -37,6 +37,7 @@ final class OutboundAttachmentDownloadController extends Controller
         $outboundMessage = OutboundMessage::query()
             ->whereKey($message)
             ->where('user_id', $owner->getKey())
+            ->whereNull('user_deleted_at')
             ->first();
 
         if ($outboundMessage === null || $outboundMessage->source_email_id === null) {

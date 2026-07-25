@@ -36,4 +36,9 @@ final class OutboundMessagePolicy
     {
         return $this->view($user, $message) && $this->access->canRetry($message);
     }
+
+    public function delete(User $user, OutboundMessage $message): bool
+    {
+        return $this->view($user, $message) && $this->access->canDelete($message);
+    }
 }

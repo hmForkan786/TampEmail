@@ -6,6 +6,7 @@ namespace App\Http\Controllers\Api\V1;
 
 use App\Actions\Outbound\CancelOutboundMessageAction;
 use App\Actions\Outbound\CreateOutboundSendAction;
+use App\Actions\Outbound\DeleteOutboundMessageAction;
 use App\Actions\Outbound\RetryOutboundMessageAction;
 use App\DTOs\Outbound\CreateOutboundSendData;
 use App\Exceptions\OutboundSendException;
@@ -25,6 +26,7 @@ final class OutboundMessageController
     public function __construct(
         private readonly CreateOutboundSendAction $createOutboundSend,
         private readonly CancelOutboundMessageAction $cancelOutboundMessage,
+        private readonly DeleteOutboundMessageAction $deleteOutboundMessage,
         private readonly RetryOutboundMessageAction $retryOutboundMessage,
         private readonly OutboundMessageTimelineBuilder $timelineBuilder,
         private readonly OutboundMessageListingService $listingService,
@@ -140,5 +142,25 @@ final class OutboundMessageController
         }
 
         return new OutboundMessageResource($outbound);
+    }
+
+    /**
+     * Hides the message from the owner's normal views. Never rewrites
+     * transport state; a still-queued message is cancelled first (same
+     * rule the `cancel` endpoint uses). Hard deletion happens much later,
+     * only via the retention prune command.
+     */
+    public function destroy(Request $request, string $message): JsonResponse
+    {
+        /** @var User $owner */
+        $owner = $request->attributes->get('apiKeyOwner');
+
+        try {
+            $this->deleteOutboundMessage->execute($message, $owner);
+        } catch (OutboundSendException $exception) {
+            return ApiErrorResponse::make($exception->errorCode, $exception->getMessage(), $exception->status);
+        }
+
+        return response()->json(['data' => ['deleted' => true]]);
     }
 }

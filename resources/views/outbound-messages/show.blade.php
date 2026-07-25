@@ -83,6 +83,14 @@
                         <button type="submit" class="btn">Retry</button>
                     </form>
                 @endif
+
+                @if ($canDelete)
+                    <form method="POST" action="{{ route('outbound-messages.destroy', $message) }}" onsubmit="return confirm('Delete this message from your view? This cannot be undone.');">
+                        @csrf
+                        @method('DELETE')
+                        <button type="submit" class="btn btn--danger">Delete</button>
+                    </form>
+                @endif
             </div>
         </div>
 

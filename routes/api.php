@@ -76,6 +76,9 @@ Route::prefix('v1')->name('api.v1.')->middleware(['api.request-log', 'api.key'])
         Route::post('outbound-messages/{message}/retry', [OutboundMessageController::class, 'retry'])
             ->whereUuid('message')
             ->name('outbound-messages.retry');
+        Route::delete('outbound-messages/{message}', [OutboundMessageController::class, 'destroy'])
+            ->whereUuid('message')
+            ->name('outbound-messages.destroy');
         Route::post('emails/{email}/reply', [EmailReplyController::class, 'store'])
             ->whereUuid('email')
             ->name('emails.reply');

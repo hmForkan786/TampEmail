@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Services\Outbound;
 
+use App\Actions\Outbound\DeleteOutboundMessageAction;
 use App\Actions\Outbound\RetryOutboundMessageAction;
 use App\Enums\OutboundMessageState;
 use App\Exceptions\OutboundSendException;
@@ -49,11 +50,18 @@ final class OutboundMessageAccessService
         private readonly OutboundFailureCategoryMapper $categories,
     ) {}
 
+    /**
+     * Normal owner-facing lookup: excludes messages the owner has hidden
+     * via {@see DeleteOutboundMessageAction}. Never
+     * used by admin/ops views, which query {@see OutboundMessage} directly
+     * and are unaffected by user deletion.
+     */
     public function findOwned(User $owner, string $id): ?OutboundMessage
     {
         return OutboundMessage::query()
             ->whereKey($id)
             ->where('user_id', $owner->getKey())
+            ->whereNull('user_deleted_at')
             ->with(['inbox.domain'])
             ->first();
     }
@@ -80,6 +88,16 @@ final class OutboundMessageAccessService
     public function canCancel(OutboundMessage $message): bool
     {
         return $message->state === OutboundMessageState::Queued;
+    }
+
+    /**
+     * The only precondition for the owner's hide/delete affordance is that
+     * the message has not already been hidden; every other state (queued,
+     * sending, sent, delivered, failed, cancelled) may be hidden.
+     */
+    public function canDelete(OutboundMessage $message): bool
+    {
+        return ! $message->isUserDeleted();
     }
 
     public function canRetry(OutboundMessage $message): bool

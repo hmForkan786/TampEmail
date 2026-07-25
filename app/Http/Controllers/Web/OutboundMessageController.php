@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Http\Controllers\Web;
 
 use App\Actions\Outbound\CancelOutboundMessageAction;
+use App\Actions\Outbound\DeleteOutboundMessageAction;
 use App\Actions\Outbound\RetryOutboundMessageAction;
 use App\Enums\OutboundMessageState;
 use App\Enums\OutboundOperation;
@@ -38,6 +39,7 @@ final class OutboundMessageController extends Controller
         private readonly OutboundMessageAccessService $accessService,
         private readonly OutboundMessageTimelineBuilder $timelineBuilder,
         private readonly CancelOutboundMessageAction $cancelAction,
+        private readonly DeleteOutboundMessageAction $deleteAction,
         private readonly RetryOutboundMessageAction $retryAction,
         private readonly OutboundLaunchControlService $launchControl,
         private readonly EntitlementService $entitlements,
@@ -108,6 +110,7 @@ final class OutboundMessageController extends Controller
             'attemptSummary' => $this->accessService->attemptSummary($outbound),
             'canCancel' => $this->accessService->canCancel($outbound),
             'canRetry' => $this->accessService->canRetry($outbound),
+            'canDelete' => $this->accessService->canDelete($outbound),
             'attachments' => $outbound->safeAttachments,
             'failureCategory' => $outbound->failure_code !== null
                 ? $this->categories->userSafeCategory($outbound->failure_code)
@@ -170,6 +173,26 @@ final class OutboundMessageController extends Controller
         return redirect()
             ->route('outbound-messages.show', $outbound)
             ->with('outboundStatus', 'Retry requested.');
+    }
+
+    public function destroy(Request $request, string $message): RedirectResponse
+    {
+        /** @var User $user */
+        $user = $request->user();
+
+        $outbound = $this->accessService->findOwned($user, $message);
+
+        abort_if($outbound === null, 404);
+
+        try {
+            $this->deleteAction->execute($outbound->getKey(), $user);
+        } catch (OutboundSendException $exception) {
+            return back()->with('outboundError', $exception->getMessage());
+        }
+
+        return redirect()
+            ->route('outbound-messages.index')
+            ->with('outboundStatus', 'Message deleted.');
     }
 
     /**

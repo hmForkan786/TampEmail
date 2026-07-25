@@ -59,6 +59,9 @@ return Application::configure(basePath: dirname(__DIR__))
         if (config('inbox_lifetime.expiration_scheduler_enabled', false) === true) {
             $schedule->command('inboxes:expire --confirm')->withoutOverlapping()->daily();
         }
+        if (config('outbound_retention.cleanup_enabled', false) === true) {
+            $schedule->command('outbound:prune --confirm')->withoutOverlapping()->daily();
+        }
         $schedule->command('outbound:verify-domains')->withoutOverlapping()->hourly();
         $schedule->command('outbound:reconcile-stale-sending')->withoutOverlapping()->everyFiveMinutes();
         $schedule->command('outbound:reconcile-unmatched-events')->withoutOverlapping()->everyFifteenMinutes();

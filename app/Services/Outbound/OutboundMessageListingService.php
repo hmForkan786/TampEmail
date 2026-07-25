@@ -32,6 +32,7 @@ final class OutboundMessageListingService
     {
         $query = OutboundMessage::query()
             ->where('user_id', $owner->getKey())
+            ->whereNull('user_deleted_at')
             ->with(['inbox:id,full_address,display_name,domain_id'])
             ->orderByDesc('created_at')
             ->orderByDesc('id');

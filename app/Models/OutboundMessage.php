@@ -6,6 +6,8 @@ namespace App\Models;
 
 use App\Enums\OutboundMessageState;
 use App\Enums\OutboundOperation;
+use Illuminate\Database\Eloquent\Attributes\Scope;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Support\Carbon;
@@ -48,6 +50,10 @@ use Illuminate\Support\Carbon;
  * @property list<string>|null $attachment_ids
  * @property array<string, mixed>|null $metadata
  * @property bool $is_canary
+ * @property Carbon|null $user_deleted_at
+ * @property Carbon|null $content_redacted_at
+ * @property Carbon|null $retention_hold_until
+ * @property string|null $retention_hold_reason_code
  * @property Carbon|null $created_at
  * @property Carbon|null $updated_at
  * @property-read User $user
@@ -96,6 +102,10 @@ class OutboundMessage extends BaseModel
         'attachment_ids',
         'metadata',
         'is_canary',
+        'user_deleted_at',
+        'content_redacted_at',
+        'retention_hold_until',
+        'retention_hold_reason_code',
     ];
 
     /**
@@ -121,6 +131,9 @@ class OutboundMessage extends BaseModel
             'failed_at' => 'datetime',
             'cancelled_at' => 'datetime',
             'reconciliation_flagged_at' => 'datetime',
+            'user_deleted_at' => 'datetime',
+            'content_redacted_at' => 'datetime',
+            'retention_hold_until' => 'datetime',
         ]);
     }
 
@@ -154,5 +167,43 @@ class OutboundMessage extends BaseModel
         return count($this->to_recipients ?? [])
             + count($this->cc_recipients ?? [])
             + count($this->bcc_recipients ?? []);
+    }
+
+    public function isUserDeleted(): bool
+    {
+        return $this->user_deleted_at !== null;
+    }
+
+    public function isContentRedacted(): bool
+    {
+        return $this->content_redacted_at !== null;
+    }
+
+    /**
+     * True when an active legal/security hold blocks retention pruning.
+     * A null `retention_hold_until` with a reason code set means an
+     * indefinite hold (release is explicit, via
+     * ReleaseOutboundRetentionHoldAction). A hold never restores user
+     * visibility on its own.
+     */
+    public function isRetentionHeld(): bool
+    {
+        if ($this->retention_hold_reason_code === null) {
+            return false;
+        }
+
+        return $this->retention_hold_until === null || $this->retention_hold_until->isFuture();
+    }
+
+    /**
+     * @param  Builder<OutboundMessage>  $query
+     */
+    #[Scope]
+    protected function retentionHeld(Builder $query): void
+    {
+        $query->whereNotNull('retention_hold_reason_code')
+            ->where(function (Builder $inner): void {
+                $inner->whereNull('retention_hold_until')->orWhere('retention_hold_until', '>', now());
+            });
     }
 }

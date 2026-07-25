@@ -28,6 +28,9 @@ Route::middleware('auth')->group(function (): void {
     Route::post('outbound-messages/{message}/retry', [OutboundMessageController::class, 'retry'])
         ->whereUuid('message')
         ->name('outbound-messages.retry');
+    Route::delete('outbound-messages/{message}', [OutboundMessageController::class, 'destroy'])
+        ->whereUuid('message')
+        ->name('outbound-messages.destroy');
     Route::get('outbound-messages/{message}/attachments/{attachment}', OutboundAttachmentDownloadController::class)
         ->whereUuid(['message', 'attachment'])
         ->name('outbound-messages.attachments.download');
