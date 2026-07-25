@@ -22,6 +22,7 @@ use App\Services\Audit\AuditLogWriter;
 use App\Services\Outbound\FakeOutboundTransport;
 use App\Services\Outbound\OutboundAttachmentSelector;
 use App\Services\Outbound\OutboundAuthorizationService;
+use App\Services\Outbound\OutboundSuppressionService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Queue;
 
@@ -169,6 +170,7 @@ it('delivers via atomic claim and records sent state', function (): void {
         app(OutboundAuthorizationService::class),
         app(AuditLogWriter::class),
         app(OutboundAttachmentSelector::class),
+        app(OutboundSuppressionService::class),
     );
 
     $message = OutboundMessage::query()->findOrFail($created);
@@ -185,6 +187,7 @@ it('delivers via atomic claim and records sent state', function (): void {
         app(OutboundAuthorizationService::class),
         app(AuditLogWriter::class),
         app(OutboundAttachmentSelector::class),
+        app(OutboundSuppressionService::class),
     );
     expect($ctx['transport']->sent)->toHaveCount(1)
         ->and($message->fresh()->state)->toBe(OutboundMessageState::Sent);
@@ -308,6 +311,7 @@ it('handles temporary and permanent transport failures and unavailable config', 
             app(OutboundAuthorizationService::class),
             app(AuditLogWriter::class),
             app(OutboundAttachmentSelector::class),
+            app(OutboundSuppressionService::class),
         );
         expect(false)->toBeTrue();
     } catch (RuntimeException) {
@@ -324,6 +328,7 @@ it('handles temporary and permanent transport failures and unavailable config', 
         app(OutboundAuthorizationService::class),
         app(AuditLogWriter::class),
         app(OutboundAttachmentSelector::class),
+        app(OutboundSuppressionService::class),
     );
     expect(OutboundMessage::query()->find($id2)->state)->toBe(OutboundMessageState::Failed)
         ->and(AuditLog::query()->where('action', 'outbound.message_failed')->exists())->toBeTrue();
@@ -339,6 +344,7 @@ it('handles temporary and permanent transport failures and unavailable config', 
         app(OutboundAuthorizationService::class),
         app(AuditLogWriter::class),
         app(OutboundAttachmentSelector::class),
+        app(OutboundSuppressionService::class),
     );
     expect(OutboundMessage::query()->find($id3)->failure_code)->toBe('transport_unavailable');
 });

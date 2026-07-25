@@ -19,6 +19,7 @@ use App\Services\Outbound\OutboundRateLimiter;
 use App\Services\Outbound\OutboundRecipientValidator;
 use App\Services\Outbound\OutboundReplyRecipientResolver;
 use App\Services\Outbound\OutboundSubjectHelper;
+use App\Services\Outbound\OutboundSuppressionService;
 use App\Services\Outbound\OutboundThreadingHeaders;
 use Illuminate\Support\Facades\DB;
 
@@ -32,6 +33,7 @@ final class CreateOutboundReplyAction
         private readonly OutboundSubjectHelper $subjects,
         private readonly OutboundThreadingHeaders $threading,
         private readonly OutboundRateLimiter $rateLimiter,
+        private readonly OutboundSuppressionService $suppressions,
         private readonly AuditLogWriter $auditLogWriter,
     ) {}
 
@@ -60,6 +62,8 @@ final class CreateOutboundReplyAction
             $to = $validated['to'];
             $cc = $validated['cc'];
         }
+
+        $this->suppressions->assertRecipientsAllowed([...$to, ...$cc], $user);
 
         $subject = $this->subjects->replySubject($email->subject, $data->subject);
         $textBody = $data->textBody;

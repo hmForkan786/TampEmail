@@ -20,6 +20,7 @@ use App\Services\Outbound\OutboundForwardContextBuilder;
 use App\Services\Outbound\OutboundRateLimiter;
 use App\Services\Outbound\OutboundRecipientValidator;
 use App\Services\Outbound\OutboundSubjectHelper;
+use App\Services\Outbound\OutboundSuppressionService;
 use Illuminate\Support\Facades\DB;
 
 final class CreateOutboundForwardAction
@@ -32,6 +33,7 @@ final class CreateOutboundForwardAction
         private readonly OutboundForwardContextBuilder $forwardContext,
         private readonly OutboundAttachmentSelector $attachments,
         private readonly OutboundRateLimiter $rateLimiter,
+        private readonly OutboundSuppressionService $suppressions,
         private readonly AuditLogWriter $auditLogWriter,
     ) {}
 
@@ -54,6 +56,11 @@ final class CreateOutboundForwardAction
         }
 
         $recipientSet = $this->recipients->validate($data->to, $data->cc, $data->bcc);
+        $this->suppressions->assertRecipientsAllowed([
+            ...$recipientSet['to'],
+            ...$recipientSet['cc'],
+            ...$recipientSet['bcc'],
+        ], $user);
         $selectedAttachments = $this->attachments->selectForForward($email, $data->attachmentIds);
 
         $subject = $this->subjects->forwardSubject($email->subject, $data->subject);

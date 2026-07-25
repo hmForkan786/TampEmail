@@ -15,6 +15,7 @@ use App\Models\OutboundMessage;
 use App\Services\Audit\AuditLogWriter;
 use App\Services\Outbound\OutboundAttachmentSelector;
 use App\Services\Outbound\OutboundAuthorizationService;
+use App\Services\Outbound\OutboundSuppressionService;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldBeUnique;
 use Illuminate\Contracts\Queue\ShouldQueue;
@@ -59,6 +60,7 @@ final class DeliverOutboundMessageJob implements ShouldBeUnique, ShouldQueue
         OutboundAuthorizationService $authorization,
         AuditLogWriter $audit,
         OutboundAttachmentSelector $attachmentSelector,
+        OutboundSuppressionService $suppressions,
     ): void {
         $claimed = DB::transaction(function (): ?OutboundMessage {
             $message = OutboundMessage::query()
@@ -119,6 +121,11 @@ final class DeliverOutboundMessageJob implements ShouldBeUnique, ShouldQueue
             }
 
             $authorization->assertCanSend($claimed->user, $claimed->inbox, $claimed->operation);
+            $suppressions->assertRecipientsAllowed([
+                ...($claimed->to_recipients ?? []),
+                ...($claimed->cc_recipients ?? []),
+                ...($claimed->bcc_recipients ?? []),
+            ], $claimed->user);
         } catch (\Throwable $exception) {
             $code = property_exists($exception, 'errorCode') ? (string) $exception->errorCode : 'authorization_failed';
             $this->markFailed($claimed, $code, 'Authorization failed before transport submission.', $audit);

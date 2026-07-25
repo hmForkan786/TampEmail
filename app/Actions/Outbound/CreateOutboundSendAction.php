@@ -17,6 +17,7 @@ use App\Services\Outbound\OutboundAuthorizationService;
 use App\Services\Outbound\OutboundContentValidator;
 use App\Services\Outbound\OutboundRateLimiter;
 use App\Services\Outbound\OutboundRecipientValidator;
+use App\Services\Outbound\OutboundSuppressionService;
 use Illuminate\Support\Facades\DB;
 
 final class CreateOutboundSendAction
@@ -26,6 +27,7 @@ final class CreateOutboundSendAction
         private readonly OutboundRecipientValidator $recipients,
         private readonly OutboundContentValidator $content,
         private readonly OutboundRateLimiter $rateLimiter,
+        private readonly OutboundSuppressionService $suppressions,
         private readonly AuditLogWriter $auditLogWriter,
     ) {}
 
@@ -47,6 +49,11 @@ final class CreateOutboundSendAction
         }
 
         $recipientSet = $this->recipients->validate($data->to, $data->cc, $data->bcc);
+        $this->suppressions->assertRecipientsAllowed([
+            ...$recipientSet['to'],
+            ...$recipientSet['cc'],
+            ...$recipientSet['bcc'],
+        ], $user);
         $content = $this->content->validate(
             $data->subject,
             $data->textBody,

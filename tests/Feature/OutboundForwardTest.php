@@ -26,6 +26,7 @@ use App\Services\Audit\AuditLogWriter;
 use App\Services\Outbound\FakeOutboundTransport;
 use App\Services\Outbound\OutboundAttachmentSelector;
 use App\Services\Outbound\OutboundAuthorizationService;
+use App\Services\Outbound\OutboundSuppressionService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Facades\Storage;
@@ -148,6 +149,7 @@ it('forwards with sanitized context and clean attachments', function (): void {
         app(OutboundAuthorizationService::class),
         app(AuditLogWriter::class),
         app(OutboundAttachmentSelector::class),
+        app(OutboundSuppressionService::class),
     );
 
     expect($message->fresh()->state)->toBe(OutboundMessageState::Sent)
@@ -208,6 +210,7 @@ it('rechecks attachment safety in the queue job', function (): void {
         app(OutboundAuthorizationService::class),
         app(AuditLogWriter::class),
         app(OutboundAttachmentSelector::class),
+        app(OutboundSuppressionService::class),
     );
 
     expect(OutboundMessage::query()->find($id)->state)->toBe(OutboundMessageState::Failed)

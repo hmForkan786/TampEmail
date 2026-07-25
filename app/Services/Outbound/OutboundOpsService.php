@@ -9,6 +9,7 @@ use App\Enums\OutboundOperation;
 use App\Models\AuditLog;
 use App\Models\OutboundMessage;
 use App\Models\OutboundProviderEvent;
+use App\Models\OutboundRecipientSuppression;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 
@@ -24,7 +25,8 @@ final class OutboundOpsService
         $volume7d = $this->volume(now()->subDays(7));
         $retries = $this->retryMetrics();
         $provider = $this->providerMetrics(now()->subDay());
-        $issues = $this->issues($readiness, $retries, $volume24h);
+        $suppressions = $this->suppressionMetrics();
+        $issues = $this->issues($readiness, $retries, $volume24h, $suppressions);
 
         return [
             'status' => $this->overallStatus($readiness, $issues),
@@ -36,11 +38,13 @@ final class OutboundOpsService
             ],
             'retries' => $retries,
             'provider' => $provider,
+            'suppressions' => $suppressions,
             'issues' => $issues,
             'thresholds' => [
                 'oldest_queued_seconds' => (int) config('outbound.ops.oldest_queued_seconds_threshold', 600),
                 'failed_last_hour' => (int) config('outbound.ops.failed_last_hour_threshold', 5),
                 'temporary_failure_rate' => (int) config('outbound.ops.temporary_failure_rate_threshold', 10),
+                'complaint_spike_24h' => (int) config('outbound.ops.complaint_spike_threshold', 5),
             ],
         ];
     }
@@ -193,12 +197,38 @@ final class OutboundOpsService
     }
 
     /**
+     * @return array<string, int>
+     */
+    public function suppressionMetrics(): array
+    {
+        $active = OutboundRecipientSuppression::query()
+            ->where('active', true)
+            ->where(function ($query): void {
+                $query->whereNull('expires_at')->orWhere('expires_at', '>', now());
+            });
+
+        return [
+            'active' => (clone $active)->count(),
+            'permanent_bounce' => (clone $active)->where('reason', 'permanent_bounce')->count(),
+            'complaint' => (clone $active)->where('reason', 'complaint')->count(),
+            'manual' => (clone $active)->where('reason', 'manual')->count(),
+            'blocked_sends_24h' => AuditLog::query()
+                ->where('action', 'outbound.send_blocked_by_suppression')
+                ->where('created_at', '>=', now()->subDay())
+                ->count(),
+            'added_24h' => OutboundRecipientSuppression::query()->where('suppressed_at', '>=', now()->subDay())->count(),
+            'added_7d' => OutboundRecipientSuppression::query()->where('suppressed_at', '>=', now()->subDays(7))->count(),
+        ];
+    }
+
+    /**
      * @param  array<string, mixed>  $readiness
      * @param  array<string, mixed>  $retries
      * @param  array<string, int>  $volume24h
+     * @param  array<string, int>  $suppressions
      * @return list<string>
      */
-    private function issues(array $readiness, array $retries, array $volume24h): array
+    private function issues(array $readiness, array $retries, array $volume24h, array $suppressions = []): array
     {
         $issues = [];
 
@@ -213,6 +243,11 @@ final class OutboundOpsService
         if (($volume24h['failed'] ?? 0) >= (int) config('outbound.ops.failed_last_hour_threshold', 5)
             && ($retries['retries_scheduled'] ?? 0) >= (int) config('outbound.ops.temporary_failure_rate_threshold', 10)) {
             $issues[] = 'elevated_temporary_failures';
+        }
+
+        if (($suppressions['complaint'] ?? 0) >= (int) config('outbound.ops.complaint_spike_threshold', 5)
+            && ($suppressions['added_24h'] ?? 0) >= (int) config('outbound.ops.complaint_spike_threshold', 5)) {
+            $issues[] = 'complaint_spike';
         }
 
         return $issues;

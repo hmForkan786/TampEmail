@@ -270,13 +270,14 @@ outbound.manual_retry_requested
 
 Never audit: passwords, API tokens, raw SMTP responses, full bodies, BCC addresses, storage paths, attachment bytes.
 
-## Abuse controls
+## Recipient suppression
 
-- Per-user and per-API-key rate limits (existing `ThrottleApiKey` + outbound-specific hourly/daily caps).
-- Max recipients per message; reject empty recipient sets.
-- Header injection (CRLF) blocked on subject, display name, and addresses.
-- Domain allow/deny lists when configured.
-- Feature kill switches in `config/outbound.php`.
+- Permanent bounce, complaint, and explicit invalid-recipient provider outcomes create global suppressions (hashed lookup + encrypted reversible value for admin display).
+- Temporary failures do not suppress.
+- Send/reply/forward validate recipients before queueing; delivery jobs re-check immediately before transport.
+- Ordinary users receive a safe `recipient_suppressed` error without provider/source details.
+- Platform admins manage suppressions under **Operations → Recipient Suppressions**; complaint/provider removals require elevated authorization.
+- Ops metrics expose active/bounce/complaint/manual counts and blocked-send volume; readiness does not fail merely because suppressions exist.
 
 ## Privacy and logging
 

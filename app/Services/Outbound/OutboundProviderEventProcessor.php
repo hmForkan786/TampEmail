@@ -29,6 +29,7 @@ final class OutboundProviderEventProcessor
 {
     public function __construct(
         private readonly AuditLogWriter $audit,
+        private readonly OutboundSuppressionService $suppressions,
     ) {}
 
     /**
@@ -250,6 +251,13 @@ final class OutboundProviderEventProcessor
             ],
         );
 
+        $this->suppressMessageRecipients(
+            $fresh,
+            reason: $data->eventType === OutboundProviderEventType::Bounced ? 'permanent_bounce' : 'invalid_recipient',
+            provider: $data->provider,
+            sourceEventId: null,
+        );
+
         return 'failed';
     }
 
@@ -269,7 +277,37 @@ final class OutboundProviderEventProcessor
             ],
         );
 
+        $this->suppressMessageRecipients(
+            $message,
+            reason: 'complaint',
+            provider: $data->provider,
+            sourceEventId: null,
+        );
+
         return 'complaint_recorded';
+    }
+
+    private function suppressMessageRecipients(
+        OutboundMessage $message,
+        string $reason,
+        ?string $provider,
+        ?string $sourceEventId,
+    ): void {
+        $recipients = [
+            ...($message->to_recipients ?? []),
+            ...($message->cc_recipients ?? []),
+            ...($message->bcc_recipients ?? []),
+        ];
+
+        foreach (array_unique($recipients) as $recipient) {
+            $this->suppressions->suppress(
+                email: $recipient,
+                reason: $reason,
+                source: 'provider_event',
+                provider: $provider,
+                sourceEventId: $sourceEventId,
+            );
+        }
     }
 
     /**
