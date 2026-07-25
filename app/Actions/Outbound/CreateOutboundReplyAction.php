@@ -97,7 +97,7 @@ final class CreateOutboundReplyAction
             return $existing;
         }
 
-        $this->rateLimiter->assertWithinLimits($user);
+        $this->rateLimiter->assertWithinLimits($user, [...$to, ...$cc]);
 
         $message = DB::transaction(function () use ($data, $user, $inbox, $email, $to, $cc, $content, $headers, $fingerprint, $apiKeyId): OutboundMessage {
             $message = OutboundMessage::query()->create([

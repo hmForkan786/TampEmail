@@ -92,6 +92,25 @@ return [
 
     'messages_per_day' => (int) env('OUTBOUND_MESSAGES_PER_DAY', 200),
 
+    'messages_per_minute' => (int) env('OUTBOUND_MESSAGES_PER_MINUTE', 5),
+
+    'unique_recipients_per_hour' => (int) env('OUTBOUND_UNIQUE_RECIPIENTS_PER_HOUR', 100),
+
+    'unique_recipients_per_day' => (int) env('OUTBOUND_UNIQUE_RECIPIENTS_PER_DAY', 500),
+
+    'concurrent_queued_messages' => (int) env('OUTBOUND_CONCURRENT_QUEUED', 20),
+
+    'outbound_bytes_per_day' => (int) env('OUTBOUND_BYTES_PER_DAY', 104857600),
+
+    'abuse' => [
+        'fail_closed_on_quota_backend' => filter_var(env('OUTBOUND_ABUSE_FAIL_CLOSED', true), FILTER_VALIDATE_BOOL),
+        'temp_block_hours' => (int) env('OUTBOUND_ABUSE_TEMP_BLOCK_HOURS', 24),
+        'bounce_threshold_24h' => (int) env('OUTBOUND_ABUSE_BOUNCE_THRESHOLD', 10),
+        'complaint_threshold_24h' => (int) env('OUTBOUND_ABUSE_COMPLAINT_THRESHOLD', 2),
+        'failed_send_threshold_24h' => (int) env('OUTBOUND_ABUSE_FAILED_THRESHOLD', 25),
+        'suppression_block_threshold_24h' => (int) env('OUTBOUND_ABUSE_SUPPRESSION_BLOCK_THRESHOLD', 20),
+    ],
+
     /*
     |--------------------------------------------------------------------------
     | Delivery retries (Prompt 605)

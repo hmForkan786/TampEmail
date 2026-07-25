@@ -7,6 +7,7 @@ namespace App\Services\Outbound;
 use App\Enums\OutboundMessageState;
 use App\Enums\OutboundOperation;
 use App\Models\AuditLog;
+use App\Models\OutboundAbuseBlock;
 use App\Models\OutboundMessage;
 use App\Models\OutboundProviderEvent;
 use App\Models\OutboundRecipientSuppression;
@@ -26,6 +27,7 @@ final class OutboundOpsService
         $retries = $this->retryMetrics();
         $provider = $this->providerMetrics(now()->subDay());
         $suppressions = $this->suppressionMetrics();
+        $abuse = $this->abuseMetrics();
         $issues = $this->issues($readiness, $retries, $volume24h, $suppressions);
 
         return [
@@ -39,6 +41,7 @@ final class OutboundOpsService
             'retries' => $retries,
             'provider' => $provider,
             'suppressions' => $suppressions,
+            'abuse' => $abuse,
             'issues' => $issues,
             'thresholds' => [
                 'oldest_queued_seconds' => (int) config('outbound.ops.oldest_queued_seconds_threshold', 600),
@@ -193,6 +196,37 @@ final class OutboundOpsService
             'invalid_signature_attempts' => (int) Cache::get('outbound.metrics.invalid_signature_attempts', 0),
             'event_processing_failures' => (int) Cache::get('outbound.metrics.event_processing_failures', 0),
             'provider_events_received' => OutboundProviderEvent::query()->where('received_at', '>=', $since)->count(),
+        ];
+    }
+
+    /**
+     * @return array<string, int>
+     */
+    public function abuseMetrics(): array
+    {
+        return [
+            'throttled_requests' => (int) Cache::get('outbound.metrics.throttled_requests', 0),
+            'temporarily_blocked_users' => OutboundAbuseBlock::query()
+                ->where('state', 'temporarily_blocked')
+                ->whereNull('cleared_at')
+                ->where(function ($query): void {
+                    $query->whereNull('expires_at')->orWhere('expires_at', '>', now());
+                })
+                ->distinct('user_id')
+                ->count('user_id'),
+            'outbound_suspended_users' => OutboundAbuseBlock::query()
+                ->where('state', 'suspended')
+                ->whereNull('cleared_at')
+                ->distinct('user_id')
+                ->count('user_id'),
+            'quota_backend_failures' => (int) Cache::get('outbound.metrics.quota_backend_failures', 0),
+            'high_bounce_accounts' => (int) Cache::get('outbound.metrics.high_bounce_accounts', 0),
+            'high_complaint_accounts' => (int) Cache::get('outbound.metrics.high_complaint_accounts', 0),
+            'unique_recipient_spikes' => (int) Cache::get('outbound.metrics.unique_recipient_spikes', 0),
+            'blocked_sends' => AuditLog::query()
+                ->whereIn('action', ['outbound.send_blocked_by_suppression', 'outbound.abuse_block_applied'])
+                ->where('created_at', '>=', now()->subDay())
+                ->count(),
         ];
     }
 

@@ -97,7 +97,15 @@ final class CreateOutboundForwardAction
             return $existing;
         }
 
-        $this->rateLimiter->assertWithinLimits($user);
+        $this->rateLimiter->assertWithinLimits(
+            $user,
+            [
+                ...$recipientSet['to'],
+                ...$recipientSet['cc'],
+                ...$recipientSet['bcc'],
+            ],
+            array_sum(array_map(static fn ($attachment): int => (int) $attachment->size_bytes, $selectedAttachments)),
+        );
 
         $message = DB::transaction(function () use ($data, $user, $inbox, $email, $recipientSet, $content, $attachmentIds, $fingerprint, $apiKeyId): OutboundMessage {
             $message = OutboundMessage::query()->create([

@@ -86,7 +86,11 @@ final class CreateOutboundSendAction
             return $existing;
         }
 
-        $this->rateLimiter->assertWithinLimits($user);
+        $this->rateLimiter->assertWithinLimits($user, [
+            ...$recipientSet['to'],
+            ...$recipientSet['cc'],
+            ...$recipientSet['bcc'],
+        ]);
 
         $message = DB::transaction(function () use ($data, $user, $inbox, $recipientSet, $content, $fingerprint, $apiKeyId): OutboundMessage {
             $message = OutboundMessage::query()->create([

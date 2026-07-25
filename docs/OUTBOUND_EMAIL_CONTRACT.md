@@ -279,6 +279,14 @@ Never audit: passwords, API tokens, raw SMTP responses, full bodies, BCC address
 - Platform admins manage suppressions under **Operations → Recipient Suppressions**; complaint/provider removals require elevated authorization.
 - Ops metrics expose active/bounce/complaint/manual counts and blocked-send volume; readiness does not fail merely because suppressions exist.
 
+## Abuse controls
+
+- Shared `OutboundRateLimiter` for API/UI create paths with DB row-lock reservation.
+- Limits: messages/minute/hour/day, unique recipients/hour/day, concurrent queued, outbound bytes/day.
+- Counting: new accepted creates consume quota; idempotent replay does not; queue retries do not create new rows; validation failures do not consume quota; `to`/`cc`/`bcc` count after dedupe.
+- Temporary blocks / suspensions via `outbound_abuse_blocks` with audit trail; safe 429/403 without internal thresholds.
+- Ops metrics: throttled requests, blocked/suspended users, bounce/complaint spikes.
+
 ## Privacy and logging
 
 - BCC visible only to the authorized sender context; never in shared logs or non-owner responses.
