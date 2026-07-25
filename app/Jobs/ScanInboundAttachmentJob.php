@@ -10,6 +10,7 @@ use App\Enums\ProcessingStage;
 use App\Models\Attachment;
 use App\Models\EmailProcessingLog;
 use App\Services\Audit\AuditLogWriter;
+use App\Services\Inbound\AttachmentScanRetry;
 use App\Services\Inbound\AttachmentScanService;
 use App\Services\Inbound\InboundFailureService;
 use Illuminate\Bus\Queueable;
@@ -23,27 +24,44 @@ final class ScanInboundAttachmentJob implements ShouldBeUnique, ShouldQueue
 {
     use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
 
-    public int $tries = 3;
-
-    public int $timeout = 120;
-
     public int $uniqueFor = 3600;
+
+    public function __construct(public readonly string $attachmentId) {}
 
     public function uniqueId(): string
     {
         return $this->attachmentId;
     }
 
-    public function backoff(): array
+    public function tries(): int
     {
-        return [60, 300, 900];
+        return AttachmentScanRetry::maxAttempts();
     }
 
-    public function __construct(public readonly string $attachmentId) {}
+    /**
+     * @return list<int>
+     */
+    public function backoff(): array
+    {
+        return AttachmentScanRetry::backoffSeconds();
+    }
+
+    public function timeout(): int
+    {
+        return AttachmentScanRetry::jobTimeoutSeconds();
+    }
 
     public function handle(AttachmentScanService $service): void
     {
-        $attachment = Attachment::query()->findOrFail($this->attachmentId);
+        $attachment = Attachment::withTrashed()->find($this->attachmentId);
+        if ($attachment === null || $attachment->trashed()) {
+            return;
+        }
+
+        if ($attachment->scan_status?->isTerminal()) {
+            return;
+        }
+
         $result = $service->scan($attachment);
 
         if ($service->terminalTransitionApplied()) {
@@ -60,8 +78,12 @@ final class ScanInboundAttachmentJob implements ShouldBeUnique, ShouldQueue
 
     public function failed(\Throwable $exception): void
     {
-        $attachment = Attachment::query()->find($this->attachmentId);
-        if ($attachment === null) {
+        $attachment = Attachment::withTrashed()->find($this->attachmentId);
+        if ($attachment === null || $attachment->trashed()) {
+            return;
+        }
+
+        if ($attachment->scan_status?->isTerminal()) {
             return;
         }
 
@@ -84,21 +106,19 @@ final class ScanInboundAttachmentJob implements ShouldBeUnique, ShouldQueue
             return;
         }
 
-        app(AuditLogWriter::class)->write(
-            'attachment.scan_failed',
-            null,
-            $attachment,
-            null,
-            null,
-            [
-                'attachment_id' => (string) $attachment->id,
-                'email_id' => (string) $attachment->email_id,
-                'result_status' => AttachmentScanStatus::Failed->value,
-                'scanner_backend' => (string) config('attachments.scanner_backend', 'disabled'),
-                'error_code' => 'retry_exhausted',
-                'timestamp' => now()->toIso8601String(),
-            ],
-        );
+        $audit = app(AuditLogWriter::class);
+        $payload = [
+            'attachment_id' => (string) $attachment->id,
+            'email_id' => (string) $attachment->email_id,
+            'result_status' => AttachmentScanStatus::Failed->value,
+            'scanner_backend' => (string) config('attachments.scanner_backend', 'disabled'),
+            'error_code' => 'retry_exhausted',
+            'attempt' => $this->attempts(),
+            'max_attempts' => AttachmentScanRetry::maxAttempts(),
+            'timestamp' => now()->toIso8601String(),
+        ];
+        $audit->write('attachment.scan_failed', null, $attachment, null, null, $payload);
+        $audit->write('attachment.scan_retry_exhausted', null, $attachment, null, null, $payload);
 
         app(InboundFailureService::class)->record(
             $attachment->email_id,

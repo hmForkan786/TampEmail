@@ -63,7 +63,7 @@ No regex or filename-only malware detection is permitted.
 
 ## Retry and manual rescan
 
-Transient scanner unavailable/timeout failures retry with bounded backoff `[60, 300, 900]` seconds, maximum three attempts by default. Terminal failure remains inaccessible and emits an operational alert. Manual rescan requires an active platform admin/security operator, an audit event, and the same scanner contract; it cannot force `clean`.
+Transient scanner unavailable/timeout failures retry with bounded backoff from `ATTACHMENT_SCAN_BACKOFF_SECONDS` (default `[60, 300, 900]` seconds), maximum attempts from `ATTACHMENT_SCAN_MAX_ATTEMPTS` (default 3). Terminal failure remains inaccessible and emits an operational alert. Manual rescan requires an active platform admin/security operator, an audit event, and the same scanner contract; it cannot force `clean`.
 
 ## Visibility and audit
 

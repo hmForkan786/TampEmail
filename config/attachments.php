@@ -20,6 +20,7 @@ return [
     'max_total_bytes' => (int) env('ATTACHMENT_MAX_TOTAL_BYTES', 52428800),
     'retry' => [
         'max_attempts' => (int) env('ATTACHMENT_SCAN_MAX_ATTEMPTS', 3),
-        'backoff_seconds' => [60, 300, 900],
+        // Existing production contract defaults; override via ATTACHMENT_SCAN_BACKOFF_SECONDS.
+        'backoff_seconds' => env('ATTACHMENT_SCAN_BACKOFF_SECONDS', '60,300,900'),
     ],
 ];

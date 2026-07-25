@@ -10,6 +10,7 @@ use App\Enums\AttachmentScanResult;
 use App\Enums\AttachmentScanStatus;
 use App\Models\Attachment;
 use App\Services\Audit\AuditLogWriter;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
 
 final class AttachmentScanRetryableException extends \RuntimeException {}
@@ -27,6 +28,10 @@ final class AttachmentScanService
     {
         $this->terminalTransitionApplied = false;
 
+        if ($attachment->trashed()) {
+            return $attachment;
+        }
+
         if ($attachment->scan_status?->isTerminal()) {
             return $attachment;
         }
@@ -39,11 +44,15 @@ final class AttachmentScanService
             return $this->failed($attachment, 'quarantine_missing');
         }
 
-        if (! $this->claimForScanning($attachment)) {
+        $attempt = $this->claimForScanning($attachment);
+        if ($attempt === null) {
             return $attachment->fresh() ?? $attachment;
         }
 
-        $this->recordEvent($attachment, 'attachment.scan_started', AttachmentScanStatus::Scanning);
+        $this->recordEvent($attachment, 'attachment.scan_started', AttachmentScanStatus::Scanning, 0, [
+            'attempt' => $attempt,
+            'max_attempts' => AttachmentScanRetry::maxAttempts(),
+        ]);
 
         try {
             $startedAt = microtime(true);
@@ -63,15 +72,11 @@ final class AttachmentScanService
                     ? mb_substr(preg_replace('/[^A-Za-z0-9._:+ -]/', '', $result->signature) ?: 'unknown', 0, 120)
                     : null,
                 'scan_duration_ms' => $durationMs,
+                'scan_attempt_count' => $attempt,
             ]);
 
-            if ($result->result === AttachmentScanResult::Failed && in_array($result->scannerVersion, ['clamav:unavailable', 'clamav:timeout', 'clamav:write'], true)) {
-                Attachment::query()
-                    ->whereKey($attachment->getKey())
-                    ->where('scan_status', AttachmentScanStatus::Scanning)
-                    ->update(['scan_status' => AttachmentScanStatus::Pending, 'is_safe' => null]);
-
-                throw new AttachmentScanRetryableException('retryable_attachment_scan_failure');
+            if ($result->result === AttachmentScanResult::Failed && AttachmentScanRetry::isRetryableCode($result->scannerVersion)) {
+                return $this->scheduleRetryOrExhaust($attachment, (string) $result->scannerVersion, $safeMetadata, $durationMs, $attempt);
             }
 
             return match ($result->result) {
@@ -96,21 +101,78 @@ final class AttachmentScanService
         return $this->skipped($attachment, $reason);
     }
 
-    private function claimForScanning(Attachment $attachment): bool
+    private function claimForScanning(Attachment $attachment): ?int
     {
-        $claimed = Attachment::query()
-            ->whereKey($attachment->getKey())
-            ->where('scan_status', AttachmentScanStatus::Pending)
-            ->update(['scan_status' => AttachmentScanStatus::Scanning, 'is_safe' => null]);
+        return DB::transaction(function () use ($attachment): ?int {
+            $locked = Attachment::query()->whereKey($attachment->getKey())->lockForUpdate()->first();
+            if ($locked === null || $locked->trashed() || $locked->scan_status !== AttachmentScanStatus::Pending) {
+                return null;
+            }
 
-        if ($claimed === 1) {
+            $metadata = is_array($locked->metadata) ? $locked->metadata : [];
+            $attempt = (int) ($metadata['scan_attempt_count'] ?? 0) + 1;
+            $metadata['scan_attempt_count'] = $attempt;
+
+            $locked->update([
+                'scan_status' => AttachmentScanStatus::Scanning,
+                'is_safe' => null,
+                'metadata' => $metadata,
+            ]);
+
             $attachment->scan_status = AttachmentScanStatus::Scanning;
             $attachment->is_safe = null;
+            $attachment->metadata = $metadata;
 
-            return true;
+            return $attempt;
+        });
+    }
+
+    /**
+     * @param  array<string, mixed>  $metadata
+     */
+    private function scheduleRetryOrExhaust(
+        Attachment $attachment,
+        string $reasonCode,
+        array $metadata,
+        int $durationMs,
+        int $attempt,
+    ): Attachment {
+        $maxAttempts = AttachmentScanRetry::maxAttempts();
+        $errorCode = $this->sanitizeErrorCode($reasonCode) ?? 'scanner_unavailable';
+
+        if ($attempt < $maxAttempts) {
+            $released = Attachment::query()
+                ->whereKey($attachment->getKey())
+                ->where('scan_status', AttachmentScanStatus::Scanning)
+                ->update(['scan_status' => AttachmentScanStatus::Pending, 'is_safe' => null]);
+
+            if ($released !== 1) {
+                return $attachment->fresh() ?? $attachment;
+            }
+
+            $backoff = AttachmentScanRetry::backoffSeconds();
+            $delaySeconds = $backoff[min($attempt - 1, count($backoff) - 1)] ?? 60;
+            $this->recordEvent($attachment, 'attachment.scan_retry_scheduled', AttachmentScanStatus::Pending, $durationMs, [
+                'attempt' => $attempt,
+                'max_attempts' => $maxAttempts,
+                'error_code' => $errorCode,
+                'next_retry_seconds' => $delaySeconds,
+                'next_retry_at' => now()->addSeconds($delaySeconds)->toIso8601String(),
+            ]);
+
+            throw new AttachmentScanRetryableException('retryable_attachment_scan_failure');
         }
 
-        return false;
+        $failed = $this->failed($attachment, 'retry_exhausted', array_merge($metadata, ['scan_error' => 'retry_exhausted']), $durationMs);
+        if ($this->terminalTransitionApplied) {
+            $this->recordEvent($attachment, 'attachment.scan_retry_exhausted', AttachmentScanStatus::Failed, $durationMs, [
+                'attempt' => $attempt,
+                'max_attempts' => $maxAttempts,
+                'error_code' => $errorCode,
+            ]);
+        }
+
+        return $failed;
     }
 
     private function clean(Attachment $attachment, array $metadata, int $durationMs = 0): Attachment
