@@ -13,7 +13,7 @@ use App\Http\Responses\ApiErrorResponse;
 use App\Services\Inbound\ClamAvAttachmentScanner;
 use App\Services\Inbound\DisabledAttachmentScanner;
 use App\Services\Inbound\QueuedInboundWebhookDispatcher;
-use App\Services\Outbound\UnavailableOutboundTransport;
+use App\Services\Outbound\OutboundTransportManager;
 use Illuminate\Console\Scheduling\Schedule;
 use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
@@ -38,7 +38,7 @@ return Application::configure(basePath: dirname(__DIR__))
         AttachmentScannerInterface::class => fn (): AttachmentScannerInterface => config('attachments.scanner_backend', 'disabled') === 'clamav'
             ? new ClamAvAttachmentScanner
             : new DisabledAttachmentScanner,
-        OutboundTransportInterface::class => UnavailableOutboundTransport::class,
+        OutboundTransportInterface::class => fn (): OutboundTransportInterface => app(OutboundTransportManager::class)->resolve(),
     ])
     ->withSchedule(function (Schedule $schedule): void {
         $schedule->command('processes:scheduler-heartbeat')->withoutOverlapping()->everyMinute();

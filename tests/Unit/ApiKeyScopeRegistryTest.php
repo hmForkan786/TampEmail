@@ -14,6 +14,8 @@ it('accepts every known canonical scope', function (): void {
         'mail_servers:admin',
         'inboxes:read',
         'inboxes:write',
+        'outbound_messages:read',
+        'outbound_messages:write',
     ])->and(ApiKeyScopeRegistry::normalize($scopes))->toBe($scopes);
 
     foreach ($scopes as $scope) {
@@ -53,12 +55,16 @@ it('removes duplicates while preserving stable enum order', function (): void {
         'inboxes:read',
         'mail_servers:write',
         'mail_servers:read',
+        'outbound_messages:write',
+        'outbound_messages:read',
     ]))->toBe([
         'mail_servers:read',
         'mail_servers:write',
         'mail_servers:admin',
         'inboxes:read',
         'inboxes:write',
+        'outbound_messages:read',
+        'outbound_messages:write',
     ]);
 });
 

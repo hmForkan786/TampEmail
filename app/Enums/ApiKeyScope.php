@@ -22,6 +22,8 @@ enum ApiKeyScope: string
     case MailServersAdmin = 'mail_servers:admin';
     case InboxesRead = 'inboxes:read';
     case InboxesWrite = 'inboxes:write';
+    case OutboundMessagesRead = 'outbound_messages:read';
+    case OutboundMessagesWrite = 'outbound_messages:write';
 
     /**
      * @return array<string, string>
@@ -34,6 +36,8 @@ enum ApiKeyScope: string
             self::MailServersAdmin->value => 'Mail servers admin',
             self::InboxesRead->value => 'Inboxes read',
             self::InboxesWrite->value => 'Inboxes write',
+            self::OutboundMessagesRead->value => 'Outbound messages read',
+            self::OutboundMessagesWrite->value => 'Outbound messages write',
         ];
     }
 
@@ -54,7 +58,8 @@ enum ApiKeyScope: string
         return match ($this) {
             self::MailServersRead, self::MailServersWrite => PlatformRole::Operator,
             self::MailServersAdmin => PlatformRole::Admin,
-            self::InboxesRead, self::InboxesWrite => PlatformRole::User,
+            self::InboxesRead, self::InboxesWrite,
+            self::OutboundMessagesRead, self::OutboundMessagesWrite => PlatformRole::User,
         };
     }
 

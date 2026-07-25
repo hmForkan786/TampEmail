@@ -1,10 +1,12 @@
 <?php
 
-use App\Http\Controllers\Api\V1\InboxEmailController;
 use App\Http\Controllers\Api\V1\AttachmentDownloadController;
+use App\Http\Controllers\Api\V1\EmailReadStateController;
 use App\Http\Controllers\Api\V1\InboundWebhookController;
-use App\Http\Controllers\Api\V1\MailServerController;
 use App\Http\Controllers\Api\V1\InboxController;
+use App\Http\Controllers\Api\V1\InboxEmailController;
+use App\Http\Controllers\Api\V1\MailServerController;
+use App\Http\Controllers\Api\V1\OutboundMessageController;
 use Illuminate\Support\Facades\Route;
 
 Route::prefix('v1')->name('api.v1.')->middleware(['api.request-log', 'api.key'])->group(function (): void {
@@ -39,12 +41,23 @@ Route::prefix('v1')->name('api.v1.')->middleware(['api.request-log', 'api.key'])
     });
 
     Route::middleware(['api.scope:inboxes:write', 'api.rate-limit'])->group(function (): void {
-        Route::patch('inboxes/{inbox}/emails/{email}/read', [\App\Http\Controllers\Api\V1\EmailReadStateController::class, 'read'])
+        Route::patch('inboxes/{inbox}/emails/{email}/read', [EmailReadStateController::class, 'read'])
             ->whereUuid(['inbox', 'email'])
             ->name('inboxes.emails.read');
-        Route::patch('inboxes/{inbox}/emails/{email}/unread', [\App\Http\Controllers\Api\V1\EmailReadStateController::class, 'unread'])
+        Route::patch('inboxes/{inbox}/emails/{email}/unread', [EmailReadStateController::class, 'unread'])
             ->whereUuid(['inbox', 'email'])
             ->name('inboxes.emails.unread');
+    });
+
+    Route::middleware(['api.scope:outbound_messages:read', 'api.rate-limit'])->group(function (): void {
+        Route::get('outbound-messages/{message}', [OutboundMessageController::class, 'show'])
+            ->whereUuid('message')
+            ->name('outbound-messages.show');
+    });
+
+    Route::middleware(['api.scope:outbound_messages:write', 'api.rate-limit'])->group(function (): void {
+        Route::post('outbound-messages', [OutboundMessageController::class, 'store'])
+            ->name('outbound-messages.store');
     });
 });
 
