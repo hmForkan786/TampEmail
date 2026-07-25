@@ -25,6 +25,7 @@ use App\Services\Outbound\FakeOutboundTransport;
 use App\Services\Outbound\OutboundAttachmentSelector;
 use App\Services\Outbound\OutboundAuthorizationService;
 use App\Services\Outbound\OutboundDeliveryAttemptRecorder;
+use App\Services\Outbound\OutboundLaunchControlService;
 use App\Services\Outbound\OutboundSuppressionService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Queue;
@@ -37,6 +38,8 @@ beforeEach(function (): void {
         'outbound.enabled' => true,
         'outbound.reply_enabled' => true,
         'outbound.send_enabled' => true,
+        'outbound.rollout.mode' => 'enabled',
+        'outbound.rollout.emergency_stop' => false,
         'queue.default' => 'sync',
     ]);
 });
@@ -220,6 +223,7 @@ it('supports reply idempotency and transport outcomes', function (): void {
         app(OutboundAttachmentSelector::class),
         app(OutboundSuppressionService::class),
         app(OutboundDeliveryAttemptRecorder::class),
+        app(OutboundLaunchControlService::class),
     );
     expect(OutboundMessage::query()->find($id)->state)->toBe(OutboundMessageState::Sent)
         ->and(AuditLog::query()->where('action', 'outbound.reply_sent')->exists())->toBeTrue();
@@ -231,6 +235,7 @@ it('supports reply idempotency and transport outcomes', function (): void {
         app(OutboundAttachmentSelector::class),
         app(OutboundSuppressionService::class),
         app(OutboundDeliveryAttemptRecorder::class),
+        app(OutboundLaunchControlService::class),
     );
     expect($ctx['transport']->sent)->toHaveCount(1);
 
@@ -246,6 +251,7 @@ it('supports reply idempotency and transport outcomes', function (): void {
         app(OutboundAttachmentSelector::class),
         app(OutboundSuppressionService::class),
         app(OutboundDeliveryAttemptRecorder::class),
+        app(OutboundLaunchControlService::class),
     );
     expect(OutboundMessage::query()->find($failId)->state)->toBe(OutboundMessageState::Failed)
         ->and(AuditLog::query()->where('action', 'outbound.reply_failed')->exists())->toBeTrue();

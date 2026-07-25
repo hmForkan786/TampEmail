@@ -17,10 +17,17 @@ final class OutboundAuthorizationService
     public function __construct(
         private readonly EntitlementService $entitlements,
         private readonly OutboundDomainAuthenticationService $domainAuth,
+        private readonly OutboundLaunchControlService $launchControl,
     ) {}
 
-    public function assertCanSend(User $user, Inbox $inbox, OutboundOperation $operation = OutboundOperation::Send): void
+    public function assertCanSend(User $user, Inbox $inbox, OutboundOperation $operation = OutboundOperation::Send, ?string $apiKeyId = null): void
     {
+        // Checked first: overrides every other enablement below, including
+        // canaries and a 100% rollout.
+        if ($this->launchControl->isEmergencyStopped()) {
+            throw new OutboundSendException('outbound_emergency_stop', 'Outbound email is temporarily stopped.', 503);
+        }
+
         if ($user->trashed() || $user->status !== UserStatus::Active) {
             throw new OutboundSendException('user_inactive', 'The user account cannot send outbound email.', 403);
         }
@@ -63,5 +70,9 @@ final class OutboundAuthorizationService
         if (! $this->entitlements->hasFeature($user, $operation->featureKey())) {
             throw new OutboundSendException('entitlement_denied', 'The current plan does not allow this outbound operation.', 403);
         }
+
+        // Rollout gating never bypasses any of the checks above (domain
+        // verification, entitlement, etc.) — it is strictly additive.
+        $this->launchControl->assertRolloutEligible($user, $inbox, $apiKeyId);
     }
 }

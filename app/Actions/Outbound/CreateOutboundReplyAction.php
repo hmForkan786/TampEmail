@@ -15,6 +15,7 @@ use App\Models\User;
 use App\Services\Audit\AuditLogWriter;
 use App\Services\Outbound\OutboundAuthorizationService;
 use App\Services\Outbound\OutboundContentValidator;
+use App\Services\Outbound\OutboundLaunchControlService;
 use App\Services\Outbound\OutboundRateLimiter;
 use App\Services\Outbound\OutboundRecipientValidator;
 use App\Services\Outbound\OutboundReplyRecipientResolver;
@@ -35,6 +36,7 @@ final class CreateOutboundReplyAction
         private readonly OutboundRateLimiter $rateLimiter,
         private readonly OutboundSuppressionService $suppressions,
         private readonly AuditLogWriter $auditLogWriter,
+        private readonly OutboundLaunchControlService $launchControl,
     ) {}
 
     public function execute(CreateOutboundReplyData $data, User $user, ?string $apiKeyId = null): OutboundMessage
@@ -49,7 +51,7 @@ final class CreateOutboundReplyAction
             throw new OutboundSendException('inbox_not_found', 'The inbox was not found.', 404);
         }
 
-        $this->authorization->assertCanSend($user, $inbox, OutboundOperation::Reply);
+        $this->authorization->assertCanSend($user, $inbox, OutboundOperation::Reply, $apiKeyId);
 
         if ($data->idempotencyKey === '' || preg_match('/[\r\n\0]/', $data->idempotencyKey) === 1 || mb_strlen($data->idempotencyKey) > 128) {
             throw new OutboundSendException('idempotency_key_invalid', 'A valid idempotency key is required.', 422);
@@ -99,7 +101,9 @@ final class CreateOutboundReplyAction
 
         $this->rateLimiter->assertWithinLimits($user, [...$to, ...$cc]);
 
-        $message = DB::transaction(function () use ($data, $user, $inbox, $email, $to, $cc, $content, $headers, $fingerprint, $apiKeyId): OutboundMessage {
+        $isCanary = $this->launchControl->isCanary($user, $inbox, $apiKeyId);
+
+        $message = DB::transaction(function () use ($data, $user, $inbox, $email, $to, $cc, $content, $headers, $fingerprint, $apiKeyId, $isCanary): OutboundMessage {
             $message = OutboundMessage::query()->create([
                 'user_id' => $user->getKey(),
                 'inbox_id' => $inbox->getKey(),
@@ -120,6 +124,7 @@ final class CreateOutboundReplyAction
                 'references' => $headers['references'],
                 'attempt_count' => 0,
                 'queued_at' => now(),
+                'is_canary' => $isCanary,
             ]);
 
             $this->auditLogWriter->write('outbound.reply_created', (string) $user->getKey(), $message, null, [

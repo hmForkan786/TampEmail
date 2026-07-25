@@ -47,6 +47,7 @@ use Illuminate\Support\Carbon;
  * @property string|null $failure_message
  * @property list<string>|null $attachment_ids
  * @property array<string, mixed>|null $metadata
+ * @property bool $is_canary
  * @property Carbon|null $created_at
  * @property Carbon|null $updated_at
  * @property-read User $user
@@ -94,6 +95,7 @@ class OutboundMessage extends BaseModel
         'failure_message',
         'attachment_ids',
         'metadata',
+        'is_canary',
     ];
 
     /**
@@ -109,6 +111,7 @@ class OutboundMessage extends BaseModel
             'bcc_recipients' => 'array',
             'attachment_ids' => 'array',
             'metadata' => 'array',
+            'is_canary' => 'boolean',
             'attempt_count' => 'integer',
             'queued_at' => 'datetime',
             'sending_at' => 'datetime',

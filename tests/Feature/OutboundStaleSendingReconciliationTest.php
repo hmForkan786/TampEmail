@@ -23,6 +23,7 @@ use App\Services\Outbound\FakeOutboundTransport;
 use App\Services\Outbound\OutboundAttachmentSelector;
 use App\Services\Outbound\OutboundAuthorizationService;
 use App\Services\Outbound\OutboundDeliveryAttemptRecorder;
+use App\Services\Outbound\OutboundLaunchControlService;
 use App\Services\Outbound\OutboundStaleSendingReconciliationService;
 use App\Services\Outbound\OutboundSuppressionService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -155,7 +156,13 @@ it('bounds work to the configured batch size', function (): void {
 });
 
 it('records transport_attempted_at immediately before the transport is invoked', function (): void {
-    config(['outbound.enabled' => true, 'outbound.send_enabled' => true, 'outbound.transport' => 'array']);
+    config([
+        'outbound.enabled' => true,
+        'outbound.send_enabled' => true,
+        'outbound.transport' => 'array',
+        'outbound.rollout.mode' => 'enabled',
+        'outbound.rollout.emergency_stop' => false,
+    ]);
     $message = staleSendingOutboundMessage(['state' => OutboundMessageState::Queued, 'sending_at' => null]);
 
     $plan = Plan::query()->create([
@@ -183,6 +190,7 @@ it('records transport_attempted_at immediately before the transport is invoked',
         app(OutboundAttachmentSelector::class),
         app(OutboundSuppressionService::class),
         app(OutboundDeliveryAttemptRecorder::class),
+        app(OutboundLaunchControlService::class),
     );
 
     expect($message->fresh()->transport_attempted_at)->not->toBeNull()

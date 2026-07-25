@@ -17,6 +17,7 @@ use App\Services\Outbound\OutboundAttachmentSelector;
 use App\Services\Outbound\OutboundAuthorizationService;
 use App\Services\Outbound\OutboundContentValidator;
 use App\Services\Outbound\OutboundForwardContextBuilder;
+use App\Services\Outbound\OutboundLaunchControlService;
 use App\Services\Outbound\OutboundRateLimiter;
 use App\Services\Outbound\OutboundRecipientValidator;
 use App\Services\Outbound\OutboundSubjectHelper;
@@ -35,6 +36,7 @@ final class CreateOutboundForwardAction
         private readonly OutboundRateLimiter $rateLimiter,
         private readonly OutboundSuppressionService $suppressions,
         private readonly AuditLogWriter $auditLogWriter,
+        private readonly OutboundLaunchControlService $launchControl,
     ) {}
 
     public function execute(CreateOutboundForwardData $data, User $user, ?string $apiKeyId = null): OutboundMessage
@@ -49,7 +51,7 @@ final class CreateOutboundForwardAction
             throw new OutboundSendException('inbox_not_found', 'The inbox was not found.', 404);
         }
 
-        $this->authorization->assertCanSend($user, $inbox, OutboundOperation::Forward);
+        $this->authorization->assertCanSend($user, $inbox, OutboundOperation::Forward, $apiKeyId);
 
         if ($data->idempotencyKey === '' || preg_match('/[\r\n\0]/', $data->idempotencyKey) === 1 || mb_strlen($data->idempotencyKey) > 128) {
             throw new OutboundSendException('idempotency_key_invalid', 'A valid idempotency key is required.', 422);
@@ -107,7 +109,9 @@ final class CreateOutboundForwardAction
             array_sum(array_map(static fn ($attachment): int => (int) $attachment->size_bytes, $selectedAttachments)),
         );
 
-        $message = DB::transaction(function () use ($data, $user, $inbox, $email, $recipientSet, $content, $attachmentIds, $fingerprint, $apiKeyId): OutboundMessage {
+        $isCanary = $this->launchControl->isCanary($user, $inbox, $apiKeyId);
+
+        $message = DB::transaction(function () use ($data, $user, $inbox, $email, $recipientSet, $content, $attachmentIds, $fingerprint, $apiKeyId, $isCanary): OutboundMessage {
             $message = OutboundMessage::query()->create([
                 'user_id' => $user->getKey(),
                 'inbox_id' => $inbox->getKey(),
@@ -127,6 +131,7 @@ final class CreateOutboundForwardAction
                 'attachment_ids' => $attachmentIds,
                 'attempt_count' => 0,
                 'queued_at' => now(),
+                'is_canary' => $isCanary,
             ]);
 
             $this->auditLogWriter->write('outbound.forward_created', (string) $user->getKey(), $message, null, [

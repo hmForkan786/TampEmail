@@ -17,6 +17,7 @@ use App\Services\Audit\AuditLogWriter;
 use App\Services\Outbound\OutboundAttachmentSelector;
 use App\Services\Outbound\OutboundAuthorizationService;
 use App\Services\Outbound\OutboundDeliveryAttemptRecorder;
+use App\Services\Outbound\OutboundLaunchControlService;
 use App\Services\Outbound\OutboundSuppressionService;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldBeUnique;
@@ -64,7 +65,26 @@ final class DeliverOutboundMessageJob implements ShouldBeUnique, ShouldQueue
         OutboundAttachmentSelector $attachmentSelector,
         OutboundSuppressionService $suppressions,
         OutboundDeliveryAttemptRecorder $attempts,
+        OutboundLaunchControlService $launchControl,
     ): void {
+        // Checked before the message is ever claimed: emergency stop must
+        // never mark a queued message failed or delete it, so this leaves
+        // the row untouched and simply re-queues the job for later.
+        if ($launchControl->isEmergencyStopped()) {
+            $audit->write(
+                'outbound.emergency_stop_blocked',
+                null,
+                null,
+                null,
+                null,
+                ['outbound_message_id' => $this->outboundMessageId],
+            );
+
+            $this->release(max(1, (int) config('outbound.rollout.emergency_stop_retry_delay_seconds', 300)));
+
+            return;
+        }
+
         $claimed = DB::transaction(function (): ?OutboundMessage {
             $message = OutboundMessage::query()
                 ->whereKey($this->outboundMessageId)

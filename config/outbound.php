@@ -268,4 +268,74 @@ return [
         ], static fn ($value) => is_array($value)),
     ],
 
+    /*
+    |--------------------------------------------------------------------------
+    | Staged rollout / launch controls (Prompt 615)
+    |--------------------------------------------------------------------------
+    |
+    | Layered on top of `enabled` / `*_enabled`: even when the feature flags
+    | above are on, the rollout mode decides which callers are actually
+    | allowed through. Defaults are fully closed — nothing ships production
+    | traffic until an operator explicitly opts a mode/percent/canary in.
+    | Percentage assignment is a deterministic hash of the user id, never
+    | per-request randomness, so the same user always lands on the same
+    | side of the rollout for a given percent.
+    |
+    | emergency_stop overrides every other enablement (including canaries
+    | and 100% rollout) and is checked first. It never deletes queued work
+    | or marks messages failed — it only pauses new transport attempts.
+    */
+
+    'rollout' => [
+        'mode' => strtolower(trim((string) env('OUTBOUND_ROLLOUT_MODE', 'disabled'))),
+
+        'supported_modes' => ['disabled', 'canary', 'percentage', 'enabled'],
+
+        // Intentionally not clamped here so misconfiguration (e.g. a
+        // negative value or >100) is visible to OutboundLaunchConfigValidator
+        // as an explicit error rather than silently coerced. Runtime
+        // consumers (OutboundLaunchControlService::percent()) always clamp
+        // to 0-100 before using it for gating.
+        'percent' => ($percent = filter_var(env('OUTBOUND_ROLLOUT_PERCENT', 0), FILTER_VALIDATE_INT)) === false ? 0 : $percent,
+
+        'emergency_stop' => filter_var(env('OUTBOUND_EMERGENCY_STOP', true), FILTER_VALIDATE_BOOL),
+
+        'emergency_stop_retry_delay_seconds' => (int) env('OUTBOUND_EMERGENCY_STOP_RETRY_DELAY_SECONDS', 300),
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
+    | Launch readiness / metrics / pause-recommendation thresholds (Prompt 615)
+    |--------------------------------------------------------------------------
+    |
+    | Purely advisory: crossing these thresholds only changes the reported
+    | recommendation (continue|hold|rollback). Nothing here auto-disables
+    | outbound; an operator must act on the recommendation explicitly.
+    */
+
+    'launch' => [
+        'thresholds' => [
+            'hold_bounce_rate_percent' => (int) env('OUTBOUND_LAUNCH_HOLD_BOUNCE_RATE_PERCENT', 5),
+            'hold_complaint_rate_percent' => (int) env('OUTBOUND_LAUNCH_HOLD_COMPLAINT_RATE_PERCENT', 1),
+            'rollback_bounce_rate_percent' => (int) env('OUTBOUND_LAUNCH_ROLLBACK_BOUNCE_RATE_PERCENT', 10),
+            'rollback_complaint_rate_percent' => (int) env('OUTBOUND_LAUNCH_ROLLBACK_COMPLAINT_RATE_PERCENT', 3),
+            'provider_auth_failures' => (int) env('OUTBOUND_LAUNCH_PROVIDER_AUTH_FAILURES', 3),
+            'oldest_queue_age_seconds' => (int) env('OUTBOUND_LAUNCH_OLDEST_QUEUE_AGE_SECONDS', 1800),
+            'invalid_signature_attempts' => (int) env('OUTBOUND_LAUNCH_INVALID_SIGNATURE_ATTEMPTS', 5),
+            'unmatched_events' => (int) env('OUTBOUND_LAUNCH_UNMATCHED_EVENTS', 10),
+            'ambiguous_acceptance' => (int) env('OUTBOUND_LAUNCH_AMBIGUOUS_ACCEPTANCE', 5),
+            'missing_heartbeats' => (int) env('OUTBOUND_LAUNCH_MISSING_HEARTBEATS', 1),
+        ],
+
+        'canary_send' => [
+            'enabled' => filter_var(env('RUN_OUTBOUND_SMTP_TESTS', false), FILTER_VALIDATE_BOOL),
+            'allowed_recipients' => array_values(array_filter(array_map(
+                static fn (string $value): string => strtolower(trim($value)),
+                explode(',', (string) env('OUTBOUND_CANARY_SEND_ALLOWED_RECIPIENTS', '')),
+            ))),
+            'subject_prefix' => (string) env('OUTBOUND_CANARY_SEND_SUBJECT_PREFIX', '[Outbound Canary Test]'),
+            'rate_limit_per_hour' => (int) env('OUTBOUND_CANARY_SEND_RATE_LIMIT_PER_HOUR', 3),
+        ],
+    ],
+
 ];

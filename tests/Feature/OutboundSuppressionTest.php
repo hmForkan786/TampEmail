@@ -26,6 +26,7 @@ use App\Services\Outbound\FakeOutboundTransport;
 use App\Services\Outbound\OutboundAttachmentSelector;
 use App\Services\Outbound\OutboundAuthorizationService;
 use App\Services\Outbound\OutboundDeliveryAttemptRecorder;
+use App\Services\Outbound\OutboundLaunchControlService;
 use App\Services\Outbound\OutboundOpsService;
 use App\Services\Outbound\OutboundProviderEventProcessor;
 use App\Services\Outbound\OutboundSuppressionService;
@@ -151,6 +152,8 @@ it('rejects suppressed to cc and bcc with a safe error', function (): void {
     config([
         'outbound.enabled' => true,
         'outbound.send_enabled' => true,
+        'outbound.rollout.mode' => 'enabled',
+        'outbound.rollout.emergency_stop' => false,
         'api.key_hash_secret' => 'suppression-test-secret',
     ]);
 
@@ -173,6 +176,8 @@ it('rechecks suppression in the delivery job after queueing', function (): void 
     config([
         'outbound.enabled' => true,
         'outbound.send_enabled' => true,
+        'outbound.rollout.mode' => 'enabled',
+        'outbound.rollout.emergency_stop' => false,
     ]);
 
     $ctx = suppressionContext();
@@ -236,6 +241,7 @@ it('rechecks suppression in the delivery job after queueing', function (): void 
         app(OutboundAttachmentSelector::class),
         app(OutboundSuppressionService::class),
         app(OutboundDeliveryAttemptRecorder::class),
+        app(OutboundLaunchControlService::class),
     );
 
     expect($message->fresh()->state)->toBe(OutboundMessageState::Failed)

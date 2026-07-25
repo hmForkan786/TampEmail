@@ -24,6 +24,7 @@ use App\Services\Outbound\FakeOutboundTransport;
 use App\Services\Outbound\OutboundAttachmentSelector;
 use App\Services\Outbound\OutboundAuthorizationService;
 use App\Services\Outbound\OutboundDeliveryAttemptRecorder;
+use App\Services\Outbound\OutboundLaunchControlService;
 use App\Services\Outbound\OutboundStaleSendingReconciliationService;
 use App\Services\Outbound\OutboundSuppressionService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -89,6 +90,7 @@ function runDeliveryJob(OutboundMessage $message, FakeOutboundTransport $transpo
             app(OutboundAttachmentSelector::class),
             app(OutboundSuppressionService::class),
             app(OutboundDeliveryAttemptRecorder::class),
+            app(OutboundLaunchControlService::class),
         );
     } catch (RuntimeException) {
         // Expected when the job schedules a Laravel retry.
@@ -101,6 +103,8 @@ beforeEach(function (): void {
         'outbound.send_enabled' => true,
         'outbound.transport' => 'array',
         'outbound.send_max_attempts' => 3,
+        'outbound.rollout.mode' => 'enabled',
+        'outbound.rollout.emergency_stop' => false,
     ]);
 });
 

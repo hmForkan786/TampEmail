@@ -46,7 +46,7 @@ final class RetryOutboundMessageAction
                 throw new OutboundSendException('retry_not_allowed', 'This failure category cannot be retried.', 422);
             }
 
-            $this->authorization->assertCanSend($user, $message->inbox, $message->operation);
+            $this->authorization->assertCanSend($user, $message->inbox, $message->operation, $apiKeyId);
 
             if ($message->operation === OutboundOperation::Forward && ($message->attachment_ids ?? []) !== []) {
                 if ($message->sourceEmail === null) {

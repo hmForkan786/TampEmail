@@ -15,6 +15,7 @@ use App\Models\User;
 use App\Services\Audit\AuditLogWriter;
 use App\Services\Outbound\OutboundAuthorizationService;
 use App\Services\Outbound\OutboundContentValidator;
+use App\Services\Outbound\OutboundLaunchControlService;
 use App\Services\Outbound\OutboundRateLimiter;
 use App\Services\Outbound\OutboundRecipientValidator;
 use App\Services\Outbound\OutboundSuppressionService;
@@ -29,6 +30,7 @@ final class CreateOutboundSendAction
         private readonly OutboundRateLimiter $rateLimiter,
         private readonly OutboundSuppressionService $suppressions,
         private readonly AuditLogWriter $auditLogWriter,
+        private readonly OutboundLaunchControlService $launchControl,
     ) {}
 
     public function execute(CreateOutboundSendData $data, User $user, ?string $apiKeyId = null): OutboundMessage
@@ -38,7 +40,7 @@ final class CreateOutboundSendAction
             throw new OutboundSendException('inbox_not_found', 'The inbox was not found.', 404);
         }
 
-        $this->authorization->assertCanSend($user, $inbox, OutboundOperation::Send);
+        $this->authorization->assertCanSend($user, $inbox, OutboundOperation::Send, $apiKeyId);
 
         if ($data->idempotencyKey === '' || preg_match('/[\r\n\0]/', $data->idempotencyKey) === 1) {
             throw new OutboundSendException('idempotency_key_invalid', 'A valid idempotency key is required.', 422);
@@ -92,7 +94,9 @@ final class CreateOutboundSendAction
             ...$recipientSet['bcc'],
         ]);
 
-        $message = DB::transaction(function () use ($data, $user, $inbox, $recipientSet, $content, $fingerprint, $apiKeyId): OutboundMessage {
+        $isCanary = $this->launchControl->isCanary($user, $inbox, $apiKeyId);
+
+        $message = DB::transaction(function () use ($data, $user, $inbox, $recipientSet, $content, $fingerprint, $apiKeyId, $isCanary): OutboundMessage {
             $message = OutboundMessage::query()->create([
                 'user_id' => $user->getKey(),
                 'inbox_id' => $inbox->getKey(),
@@ -111,6 +115,7 @@ final class CreateOutboundSendAction
                 'html_body' => $content['html_body'],
                 'attempt_count' => 0,
                 'queued_at' => now(),
+                'is_canary' => $isCanary,
             ]);
 
             $this->auditLogWriter->write(

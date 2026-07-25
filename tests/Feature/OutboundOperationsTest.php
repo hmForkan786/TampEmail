@@ -23,6 +23,7 @@ use App\Services\Outbound\FakeOutboundTransport;
 use App\Services\Outbound\OutboundAttachmentSelector;
 use App\Services\Outbound\OutboundAuthorizationService;
 use App\Services\Outbound\OutboundDeliveryAttemptRecorder;
+use App\Services\Outbound\OutboundLaunchControlService;
 use App\Services\Outbound\OutboundOpsService;
 use App\Services\Outbound\OutboundSuppressionService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -37,6 +38,8 @@ beforeEach(function (): void {
         'outbound.enabled' => true,
         'outbound.send_enabled' => true,
         'outbound.transport' => 'array',
+        'outbound.rollout.mode' => 'enabled',
+        'outbound.rollout.emergency_stop' => false,
         'queue.default' => 'sync',
     ]);
 });
@@ -101,6 +104,7 @@ it('schedules retryable failures and exhausts permanently', function (): void {
             app(OutboundAttachmentSelector::class),
             app(OutboundSuppressionService::class),
             app(OutboundDeliveryAttemptRecorder::class),
+            app(OutboundLaunchControlService::class),
         );
     } catch (RuntimeException) {
         // expected for Laravel retry
@@ -117,6 +121,7 @@ it('schedules retryable failures and exhausts permanently', function (): void {
         app(OutboundAttachmentSelector::class),
         app(OutboundSuppressionService::class),
         app(OutboundDeliveryAttemptRecorder::class),
+        app(OutboundLaunchControlService::class),
     );
 
     expect(OutboundMessage::query()->find($id)->state)->toBe(OutboundMessageState::Failed)
@@ -148,6 +153,7 @@ it('cancels queued messages and rejects cancel after sent', function (): void {
         app(OutboundAttachmentSelector::class),
         app(OutboundSuppressionService::class),
         app(OutboundDeliveryAttemptRecorder::class),
+        app(OutboundLaunchControlService::class),
     );
     expect($ctx['transport']->sent)->toHaveCount(0);
 
@@ -166,6 +172,7 @@ it('cancels queued messages and rejects cancel after sent', function (): void {
         app(OutboundAttachmentSelector::class),
         app(OutboundSuppressionService::class),
         app(OutboundDeliveryAttemptRecorder::class),
+        app(OutboundLaunchControlService::class),
     );
 
     $this->withToken($ctx['token'])->postJson('/api/v1/outbound-messages/'.$sentId.'/cancel')
@@ -193,6 +200,7 @@ it('allows manual retry for failed messages and revalidates entitlements', funct
         app(OutboundAttachmentSelector::class),
         app(OutboundSuppressionService::class),
         app(OutboundDeliveryAttemptRecorder::class),
+        app(OutboundLaunchControlService::class),
     );
 
     $this->withToken($ctx['token'])->postJson('/api/v1/outbound-messages/'.$id.'/retry')

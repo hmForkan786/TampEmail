@@ -27,6 +27,7 @@ use App\Services\Outbound\FakeOutboundTransport;
 use App\Services\Outbound\OutboundAttachmentSelector;
 use App\Services\Outbound\OutboundAuthorizationService;
 use App\Services\Outbound\OutboundDeliveryAttemptRecorder;
+use App\Services\Outbound\OutboundLaunchControlService;
 use App\Services\Outbound\OutboundSuppressionService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Queue;
@@ -39,6 +40,8 @@ beforeEach(function (): void {
         'api.key_hash_secret' => 'outbound-forward-test-secret',
         'outbound.enabled' => true,
         'outbound.forward_enabled' => true,
+        'outbound.rollout.mode' => 'enabled',
+        'outbound.rollout.emergency_stop' => false,
         'filesystems.disks.attachments.visibility' => 'private',
         'queue.default' => 'sync',
     ]);
@@ -152,6 +155,7 @@ it('forwards with sanitized context and clean attachments', function (): void {
         app(OutboundAttachmentSelector::class),
         app(OutboundSuppressionService::class),
         app(OutboundDeliveryAttemptRecorder::class),
+        app(OutboundLaunchControlService::class),
     );
 
     expect($message->fresh()->state)->toBe(OutboundMessageState::Sent)
@@ -214,6 +218,7 @@ it('rechecks attachment safety in the queue job', function (): void {
         app(OutboundAttachmentSelector::class),
         app(OutboundSuppressionService::class),
         app(OutboundDeliveryAttemptRecorder::class),
+        app(OutboundLaunchControlService::class),
     );
 
     expect(OutboundMessage::query()->find($id)->state)->toBe(OutboundMessageState::Failed)
