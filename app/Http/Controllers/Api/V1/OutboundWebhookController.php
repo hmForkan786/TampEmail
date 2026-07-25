@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Http\Controllers\Api\V1;
 
+use App\Exceptions\OutboundSnsSubscriptionConfirmationException;
 use App\Http\Responses\ApiErrorResponse;
 use App\Jobs\ProcessOutboundProviderEventJob;
 use App\Services\Outbound\OutboundProviderEventParserRegistry;
@@ -29,11 +30,28 @@ final class OutboundWebhookController
         }
 
         $contentType = strtolower((string) $request->header('Content-Type', ''));
-        if ($contentType !== '' && ! str_starts_with($contentType, 'application/json')) {
-            return ApiErrorResponse::make('invalid_content_type', 'Unsupported content type.', 422);
+        $allowedContentTypes = config("outbound.delivery_webhook.providers.{$provider}.content_types", ['application/json']);
+        if (! is_array($allowedContentTypes) || $allowedContentTypes === []) {
+            $allowedContentTypes = ['application/json'];
+        }
+        if ($contentType !== '') {
+            $ok = false;
+            foreach ($allowedContentTypes as $allowed) {
+                if (str_starts_with($contentType, strtolower((string) $allowed))) {
+                    $ok = true;
+                    break;
+                }
+            }
+            if (! $ok) {
+                return ApiErrorResponse::make('invalid_content_type', 'Unsupported content type.', 422);
+            }
         }
 
         $maxBytes = (int) config('outbound.delivery_webhook.max_body_bytes', 65536);
+        $providerMax = config("outbound.delivery_webhook.providers.{$provider}.max_body_bytes");
+        if (is_numeric($providerMax)) {
+            $maxBytes = (int) $providerMax;
+        }
         if ($raw === '' || strlen($raw) > $maxBytes) {
             return ApiErrorResponse::make('payload_too_large', 'Payload is empty or too large.', 413);
         }
@@ -61,18 +79,24 @@ final class OutboundWebhookController
             return ApiErrorResponse::make('invalid_signature', 'Invalid webhook signature.', 401);
         }
 
-        // Replay protection: reject identical signed payloads within the skew window.
-        $timestamp = trim((string) $request->header('X-Outbound-Timestamp', ''));
-        $signature = trim((string) $request->header('X-Outbound-Signature', ''));
-        $replayKey = 'outbound.webhook.replay:'.hash('sha256', $provider.'|'.$timestamp.'|'.$signature);
+        $replayFingerprint = $parser->replayFingerprint($request, $provider, $raw);
+        $replayKey = 'outbound.webhook.replay:'.$replayFingerprint;
         $skew = max(60, (int) config('outbound.delivery_webhook.timestamp_skew_seconds', 300));
         if (! Cache::add($replayKey, 1, $skew)) {
-            // Duplicate delivery of the same signed request — idempotent success after first accept.
             return response()->json(['data' => ['accepted' => true, 'duplicate' => true]], 202);
         }
 
         try {
             $event = $parser->parse($request, $provider, $raw);
+        } catch (OutboundSnsSubscriptionConfirmationException $confirmation) {
+            return response()->json([
+                'data' => [
+                    'accepted' => true,
+                    'subscription_confirmation' => true,
+                    'topic_arn' => $confirmation->topicArn,
+                    'message' => 'SNS subscription confirmation received. Confirm with outbound:confirm-ses-subscription.',
+                ],
+            ], 202);
         } catch (InvalidArgumentException) {
             return ApiErrorResponse::make('invalid_payload', 'Invalid webhook payload.', 422);
         } catch (\Throwable) {

@@ -303,16 +303,104 @@ Until a dedicated `domains.outbound_enabled` column ships, outbound requires:
 
 A domain column may be added when send foundation lands if needed for per-domain control; default new domains outbound-disabled.
 
-## Future delivery / webhook support
+## Delivery / webhook support
 
 - Persist provider message ids on transport acceptance for correlation.
-- `POST /api/v1/webhooks/outbound/{provider}` accepts HMAC-signed delivery events (`X-Outbound-Timestamp`, `X-Outbound-Signature`).
+- `POST /api/v1/webhooks/outbound/{provider}` accepts verified delivery events.
 - Normalized event types: `accepted`, `delivered`, `temporary_failure`, `permanent_failure`, `bounced`, `complained`, `rejected`, `unknown`.
 - State precedence: `sent → delivered`; permanent bounce/reject may mark `failed` if not already delivered; temporary failures never overwrite delivered; complaints are recorded even after delivery; cancelled never becomes delivered; unmatched events remain stored.
-- Duplicate `(provider, provider_event_id)` is idempotent. Unsigned events are rejected in production (missing secret fails closed).
+- Duplicate `(provider, provider_event_id)` is idempotent. Unsigned / unverified events are rejected (fail closed).
 - `sent` ≠ `delivered`: only verified provider `delivered` events set `delivered_at`.
+- Message correlation uses `provider` + normalized `provider_message_id` (angle-bracket variants accepted). Ambiguous matches do not mutate state.
 
-Required secret: `OUTBOUND_GENERIC_DELIVERY_WEBHOOK_SECRET` (and future per-provider secrets under `outbound.delivery_webhook.providers`).
+### Generic HMAC provider
+
+Headers: `X-Outbound-Timestamp`, `X-Outbound-Signature`.  
+Canonical string: `{provider}.{timestamp}.{raw_body}` (HMAC-SHA256).  
+Required secret: `OUTBOUND_GENERIC_DELIVERY_WEBHOOK_SECRET`.
+
+### Amazon SES provider (Prompt 611)
+
+First vendor-specific adapter. Selected because the project already stubs AWS/SES mailer names and SMTP 587/TLS matches SES SMTP relay.
+
+| Item | Value |
+|---|---|
+| Provider key | `ses` |
+| Webhook | `POST /api/v1/webhooks/outbound/ses` |
+| Auth | Amazon SNS signature verification (RSA, SigningCertURL) |
+| Content-Type | `text/plain` or `application/json` (SNS default is text/plain) |
+| Correlation | Prefer `mail.commonHeaders.messageId`; fall back to `mail.messageId` |
+| Transport identity | Set `OUTBOUND_PROVIDER=ses` so accepted SMTP messages store `provider=ses` (SMTP aliases still correlate) |
+
+**Environment**
+
+| Env | Purpose | Default |
+|---|---|---|
+| `OUTBOUND_PROVIDER` | `generic` or `ses` | `generic` |
+| `OUTBOUND_SES_SNS_TOPIC_ARN` | Optional TopicArn allowlist | empty |
+| `OUTBOUND_SES_CERT_CACHE_TTL_SECONDS` | SNS signing cert cache TTL | `3600` |
+| `OUTBOUND_SES_SUBSCRIPTION_CACHE_TTL_SECONDS` | Pending SubscribeURL cache | `3600` |
+| `OUTBOUND_SES_WEBHOOK_MAX_BODY_BYTES` | Body limit for SES | `262144` |
+
+**Signature verification**
+
+1. Require SNS fields: `Type`, `MessageId`, `Timestamp`, `Signature`, `SignatureVersion` (`1` or `2`), `SigningCertURL`.
+2. Timestamp skew enforced via `OUTBOUND_DELIVERY_WEBHOOK_TIMESTAMP_SKEW_SECONDS`.
+3. Certificate URL must be HTTPS `sns.<region>.amazonaws.com` (or `.amazonaws.com.cn`), `.pem` path, no query/userinfo, no redirects, TLS verify enabled.
+4. Certificates cached by URL hash with bounded TTL.
+5. Constant-time success path via `openssl_verify`; fail closed on any malformation.
+
+**Event mappings**
+
+| SES / SNS | Normalized |
+|---|---|
+| `Send` | `accepted` |
+| `Delivery` | `delivered` |
+| `DeliveryDelay` / transient `Bounce` | `temporary_failure` |
+| permanent `Bounce` | `bounced` |
+| `Complaint` | `complained` |
+| `Reject` / `Rendering Failure` | `rejected` |
+| `Open` / `Click` / other | `unknown` |
+| SNS `UnsubscribeConfirmation` | `unknown` (stored, no state change) |
+
+**SNS subscription confirmation**
+
+- Verified `SubscriptionConfirmation` payloads are **not** auto-confirmed (SSRF-safe).
+- SubscribeURL must be HTTPS `sns.*.amazonaws.com`.
+- Pending confirmation is cached; confirm explicitly:
+
+```bash
+php artisan outbound:confirm-ses-subscription --from-cache --dry-run
+php artisan outbound:confirm-ses-subscription --from-cache
+```
+
+**Provider console setup**
+
+1. Configure SES SMTP credentials into `OUTBOUND_SMTP_*`.
+2. Create SNS topic; subscribe HTTPS endpoint `https://<app>/api/v1/webhooks/outbound/ses`.
+3. Confirm subscription with the artisan command above.
+4. Attach SES configuration set / identity notifications (bounce, complaint, delivery) to the topic.
+5. Set `OUTBOUND_PROVIDER=ses` and optionally `OUTBOUND_SES_SNS_TOPIC_ARN`.
+
+**Retries / duplicates**
+
+SNS may redeliver the same `MessageId`; replay cache and unique `(provider, provider_event_id)` keep processing idempotent.
+
+**Safe rollout**
+
+1. Keep outbound feature flags disabled.
+2. Deploy webhook + workers for `outbound-events`.
+3. Confirm SNS subscription.
+4. Send a single canary via SES SMTP with flags enabled for one domain.
+5. Verify delivery/bounce events correlate without exposing certs, signatures, or raw payloads in logs/API.
+
+**Test procedure (no live AWS calls)**
+
+```bash
+php artisan test --filter=SesOutboundProviderEvent
+php artisan test --filter=ProviderEvent
+php artisan test --filter=Webhook
+```
 
 ## Foundational code (Prompt 601)
 
@@ -410,7 +498,10 @@ plan entitlements: send_email, reply_email, forward_email
 queue workers: outbound-delivery, outbound-events
 failed-job monitoring for those queues
 webhook URL: POST /api/v1/webhooks/outbound/{provider}
-OUTBOUND_GENERIC_DELIVERY_WEBHOOK_SECRET
+OUTBOUND_PROVIDER=generic|ses
+OUTBOUND_GENERIC_DELIVERY_WEBHOOK_SECRET (generic)
+OUTBOUND_SES_SNS_TOPIC_ARN (optional SES allowlist)
+php artisan outbound:confirm-ses-subscription --from-cache
 retry: OUTBOUND_SEND_MAX_ATTEMPTS / BACKOFF
 suppression admin review process
 abuse thresholds / temp-block policy

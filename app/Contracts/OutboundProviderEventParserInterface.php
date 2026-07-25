@@ -21,4 +21,9 @@ interface OutboundProviderEventParserInterface
      * Parse a verified request into a sanitized provider event.
      */
     public function parse(Request $request, string $provider, string $rawBody): OutboundProviderEventData;
+
+    /**
+     * Stable fingerprint for webhook replay protection (no secrets).
+     */
+    public function replayFingerprint(Request $request, string $provider, string $rawBody): string;
 }

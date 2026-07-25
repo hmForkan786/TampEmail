@@ -36,6 +36,19 @@ return [
     'transport' => env('OUTBOUND_TRANSPORT', 'unavailable'),
 
     /*
+    |--------------------------------------------------------------------------
+    | Delivery provider identity (Prompt 611)
+    |--------------------------------------------------------------------------
+    |
+    | Identifies which vendor adapter correlates provider events with accepted
+    | SMTP submissions. Supported: generic, ses. Unsupported values fail closed
+    | for provider-event readiness (transport may still use smtp).
+    |
+    */
+
+    'provider' => strtolower((string) env('OUTBOUND_PROVIDER', 'generic')),
+
+    /*
     | Dedicated outbound mailer name. Defaults to the dedicated "outbound"
     | mailer (see config/mail.php). Do not silently inherit MAIL_MAILER=log.
     */
@@ -155,11 +168,25 @@ return [
         'timestamp_skew_seconds' => (int) env('OUTBOUND_DELIVERY_WEBHOOK_TIMESTAMP_SKEW_SECONDS', 300),
         'max_body_bytes' => (int) env('OUTBOUND_DELIVERY_WEBHOOK_MAX_BODY_BYTES', 65536),
         'rate_limit_per_minute' => (int) env('OUTBOUND_DELIVERY_WEBHOOK_RATE_LIMIT_PER_MINUTE', 60),
-        'providers' => [
+        'providers' => array_filter([
             'generic' => [
                 'secret' => env('OUTBOUND_GENERIC_DELIVERY_WEBHOOK_SECRET'),
+                'content_types' => ['application/json'],
+                'transport_aliases' => [],
             ],
-        ],
+            // SES is always registered so the route exists; signature verification
+            // fails closed without a valid SNS-signed payload / certificate.
+            'ses' => [
+                'topic_arn' => env('OUTBOUND_SES_SNS_TOPIC_ARN'),
+                'cert_cache_ttl_seconds' => (int) env('OUTBOUND_SES_CERT_CACHE_TTL_SECONDS', 3600),
+                'subscription_cache_ttl_seconds' => (int) env('OUTBOUND_SES_SUBSCRIPTION_CACHE_TTL_SECONDS', 3600),
+                'auto_confirm_subscriptions' => false,
+                'content_types' => ['application/json', 'text/plain'],
+                'max_body_bytes' => (int) env('OUTBOUND_SES_WEBHOOK_MAX_BODY_BYTES', 262144),
+                // SMTP relay submissions store transport driver names; allow correlation.
+                'transport_aliases' => ['smtp', 'mail', 'ses', 'array'],
+            ],
+        ], static fn ($value) => is_array($value)),
     ],
 
 ];

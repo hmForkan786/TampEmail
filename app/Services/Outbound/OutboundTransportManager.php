@@ -19,7 +19,7 @@ final class OutboundTransportManager
         return match ($driver) {
             'array' => new LaravelMailOutboundTransport(
                 mailer: 'array',
-                providerName: 'array',
+                providerName: $this->providerIdentity('array'),
             ),
             'smtp', 'mail' => $this->resolveProductionMailer($driver),
             'unavailable' => new UnavailableOutboundTransport,
@@ -46,7 +46,26 @@ final class OutboundTransportManager
 
         return new LaravelMailOutboundTransport(
             mailer: $mailer,
-            providerName: $driver,
+            providerName: $this->providerIdentity($driver),
         );
+    }
+
+    /**
+     * Prefer configured vendor identity (e.g. ses) when correlating provider events.
+     */
+    private function providerIdentity(string $transportDriver): string
+    {
+        $configured = strtolower(trim((string) config('outbound.provider', 'generic')));
+        $supported = ['generic', 'ses'];
+
+        if (! in_array($configured, $supported, true)) {
+            return $transportDriver;
+        }
+
+        if ($configured === 'ses') {
+            return 'ses';
+        }
+
+        return $transportDriver;
     }
 }

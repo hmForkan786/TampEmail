@@ -95,4 +95,12 @@ final class GenericOutboundProviderEventParser implements OutboundProviderEventP
             metadata: $metadata,
         );
     }
+
+    public function replayFingerprint(Request $request, string $provider, string $rawBody): string
+    {
+        $timestamp = trim((string) $request->header('X-Outbound-Timestamp', ''));
+        $signature = trim((string) $request->header('X-Outbound-Signature', ''));
+
+        return hash('sha256', $provider.'|'.$timestamp.'|'.$signature);
+    }
 }

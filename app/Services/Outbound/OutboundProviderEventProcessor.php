@@ -105,14 +105,64 @@ final class OutboundProviderEventProcessor
             return null;
         }
 
-        return OutboundMessage::query()
-            ->where('provider_message_id', $data->providerMessageId)
+        $candidates = $this->messageIdCandidates($data->providerMessageId);
+        if ($candidates === []) {
+            return null;
+        }
+
+        $aliases = config("outbound.delivery_webhook.providers.{$data->provider}.transport_aliases", []);
+        $aliases = is_array($aliases) ? array_values(array_filter(array_map('strval', $aliases))) : [];
+
+        $matches = OutboundMessage::query()
+            ->whereIn('provider_message_id', $candidates)
             ->when(
-                $data->provider !== 'generic',
+                $data->provider !== 'generic' && $aliases === [],
                 fn ($query) => $query->where('provider', $data->provider),
             )
+            ->when(
+                $aliases !== [],
+                fn ($query) => $query->where(function ($inner) use ($data, $aliases): void {
+                    $inner->where('provider', $data->provider)
+                        ->orWhereIn('provider', $aliases);
+                }),
+            )
             ->lockForUpdate()
-            ->first();
+            ->get();
+
+        // Ambiguous matches must not mutate state.
+        if ($matches->count() !== 1) {
+            return null;
+        }
+
+        return $matches->first();
+    }
+
+    /**
+     * @return list<string>
+     */
+    private function messageIdCandidates(string $providerMessageId): array
+    {
+        $trimmed = trim($providerMessageId);
+        if ($trimmed === '') {
+            return [];
+        }
+
+        $withBrackets = $trimmed;
+        if (! str_starts_with($withBrackets, '<')) {
+            $withBrackets = '<'.$withBrackets;
+        }
+        if (! str_ends_with($withBrackets, '>')) {
+            $withBrackets .= '>';
+        }
+
+        $without = trim($trimmed, "<> \t");
+
+        return array_values(array_unique(array_filter([
+            mb_substr($trimmed, 0, 255),
+            mb_substr($withBrackets, 0, 255),
+            $without !== '' ? mb_substr($without, 0, 255) : null,
+            $without !== '' ? mb_substr('<'.$without.'>', 0, 255) : null,
+        ])));
     }
 
     private function applyTransition(

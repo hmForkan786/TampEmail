@@ -101,25 +101,8 @@ it('creates suppressions for permanent bounce and complaint but not temporary fa
         'request_fingerprint' => hash('sha256', 'sup-complaint'),
         'failed_at' => null,
         'failure_code' => null,
+        'failure_message' => null,
     ])->save();
-
-    // need a fresh sent message for complaint path that still matches
-    OutboundMessage::query()->create([
-        'user_id' => $ctx['user']->id,
-        'inbox_id' => $ctx['inbox']->id,
-        'operation' => OutboundOperation::Send,
-        'state' => OutboundMessageState::Sent,
-        'idempotency_key' => 'sup-complaint-2',
-        'request_fingerprint' => hash('sha256', 'sup-complaint-2'),
-        'from_address' => $ctx['inbox']->full_address,
-        'to_recipients' => ['complaint@example.test'],
-        'subject' => 'x',
-        'text_body' => 'y',
-        'provider' => 'smtp',
-        'provider_message_id' => '<sup-complaint@example.test>',
-        'attempt_count' => 1,
-        'sent_at' => now(),
-    ]);
 
     $processor->ingest(new OutboundProviderEventData(
         provider: 'generic',

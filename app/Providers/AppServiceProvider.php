@@ -23,6 +23,7 @@ use App\Repositories\Eloquent\EloquentSubscriptionRepository;
 use App\Services\Ops\ProcessHeartbeatWriter;
 use App\Services\Outbound\GenericOutboundProviderEventParser;
 use App\Services\Outbound\OutboundProviderEventParserRegistry;
+use App\Services\Outbound\SesOutboundProviderEventParser;
 use Illuminate\Cache\RateLimiting\Limit;
 use Illuminate\Console\Events\ScheduledTaskFailed;
 use Illuminate\Console\Events\ScheduledTaskFinished;
@@ -96,6 +97,7 @@ class AppServiceProvider extends ServiceProvider
         $this->app->singleton(OutboundProviderEventParserRegistry::class, function ($app): OutboundProviderEventParserRegistry {
             return new OutboundProviderEventParserRegistry([
                 $app->make(GenericOutboundProviderEventParser::class),
+                $app->make(SesOutboundProviderEventParser::class),
             ]);
         });
     }
