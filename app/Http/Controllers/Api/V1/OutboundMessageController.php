@@ -10,10 +10,12 @@ use App\Actions\Outbound\RetryOutboundMessageAction;
 use App\DTOs\Outbound\CreateOutboundSendData;
 use App\Exceptions\OutboundSendException;
 use App\Http\Requests\Outbound\StoreOutboundMessageRequest;
+use App\Http\Resources\OutboundMessageCollection;
 use App\Http\Resources\OutboundMessageResource;
 use App\Http\Responses\ApiErrorResponse;
-use App\Models\OutboundMessage;
 use App\Models\User;
+use App\Services\Outbound\OutboundMessageAccessService;
+use App\Services\Outbound\OutboundMessageListingService;
 use App\Services\Outbound\OutboundMessageTimelineBuilder;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -25,7 +27,17 @@ final class OutboundMessageController
         private readonly CancelOutboundMessageAction $cancelOutboundMessage,
         private readonly RetryOutboundMessageAction $retryOutboundMessage,
         private readonly OutboundMessageTimelineBuilder $timelineBuilder,
+        private readonly OutboundMessageListingService $listingService,
+        private readonly OutboundMessageAccessService $accessService,
     ) {}
+
+    public function index(Request $request): OutboundMessageCollection
+    {
+        /** @var User $owner */
+        $owner = $request->attributes->get('apiKeyOwner');
+
+        return new OutboundMessageCollection($this->listingService->list($owner, $request->query()));
+    }
 
     public function store(StoreOutboundMessageRequest $request): OutboundMessageResource|JsonResponse
     {
@@ -56,19 +68,18 @@ final class OutboundMessageController
         return (new OutboundMessageResource($message))->response()->setStatusCode(201);
     }
 
-    public function show(string $message): OutboundMessageResource|JsonResponse
+    public function show(Request $request, string $message): OutboundMessageResource|JsonResponse
     {
         /** @var User $owner */
-        $owner = request()->attributes->get('apiKeyOwner');
+        $owner = $request->attributes->get('apiKeyOwner');
 
-        $outbound = OutboundMessage::query()
-            ->whereKey($message)
-            ->where('user_id', $owner->getKey())
-            ->first();
+        $outbound = $this->accessService->findOwned($owner, $message);
 
         if ($outbound === null) {
             return ApiErrorResponse::make('not_found', 'Outbound message not found.', 404);
         }
+
+        $outbound->setRelation('safeAttachments', $this->accessService->listSafeAttachments($outbound));
 
         return new OutboundMessageResource($outbound);
     }
@@ -78,15 +89,12 @@ final class OutboundMessageController
      * exposes raw provider payloads, secrets, BCC, message bodies, bounce
      * diagnostics, complaint metadata, or provider signature details.
      */
-    public function timeline(string $message): JsonResponse
+    public function timeline(Request $request, string $message): JsonResponse
     {
         /** @var User $owner */
-        $owner = request()->attributes->get('apiKeyOwner');
+        $owner = $request->attributes->get('apiKeyOwner');
 
-        $outbound = OutboundMessage::query()
-            ->whereKey($message)
-            ->where('user_id', $owner->getKey())
-            ->first();
+        $outbound = $this->accessService->findOwned($owner, $message);
 
         if ($outbound === null) {
             return ApiErrorResponse::make('not_found', 'Outbound message not found.', 404);

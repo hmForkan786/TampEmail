@@ -8,6 +8,7 @@ use App\Http\Controllers\Api\V1\InboundWebhookController;
 use App\Http\Controllers\Api\V1\InboxController;
 use App\Http\Controllers\Api\V1\InboxEmailController;
 use App\Http\Controllers\Api\V1\MailServerController;
+use App\Http\Controllers\Api\V1\OutboundAttachmentDownloadController;
 use App\Http\Controllers\Api\V1\OutboundMessageController;
 use App\Http\Controllers\Api\V1\OutboundWebhookController;
 use Illuminate\Support\Facades\Route;
@@ -53,12 +54,17 @@ Route::prefix('v1')->name('api.v1.')->middleware(['api.request-log', 'api.key'])
     });
 
     Route::middleware(['api.scope:outbound_messages:read', 'api.rate-limit'])->group(function (): void {
+        Route::get('outbound-messages', [OutboundMessageController::class, 'index'])
+            ->name('outbound-messages.index');
         Route::get('outbound-messages/{message}', [OutboundMessageController::class, 'show'])
             ->whereUuid('message')
             ->name('outbound-messages.show');
         Route::get('outbound-messages/{message}/timeline', [OutboundMessageController::class, 'timeline'])
             ->whereUuid('message')
             ->name('outbound-messages.timeline');
+        Route::get('outbound-messages/{message}/attachments/{attachment}', OutboundAttachmentDownloadController::class)
+            ->whereUuid(['message', 'attachment'])
+            ->name('outbound-messages.attachments.download');
     });
 
     Route::middleware(['api.scope:outbound_messages:write', 'api.rate-limit'])->group(function (): void {

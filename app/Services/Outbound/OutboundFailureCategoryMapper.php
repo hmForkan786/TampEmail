@@ -75,7 +75,17 @@ final class OutboundFailureCategoryMapper
      */
     public function userSafeCategory(?string $failureCode): string
     {
-        return match ($this->categorize($failureCode)) {
+        return $this->userSafeFromCategory($this->categorize($failureCode));
+    }
+
+    /**
+     * Maps an already-computed admin category (e.g. the `failure_category`
+     * stored on a delivery attempt row) to the coarser user-safe category,
+     * without re-deriving it from a raw failure code.
+     */
+    public function userSafeFromCategory(?string $category): string
+    {
+        return match ($category) {
             'authorization' => 'authorization_issue',
             'content' => 'content_issue',
             'suppression' => 'recipient_issue',
