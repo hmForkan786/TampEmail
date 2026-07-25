@@ -156,6 +156,32 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Domain authentication readiness (Prompt 612)
+    |--------------------------------------------------------------------------
+    |
+    | SPF + DKIM are mandatory when enforce=true. Weak/missing DMARC yields
+    | degraded (send allowed). Invalid mandatory records fail closed.
+    | Never auto-modifies public DNS. Never stores private DKIM keys.
+    |
+    */
+
+    'domain_authentication' => [
+        'enforce' => filter_var(env('OUTBOUND_DOMAIN_AUTH_ENFORCE', true), FILTER_VALIDATE_BOOL),
+        'allow_degraded_dmarc' => filter_var(env('OUTBOUND_DOMAIN_AUTH_ALLOW_DEGRADED_DMARC', true), FILTER_VALIDATE_BOOL),
+        'dns_timeout_seconds' => (int) env('OUTBOUND_DOMAIN_AUTH_DNS_TIMEOUT', 3),
+        'recheck_interval_seconds' => (int) env('OUTBOUND_DOMAIN_AUTH_RECHECK_INTERVAL', 3600),
+        'manual_recheck_cooldown_seconds' => (int) env('OUTBOUND_DOMAIN_AUTH_MANUAL_COOLDOWN', 60),
+        'batch_size' => (int) env('OUTBOUND_DOMAIN_AUTH_BATCH_SIZE', 50),
+        'ses' => [
+            'spf_include' => env('OUTBOUND_SES_SPF_INCLUDE', 'include:amazonses.com'),
+            'dkim_tokens' => env('OUTBOUND_SES_DKIM_TOKENS', ''),
+            'dkim_cname_suffix' => env('OUTBOUND_SES_DKIM_CNAME_SUFFIX', 'dkim.amazonses.com'),
+            'ownership_prefix' => env('OUTBOUND_SES_OWNERSHIP_PREFIX', 'temail-domain-verification='),
+        ],
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
     | Delivery webhook / provider events (Prompt 607)
     |--------------------------------------------------------------------------
     |

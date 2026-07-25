@@ -2,6 +2,7 @@
 
 namespace App\Providers;
 
+use App\Contracts\DnsResolverInterface;
 use App\Repositories\Contracts\ApiKeyRepositoryInterface;
 use App\Repositories\Contracts\AttachmentRepositoryInterface;
 use App\Repositories\Contracts\DomainRepositoryInterface;
@@ -20,6 +21,7 @@ use App\Repositories\Eloquent\EloquentInboxRepository;
 use App\Repositories\Eloquent\EloquentMailServerRepository;
 use App\Repositories\Eloquent\EloquentPlanRepository;
 use App\Repositories\Eloquent\EloquentSubscriptionRepository;
+use App\Services\Dns\PhpDnsResolver;
 use App\Services\Ops\ProcessHeartbeatWriter;
 use App\Services\Outbound\GenericOutboundProviderEventParser;
 use App\Services\Outbound\OutboundProviderEventParserRegistry;
@@ -48,6 +50,8 @@ class AppServiceProvider extends ServiceProvider
     public function register(): void
     {
         $this->app->singleton(ProcessHeartbeatWriter::class);
+
+        $this->app->singleton(DnsResolverInterface::class, PhpDnsResolver::class);
 
         $this->app->bind(
             ApiKeyRepositoryInterface::class,

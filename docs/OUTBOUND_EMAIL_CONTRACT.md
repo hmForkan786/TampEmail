@@ -402,6 +402,49 @@ php artisan test --filter=ProviderEvent
 php artisan test --filter=Webhook
 ```
 
+## Domain authentication readiness (Prompt 612)
+
+The system never modifies public DNS. Operators publish records; Temail verifies them.
+
+| State | Meaning | Send allowed? |
+|---|---|---|
+| `unconfigured` | No provider DNS expectations / never ready | No (when enforce + expectations exist) |
+| `pending` | Expected records not yet visible | No |
+| `verified` | SPF + DKIM OK; DMARC `quarantine`/`reject` | Yes |
+| `degraded` | SPF + DKIM OK; DMARC missing or `p=none` | Yes (default) |
+| `failed` | Invalid/conflicting mandatory records | No |
+
+Components tracked separately: `ownership`, `spf`, `dkim`, `dmarc`.
+
+**SES expected records**
+
+- SPF TXT at apex: `v=spf1 include:amazonses.com ~all` (exactly one SPF; `+all` rejected)
+- DKIM: CNAME `{token}._domainkey.<domain>` → `{token}.dkim.amazonses.com` (tokens from `OUTBOUND_SES_DKIM_TOKENS`) or TXT `v=DKIM1 ... p=...`
+- Ownership TXT: `temail-domain-verification=<hash>` (optional; also accepts existing `dns_verified_at`)
+- DMARC TXT at `_dmarc.<domain>`: `v=DMARC1; p=quarantine` recommended
+
+**Commands / schedule**
+
+```bash
+php artisan outbound:verify-domains
+php artisan outbound:verify-domains --domain=example.com
+```
+
+Hourly scheduled with `withoutOverlapping`. Manual recheck: Filament **Operations → Domain Auth** (platform admin, rate-limited).
+
+**Env**
+
+| Env | Purpose |
+|---|---|
+| `OUTBOUND_DOMAIN_AUTH_ENFORCE` | Gate send path (default true) |
+| `OUTBOUND_DOMAIN_AUTH_ALLOW_DEGRADED_DMARC` | Allow send when DMARC weak (default true) |
+| `OUTBOUND_SES_DKIM_TOKENS` | Comma-separated Easy DKIM tokens |
+| `OUTBOUND_SES_SPF_INCLUDE` | Expected SPF include mechanism |
+
+When no SPF/DKIM expectations are configured (e.g. empty DKIM tokens + generic provider without SMTP host), enforcement does not block sending.
+
+Audit: `outbound.domain_verification_started`, `outbound.domain_verified`, `outbound.domain_degraded`, `outbound.domain_verification_failed`.
+
 ## Foundational code (Prompt 601)
 
 | Artifact | Role |

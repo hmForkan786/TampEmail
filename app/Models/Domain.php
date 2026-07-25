@@ -99,6 +99,11 @@ class Domain extends BaseModel
         return $this->hasMany(Inbox::class);
     }
 
+    public function outboundAuthentications(): HasMany
+    {
+        return $this->hasMany(OutboundDomainAuthentication::class);
+    }
+
     /**
      * Scope a query to only include active domains.
      */

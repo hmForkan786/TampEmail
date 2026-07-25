@@ -59,6 +59,7 @@ return Application::configure(basePath: dirname(__DIR__))
         if (config('inbox_lifetime.expiration_scheduler_enabled', false) === true) {
             $schedule->command('inboxes:expire --confirm')->withoutOverlapping()->daily();
         }
+        $schedule->command('outbound:verify-domains')->withoutOverlapping()->hourly();
     })
     ->withMiddleware(function (Middleware $middleware): void {
         $middleware->append(ApplySecurityHeaders::class);

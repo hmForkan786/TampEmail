@@ -16,6 +16,7 @@ final class OutboundAuthorizationService
 {
     public function __construct(
         private readonly EntitlementService $entitlements,
+        private readonly OutboundDomainAuthenticationService $domainAuth,
     ) {}
 
     public function assertCanSend(User $user, Inbox $inbox, OutboundOperation $operation = OutboundOperation::Send): void
@@ -42,6 +43,8 @@ final class OutboundAuthorizationService
         if (! $domain->outbound_enabled) {
             throw new OutboundSendException('domain_outbound_disabled', 'Outbound email is disabled for this domain.', 403);
         }
+
+        $this->domainAuth->assertDomainReady($domain);
 
         if (! config('outbound.enabled', false)) {
             throw new OutboundSendException('outbound_disabled', 'Outbound email is disabled.', 403);
