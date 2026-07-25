@@ -71,6 +71,7 @@ final class OutboundEmailOps extends Page
             'status' => $status,
             'evaluated_at' => is_string($report['evaluated_at'] ?? null) ? $report['evaluated_at'] : null,
             'readiness' => is_array($report['readiness'] ?? null) ? $report['readiness'] : [],
+            'queue' => is_array($report['queue'] ?? null) ? $report['queue'] : [],
             'volume' => is_array($report['volume'] ?? null) ? $report['volume'] : [],
             'retries' => is_array($report['retries'] ?? null) ? $report['retries'] : [],
             'provider' => is_array($report['provider'] ?? null) ? $report['provider'] : [],

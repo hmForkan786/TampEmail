@@ -24,3 +24,7 @@ stderr_logfile_backups=<LOG_BACKUPS>
 
 ; Recommended relationship: worker timeout must be below the queue connection's retry_after.
 ; Example queue names: inbound,attachment-scans,default
+; Do not add outbound-delivery, outbound-events, or outbound-maintenance to
+; this generic worker's --queue list; each has its own isolated Supervisor
+; program (see temail-outbound-*-worker.conf.example) so a slow or backed-up
+; outbound workload never delays inbound/attachment processing and vice versa.

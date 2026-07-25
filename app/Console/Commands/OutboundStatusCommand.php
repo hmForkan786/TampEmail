@@ -71,6 +71,7 @@ final class OutboundStatusCommand extends Command
                 'recent_failed_at' => $summary['readiness']['recent_failed_at'] ?? null,
                 'recent_failure_code' => $summary['readiness']['recent_failure_code'] ?? null,
             ],
+            'queue' => is_array($summary['queue'] ?? null) ? $summary['queue'] : [],
             'volume' => $summary['volume'] ?? ['last_24_hours' => [], 'last_7_days' => []],
             'retries' => $summary['retries'] ?? [],
             'provider' => $summary['provider'] ?? [],

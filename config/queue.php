@@ -134,6 +134,7 @@ return [
         'attachment_scanning' => env('QUEUE_ATTACHMENT_SCANNING', 'attachment-scanning'),
         'outbound_delivery' => env('QUEUE_OUTBOUND_DELIVERY', 'outbound-delivery'),
         'outbound_events' => env('QUEUE_OUTBOUND_EVENTS', 'outbound-events'),
+        'outbound_maintenance' => env('QUEUE_OUTBOUND_MAINTENANCE', 'outbound-maintenance'),
         'abuse_analysis' => env('QUEUE_ABUSE_ANALYSIS', 'abuse-analysis'),
         'retention' => env('QUEUE_RETENTION', 'retention'),
         'notifications' => env('QUEUE_NOTIFICATIONS', 'notifications'),

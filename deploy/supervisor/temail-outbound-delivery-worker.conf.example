@@ -1,0 +1,30 @@
+; Copy to Supervisor's configuration directory and replace only the placeholders.
+; Keep credentials and environment-specific values outside this file.
+; Isolated from outbound-events and outbound-maintenance, and from attachment
+; scanning / inbound workers, so a burst of one workload never starves another.
+
+[program:temail-outbound-delivery-worker]
+directory=<PROJECT_PATH>
+command=<PHP_BINARY> artisan queue:work <QUEUE_CONNECTION> --queue=outbound-delivery --sleep=<OUTBOUND_SLEEP_SECONDS> --tries=<OUTBOUND_MAX_TRIES> --timeout=<OUTBOUND_JOB_TIMEOUT_SECONDS> --backoff=<OUTBOUND_BACKOFF_SECONDS> --memory=<OUTBOUND_MEMORY_MB>
+process_name=%(program_name)s_%(process_num)02d
+numprocs=<OUTBOUND_DELIVERY_WORKER_COUNT>
+user=<DEPLOYMENT_USER>
+autostart=true
+autorestart=true
+startsecs=5
+stopasgroup=true
+killasgroup=true
+stopsignal=TERM
+stopwaitsecs=<GRACEFUL_STOP_WAIT_SECONDS>
+redirect_stderr=false
+stdout_logfile=<LOG_DIRECTORY>/outbound-delivery-worker-%(process_num)02d.log
+stderr_logfile=<LOG_DIRECTORY>/outbound-delivery-worker-%(process_num)02d.error.log
+stdout_logfile_maxbytes=<LOG_MAX_BYTES>
+stdout_logfile_backups=<LOG_BACKUPS>
+stderr_logfile_maxbytes=<LOG_MAX_BYTES>
+stderr_logfile_backups=<LOG_BACKUPS>
+
+; Required ordering: OUTBOUND_SMTP_TIMEOUT (default 30s) < OUTBOUND_JOB_TIMEOUT_SECONDS
+; (default 60s) < the queue connection's retry_after (>= 90s). Validated by
+; App\Services\Outbound\OutboundWorkerConfigValidator (see `outbound:status --json`).
+; Never place SMTP credentials or API secrets in this file or in --queue/--env args.

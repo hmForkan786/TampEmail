@@ -139,6 +139,47 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Worker deployment (Prompt 613)
+    |--------------------------------------------------------------------------
+    |
+    | Bounded, isolated worker counts per outbound queue plus the required
+    | timeout ordering: SMTP timeout < job timeout < queue retry_after.
+    | Validated by OutboundWorkerConfigValidator without sending mail.
+    |
+    */
+
+    'worker' => [
+        'delivery_count' => (int) env('OUTBOUND_DELIVERY_WORKER_COUNT', 1),
+        'events_count' => (int) env('OUTBOUND_EVENTS_WORKER_COUNT', 1),
+        'maintenance_count' => (int) env('OUTBOUND_MAINTENANCE_WORKER_COUNT', 1),
+        'job_timeout_seconds' => (int) env('OUTBOUND_WORKER_TIMEOUT_SECONDS', 60),
+        'sleep_seconds' => (int) env('OUTBOUND_WORKER_SLEEP_SECONDS', 3),
+        'tries' => (int) env('OUTBOUND_WORKER_TRIES', 3),
+        'backoff_seconds' => (int) env('OUTBOUND_WORKER_BACKOFF_SECONDS', 30),
+        'memory_mb' => (int) env('OUTBOUND_WORKER_MEMORY_MB', 512),
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
+    | Stale sending / provider-event reconciliation (Prompt 613)
+    |--------------------------------------------------------------------------
+    |
+    | A message stuck in `sending` past the threshold means the delivery
+    | worker died mid-attempt. Requeue is only safe when the transport was
+    | never invoked for the stuck attempt; otherwise the outcome is
+    | ambiguous and must wait for a provider event or admin reconciliation
+    | — never blindly resent.
+    */
+
+    'reconciliation' => [
+        'stale_sending_threshold_seconds' => (int) env('OUTBOUND_STALE_SENDING_THRESHOLD_SECONDS', 900),
+        'stale_sending_batch_size' => (int) env('OUTBOUND_STALE_SENDING_BATCH_SIZE', 50),
+        'unmatched_event_window_hours' => (int) env('OUTBOUND_UNMATCHED_EVENT_WINDOW_HOURS', 24),
+        'unmatched_event_batch_size' => (int) env('OUTBOUND_UNMATCHED_EVENT_BATCH_SIZE', 50),
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
     | Reply / forward policy
     |--------------------------------------------------------------------------
     */

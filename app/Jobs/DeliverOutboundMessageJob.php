@@ -82,6 +82,9 @@ final class DeliverOutboundMessageJob implements ShouldBeUnique, ShouldQueue
                 ->update([
                     'state' => OutboundMessageState::Sending->value,
                     'sending_at' => now(),
+                    // Reset per-attempt so stale-sending reconciliation only
+                    // ever evaluates this attempt's transport submission.
+                    'transport_attempted_at' => null,
                     'attempt_count' => $message->attempt_count + 1,
                     'updated_at' => now(),
                 ]);
@@ -164,6 +167,15 @@ final class DeliverOutboundMessageJob implements ShouldBeUnique, ShouldQueue
             references: $claimed->references,
             attachments: $transportAttachments,
         );
+
+        // Recorded immediately before the transport call so stale-sending
+        // reconciliation can distinguish "worker died before ever attempting
+        // delivery" (safe to requeue) from "transport outcome unknown"
+        // (ambiguous; must never be blindly resent).
+        OutboundMessage::query()
+            ->whereKey($claimed->getKey())
+            ->where('state', OutboundMessageState::Sending->value)
+            ->update(['transport_attempted_at' => now(), 'updated_at' => now()]);
 
         $result = $transport->send($payload);
 

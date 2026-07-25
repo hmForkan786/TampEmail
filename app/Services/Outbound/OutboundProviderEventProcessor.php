@@ -99,6 +99,81 @@ final class OutboundProviderEventProcessor
         });
     }
 
+    /**
+     * Retries correlation for previously unmatched events within a bounded
+     * recent window. Covers the race where a provider webhook arrives before
+     * the delivery job persists `provider_message_id`. Never re-evaluates
+     * already-matched events and never widens beyond the configured window.
+     *
+     * @return array{evaluated: int, matched: int}
+     */
+    public function reconcileUnmatched(?int $limit = null): array
+    {
+        $limit = max(1, $limit ?? (int) config('outbound.reconciliation.unmatched_event_batch_size', 50));
+        $windowHours = max(1, (int) config('outbound.reconciliation.unmatched_event_window_hours', 24));
+        $since = now()->subHours($windowHours);
+
+        $summary = ['evaluated' => 0, 'matched' => 0];
+
+        $eventIds = OutboundProviderEvent::query()
+            ->whereNull('outbound_message_id')
+            ->where('received_at', '>=', $since)
+            ->orderBy('received_at')
+            ->limit($limit)
+            ->pluck('id');
+
+        foreach ($eventIds as $eventId) {
+            $summary['evaluated']++;
+            if ($this->reconcileUnmatchedOne((string) $eventId)) {
+                $summary['matched']++;
+            }
+        }
+
+        return $summary;
+    }
+
+    private function reconcileUnmatchedOne(string $eventId): bool
+    {
+        return DB::transaction(function () use ($eventId): bool {
+            $event = OutboundProviderEvent::query()->whereKey($eventId)->lockForUpdate()->first();
+            if ($event === null || $event->outbound_message_id !== null) {
+                return false;
+            }
+
+            $data = new OutboundProviderEventData(
+                provider: $event->provider,
+                providerEventId: $event->provider_event_id,
+                providerMessageId: $event->provider_message_id,
+                eventType: $event->event_type,
+                providerEventAt: $event->provider_event_at ?? $event->received_at,
+            );
+
+            $message = $this->resolveMessage($data);
+            if ($message === null) {
+                return false;
+            }
+
+            $event->forceFill(['outbound_message_id' => $message->getKey()])->save();
+            $outcome = $this->applyTransition($event, $message, $data);
+
+            $this->audit->write(
+                'outbound.provider_event_reconciled',
+                (string) $message->user_id,
+                $event,
+                null,
+                null,
+                [
+                    'provider' => $data->provider,
+                    'event_type' => $data->eventType->value,
+                    'provider_event_id_hash' => hash('sha256', $data->providerEventId),
+                    'outcome' => $outcome,
+                ],
+            );
+
+            return true;
+        });
+    }
+
     private function resolveMessage(OutboundProviderEventData $data): ?OutboundMessage
     {
         if ($data->providerMessageId === null || $data->providerMessageId === '') {

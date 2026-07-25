@@ -199,6 +199,12 @@ Reply/forward use `outbound_messages:write` (not separate `emails:reply`) unless
 - Flow: claim → reload authz + content → (forward) re-check attachments → transport `send()` → persist safe result → audit.
 - Retryable vs permanent classification drives re-queue vs `failed` (Prompt 605).
 - Workers must not log bodies, BCC lists, or credentials.
+- Deployment topology (isolated workers, timeout alignment, stale-sending
+  reconciliation, per-queue heartbeats): see `docs/OUTBOUND_WORKER_DEPLOYMENT.md`
+  (Prompt 613). The third workload `outbound_maintenance` (env
+  `QUEUE_OUTBOUND_MAINTENANCE`, default `outbound-maintenance`) is reserved
+  for domain-auth/suppression/abuse maintenance work, kept isolated from both
+  delivery and provider events.
 
 ## Attachment safety
 
@@ -538,8 +544,10 @@ OUTBOUND_SMTP_TIMEOUT (workers must exceed this)
 domains.outbound_enabled for sending domains
 OUTBOUND_ENABLED + send/reply/forward flags
 plan entitlements: send_email, reply_email, forward_email
-queue workers: outbound-delivery, outbound-events
+queue workers: outbound-delivery, outbound-events, outbound-maintenance (see docs/OUTBOUND_WORKER_DEPLOYMENT.md)
 failed-job monitoring for those queues
+stale-sending reconciliation: outbound:reconcile-stale-sending (scheduled every 5 minutes)
+unmatched provider-event reconciliation: outbound:reconcile-unmatched-events (scheduled every 15 minutes)
 webhook URL: POST /api/v1/webhooks/outbound/{provider}
 OUTBOUND_PROVIDER=generic|ses
 OUTBOUND_GENERIC_DELIVERY_WEBHOOK_SECRET (generic)

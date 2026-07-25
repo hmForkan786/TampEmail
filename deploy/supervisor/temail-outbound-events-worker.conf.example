@@ -1,0 +1,28 @@
+; Copy to Supervisor's configuration directory and replace only the placeholders.
+; Keep credentials and environment-specific values outside this file.
+; Isolated from outbound-delivery and outbound-maintenance so a provider
+; webhook backlog never blocks outgoing mail, and vice versa.
+
+[program:temail-outbound-events-worker]
+directory=<PROJECT_PATH>
+command=<PHP_BINARY> artisan queue:work <QUEUE_CONNECTION> --queue=outbound-events --sleep=<OUTBOUND_SLEEP_SECONDS> --tries=<OUTBOUND_MAX_TRIES> --timeout=<OUTBOUND_JOB_TIMEOUT_SECONDS> --backoff=<OUTBOUND_BACKOFF_SECONDS> --memory=<OUTBOUND_MEMORY_MB>
+process_name=%(program_name)s_%(process_num)02d
+numprocs=<OUTBOUND_EVENTS_WORKER_COUNT>
+user=<DEPLOYMENT_USER>
+autostart=true
+autorestart=true
+startsecs=5
+stopasgroup=true
+killasgroup=true
+stopsignal=TERM
+stopwaitsecs=<GRACEFUL_STOP_WAIT_SECONDS>
+redirect_stderr=false
+stdout_logfile=<LOG_DIRECTORY>/outbound-events-worker-%(process_num)02d.log
+stderr_logfile=<LOG_DIRECTORY>/outbound-events-worker-%(process_num)02d.error.log
+stdout_logfile_maxbytes=<LOG_MAX_BYTES>
+stdout_logfile_backups=<LOG_BACKUPS>
+stderr_logfile_maxbytes=<LOG_MAX_BYTES>
+stderr_logfile_backups=<LOG_BACKUPS>
+
+; Processes provider delivery/bounce/complaint webhooks only; never handles
+; SMTP submission. Never place webhook secrets in this file or in queue args.

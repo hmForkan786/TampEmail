@@ -16,6 +16,10 @@ use Illuminate\Support\Facades\DB;
 
 final class OutboundOpsService
 {
+    public function __construct(
+        private readonly OutboundQueueReadinessService $queueReadiness,
+    ) {}
+
     /**
      * @return array<string, mixed>
      */
@@ -28,12 +32,14 @@ final class OutboundOpsService
         $provider = $this->providerMetrics(now()->subDay());
         $suppressions = $this->suppressionMetrics();
         $abuse = $this->abuseMetrics();
-        $issues = $this->issues($readiness, $retries, $volume24h, $suppressions);
+        $queue = $this->queueReadiness->report();
+        $issues = [...$this->issues($readiness, $retries, $volume24h, $suppressions), ...$queue['issues']];
 
         return [
-            'status' => $this->overallStatus($readiness, $issues),
+            'status' => $this->overallStatus($readiness, $issues, $queue['status']),
             'evaluated_at' => now()->toIso8601String(),
             'readiness' => $readiness,
+            'queue' => $queue,
             'volume' => [
                 'last_24_hours' => $volume24h,
                 'last_7_days' => $volume7d,
@@ -291,20 +297,19 @@ final class OutboundOpsService
      * @param  array<string, mixed>  $readiness
      * @param  list<string>  $issues
      */
-    private function overallStatus(array $readiness, array $issues): string
+    private function overallStatus(array $readiness, array $issues, string $queueStatus = 'healthy'): string
     {
         $state = (string) ($readiness['state'] ?? 'unknown');
-        if ($state === 'unknown' && ! ($readiness['configuration_valid'] ?? false)
-            && ($readiness['failure_code'] ?? null) === 'outbound_disabled') {
-            return 'unknown';
-        }
+        // Feature-disabled readiness stays "unknown" for the send/reply/
+        // forward pipeline itself; queue infra issues are still visible
+        // under the nested `queue` key without flipping this top-level state.
         if ($state === 'unknown') {
             return 'unknown';
         }
-        if ($state === 'failed' || in_array('invalid_config', $issues, true)) {
+        if ($state === 'failed' || in_array('invalid_config', $issues, true) || $queueStatus === 'failed') {
             return 'failed';
         }
-        if ($state === 'degraded' || $issues !== []) {
+        if ($state === 'degraded' || $issues !== [] || $queueStatus === 'degraded') {
             return 'degraded';
         }
 

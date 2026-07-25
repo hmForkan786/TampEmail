@@ -35,10 +35,13 @@ use Illuminate\Support\Carbon;
  * @property int $attempt_count
  * @property Carbon|null $queued_at
  * @property Carbon|null $sending_at
+ * @property Carbon|null $transport_attempted_at
  * @property Carbon|null $sent_at
  * @property Carbon|null $delivered_at
  * @property Carbon|null $failed_at
  * @property Carbon|null $cancelled_at
+ * @property Carbon|null $reconciliation_flagged_at
+ * @property string|null $reconciliation_note
  * @property string|null $failure_code
  * @property string|null $failure_message
  * @property list<string>|null $attachment_ids
@@ -79,10 +82,13 @@ class OutboundMessage extends BaseModel
         'attempt_count',
         'queued_at',
         'sending_at',
+        'transport_attempted_at',
         'sent_at',
         'delivered_at',
         'failed_at',
         'cancelled_at',
+        'reconciliation_flagged_at',
+        'reconciliation_note',
         'failure_code',
         'failure_message',
         'attachment_ids',
@@ -105,10 +111,12 @@ class OutboundMessage extends BaseModel
             'attempt_count' => 'integer',
             'queued_at' => 'datetime',
             'sending_at' => 'datetime',
+            'transport_attempted_at' => 'datetime',
             'sent_at' => 'datetime',
             'delivered_at' => 'datetime',
             'failed_at' => 'datetime',
             'cancelled_at' => 'datetime',
+            'reconciliation_flagged_at' => 'datetime',
         ]);
     }
 

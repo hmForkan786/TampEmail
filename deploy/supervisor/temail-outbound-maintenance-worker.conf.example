@@ -1,0 +1,29 @@
+; Copy to Supervisor's configuration directory and replace only the placeholders.
+; Keep credentials and environment-specific values outside this file.
+; Reserved for future async outbound maintenance jobs (domain-auth batches,
+; suppression/abuse review actions). Domain verification and stale-sending
+; reconciliation currently run inline from the scheduler (see
+; temail-scheduler.conf.example and docs/OUTBOUND_WORKER_DEPLOYMENT.md); this
+; worker keeps the outbound-maintenance queue isolated from delivery/events
+; so it can absorb that work without code changes if it moves to a queued job.
+
+[program:temail-outbound-maintenance-worker]
+directory=<PROJECT_PATH>
+command=<PHP_BINARY> artisan queue:work <QUEUE_CONNECTION> --queue=outbound-maintenance --sleep=<OUTBOUND_SLEEP_SECONDS> --tries=<OUTBOUND_MAX_TRIES> --timeout=<OUTBOUND_JOB_TIMEOUT_SECONDS> --backoff=<OUTBOUND_BACKOFF_SECONDS> --memory=<OUTBOUND_MEMORY_MB>
+process_name=%(program_name)s_%(process_num)02d
+numprocs=<OUTBOUND_MAINTENANCE_WORKER_COUNT>
+user=<DEPLOYMENT_USER>
+autostart=true
+autorestart=true
+startsecs=5
+stopasgroup=true
+killasgroup=true
+stopsignal=TERM
+stopwaitsecs=<GRACEFUL_STOP_WAIT_SECONDS>
+redirect_stderr=false
+stdout_logfile=<LOG_DIRECTORY>/outbound-maintenance-worker-%(process_num)02d.log
+stderr_logfile=<LOG_DIRECTORY>/outbound-maintenance-worker-%(process_num)02d.error.log
+stdout_logfile_maxbytes=<LOG_MAX_BYTES>
+stdout_logfile_backups=<LOG_BACKUPS>
+stderr_logfile_maxbytes=<LOG_MAX_BYTES>
+stderr_logfile_backups=<LOG_BACKUPS>

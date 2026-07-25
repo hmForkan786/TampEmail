@@ -6,6 +6,7 @@ use App\Services\Ops\ProcessHeartbeatWriter;
 use Illuminate\Console\Scheduling\CallbackEvent;
 use Illuminate\Console\Scheduling\Schedule;
 use Illuminate\Contracts\Cache\Factory as CacheFactory;
+use Illuminate\Contracts\Cache\Repository;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Artisan;
@@ -70,7 +71,7 @@ it('refreshes an existing scheduler heartbeat without mutating worker heartbeats
 
 it('returns a safe non-zero exit code when the heartbeat write fails', function (): void {
     $cache = Mockery::mock(CacheFactory::class);
-    $store = Mockery::mock(\Illuminate\Contracts\Cache\Repository::class);
+    $store = Mockery::mock(Repository::class);
     $cache->shouldReceive('store')->andReturn($store);
     $store->shouldReceive('get')->andReturn(null);
     $store->shouldReceive('put')->andThrow(new RuntimeException('cache down'));
@@ -117,8 +118,12 @@ it('registers the explicit scheduler heartbeat command every minute without an a
     Artisan::call('schedule:list');
     $output = Artisan::output();
 
+    // schedule:list pads the cron-expression column to match the widest
+    // expression among all registered tasks, so tolerate extra alignment
+    // whitespace between stars rather than requiring single spaces; the
+    // authoritative assertion is the exact `$event->expression` check below.
     expect(substr_count($output, 'processes:scheduler-heartbeat'))->toBe(1)
-        ->and($output)->toMatch('/\* \* \* \* \* .*processes:scheduler-heartbeat/s');
+        ->and($output)->toMatch('/\*\s+\*\s+\*\s+\*\s+\*\s+.*processes:scheduler-heartbeat/s');
 
     $events = collect(app(Schedule::class)->events());
     $heartbeatEvents = $events->filter(function (object $event): bool {

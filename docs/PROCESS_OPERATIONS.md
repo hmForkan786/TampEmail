@@ -15,7 +15,7 @@ This runbook describes an environment-neutral deployment contract for queue work
 ## Supervisor installation and first start
 
 1. Install Supervisor using the operating system's approved package/image process.
-2. Copy `deploy/supervisor/temail-worker.conf.example` and `temail-scheduler.conf.example` into the Supervisor configuration directory.
+2. Copy `deploy/supervisor/temail-worker.conf.example` and `temail-scheduler.conf.example` into the Supervisor configuration directory. Outbound email deployments also copy the isolated `temail-outbound-delivery-worker.conf.example`, `temail-outbound-events-worker.conf.example`, and `temail-outbound-maintenance-worker.conf.example` templates — see `docs/OUTBOUND_WORKER_DEPLOYMENT.md`.
 3. Replace `<PROJECT_PATH>`, `<PHP_BINARY>`, `<DEPLOYMENT_USER>`, queue values, worker limits, log paths, and bounded stop/log values.
 4. Ensure the deployment user can read the release and write only the intended storage/log directories.
 5. Validate the release before starting processes:
