@@ -395,3 +395,27 @@ php artisan outbound:status --json
 ```
 
 Readiness states: `healthy`, `degraded`, `failed`, `unknown` (feature disabled).
+
+## Deployment checklist
+
+```text
+OUTBOUND_TRANSPORT=smtp
+OUTBOUND_MAILER=outbound
+OUTBOUND_SMTP_HOST / PORT / ENCRYPTION / USERNAME / PASSWORD
+OUTBOUND_SMTP_VERIFY_PEER=true
+OUTBOUND_SMTP_TIMEOUT (workers must exceed this)
+domains.outbound_enabled for sending domains
+OUTBOUND_ENABLED + send/reply/forward flags
+plan entitlements: send_email, reply_email, forward_email
+queue workers: outbound-delivery, outbound-events
+failed-job monitoring for those queues
+webhook URL: POST /api/v1/webhooks/outbound/{provider}
+OUTBOUND_GENERIC_DELIVERY_WEBHOOK_SECRET
+retry: OUTBOUND_SEND_MAX_ATTEMPTS / BACKOFF
+suppression admin review process
+abuse thresholds / temp-block policy
+operations access for platform admins
+php artisan outbound:status --json
+```
+
+Optional sandbox SMTP proof: `RUN_OUTBOUND_SMTP_TESTS=1` with approved test recipient only.

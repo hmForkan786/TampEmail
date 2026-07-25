@@ -59,6 +59,24 @@
             </div>
 
             <div class="rounded-xl bg-white p-6 shadow-sm ring-1 ring-gray-950/5 dark:bg-gray-900 dark:ring-white/10">
+                <h3 class="font-semibold">Suppressions</h3>
+                <dl class="mt-3 space-y-2 text-sm">
+                    @foreach(($suppressions ?? []) as $label => $value)
+                        <div>{{ str_replace('_', ' ', $label) }}: {{ $value }}</div>
+                    @endforeach
+                </dl>
+            </div>
+
+            <div class="rounded-xl bg-white p-6 shadow-sm ring-1 ring-gray-950/5 dark:bg-gray-900 dark:ring-white/10">
+                <h3 class="font-semibold">Abuse controls</h3>
+                <dl class="mt-3 space-y-2 text-sm">
+                    @foreach(($abuse ?? []) as $label => $value)
+                        <div>{{ str_replace('_', ' ', $label) }}: {{ $value }}</div>
+                    @endforeach
+                </dl>
+            </div>
+
+            <div class="rounded-xl bg-white p-6 shadow-sm ring-1 ring-gray-950/5 dark:bg-gray-900 dark:ring-white/10">
                 <h3 class="font-semibold">Issues</h3>
                 <p class="mt-3 text-sm">{{ ($issues ?? []) === [] ? 'none' : implode(', ', $issues) }}</p>
             </div>

@@ -74,6 +74,8 @@ final class OutboundStatusCommand extends Command
             'volume' => $summary['volume'] ?? ['last_24_hours' => [], 'last_7_days' => []],
             'retries' => $summary['retries'] ?? [],
             'provider' => $summary['provider'] ?? [],
+            'suppressions' => $summary['suppressions'] ?? [],
+            'abuse' => $summary['abuse'] ?? [],
             'issues' => array_values(array_filter(
                 is_array($summary['issues'] ?? null) ? $summary['issues'] : [],
                 fn ($issue): bool => is_string($issue) && preg_match('/^[a-z0-9_]{1,80}$/', $issue) === 1,

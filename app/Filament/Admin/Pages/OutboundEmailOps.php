@@ -74,6 +74,8 @@ final class OutboundEmailOps extends Page
             'volume' => is_array($report['volume'] ?? null) ? $report['volume'] : [],
             'retries' => is_array($report['retries'] ?? null) ? $report['retries'] : [],
             'provider' => is_array($report['provider'] ?? null) ? $report['provider'] : [],
+            'suppressions' => is_array($report['suppressions'] ?? null) ? $report['suppressions'] : [],
+            'abuse' => is_array($report['abuse'] ?? null) ? $report['abuse'] : [],
             'issues' => array_values(array_filter(
                 is_array($report['issues'] ?? null) ? $report['issues'] : [],
                 fn ($issue): bool => is_string($issue) && preg_match('/^[a-z0-9_]{1,80}$/', $issue) === 1,
