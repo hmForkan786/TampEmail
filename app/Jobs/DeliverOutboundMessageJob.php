@@ -7,6 +7,7 @@ namespace App\Jobs;
 use App\Contracts\OutboundTransportInterface;
 use App\DTOs\Outbound\OutboundMessageData;
 use App\Enums\OutboundMessageState;
+use App\Enums\OutboundOperation;
 use App\Enums\OutboundTransportResult;
 use App\Enums\UserStatus;
 use App\Models\OutboundMessage;
@@ -210,7 +211,7 @@ final class DeliverOutboundMessageJob implements ShouldBeUnique, ShouldQueue
 
         $fresh = $message->fresh();
         $audit->write(
-            'outbound.message_sent',
+            $this->auditAction($fresh->operation, 'sent'),
             (string) $fresh->user_id,
             $fresh,
             ['state' => OutboundMessageState::Sending->value],
@@ -250,7 +251,7 @@ final class DeliverOutboundMessageJob implements ShouldBeUnique, ShouldQueue
 
         $fresh = $message->fresh();
         $audit->write(
-            'outbound.message_failed',
+            $this->auditAction($fresh->operation, 'failed'),
             (string) $fresh->user_id,
             $fresh,
             ['state' => OutboundMessageState::Sending->value],
@@ -264,5 +265,14 @@ final class DeliverOutboundMessageJob implements ShouldBeUnique, ShouldQueue
                 'recipient_count' => $fresh->recipientCount(),
             ],
         );
+    }
+
+    private function auditAction(OutboundOperation $operation, string $suffix): string
+    {
+        return match ($operation) {
+            OutboundOperation::Reply => 'outbound.reply_'.$suffix,
+            OutboundOperation::Forward => 'outbound.forward_'.$suffix,
+            default => 'outbound.message_'.$suffix,
+        };
     }
 }

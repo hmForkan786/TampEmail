@@ -2,6 +2,7 @@
 
 use App\Http\Controllers\Api\V1\AttachmentDownloadController;
 use App\Http\Controllers\Api\V1\EmailReadStateController;
+use App\Http\Controllers\Api\V1\EmailReplyController;
 use App\Http\Controllers\Api\V1\InboundWebhookController;
 use App\Http\Controllers\Api\V1\InboxController;
 use App\Http\Controllers\Api\V1\InboxEmailController;
@@ -58,6 +59,9 @@ Route::prefix('v1')->name('api.v1.')->middleware(['api.request-log', 'api.key'])
     Route::middleware(['api.scope:outbound_messages:write', 'api.rate-limit'])->group(function (): void {
         Route::post('outbound-messages', [OutboundMessageController::class, 'store'])
             ->name('outbound-messages.store');
+        Route::post('emails/{email}/reply', [EmailReplyController::class, 'store'])
+            ->whereUuid('email')
+            ->name('emails.reply');
     });
 });
 
