@@ -28,7 +28,7 @@ return new class extends Migration
             $table->foreignUuid('removed_by')->nullable()->constrained('users')->nullOnDelete();
             $table->timestamps();
 
-            $table->index(['recipient_hash', 'scope_type', 'scope_id', 'active']);
+            $table->index(['recipient_hash', 'scope_type', 'scope_id', 'active'], 'outbound_suppressions_hash_scope_active_idx');
             $table->index(['reason', 'active']);
         });
     }

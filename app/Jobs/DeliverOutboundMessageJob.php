@@ -19,6 +19,7 @@ use App\Services\Outbound\OutboundAuthorizationService;
 use App\Services\Outbound\OutboundDeliveryAttemptRecorder;
 use App\Services\Outbound\OutboundLaunchControlService;
 use App\Services\Outbound\OutboundSuppressionService;
+use App\Services\Outbound\OutboundUsageService;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldBeUnique;
 use Illuminate\Contracts\Queue\ShouldQueue;
@@ -66,7 +67,13 @@ final class DeliverOutboundMessageJob implements ShouldBeUnique, ShouldQueue
         OutboundSuppressionService $suppressions,
         OutboundDeliveryAttemptRecorder $attempts,
         OutboundLaunchControlService $launchControl,
+        ?OutboundUsageService $usage = null,
     ): void {
+        // Optional trailing param (resolved from the container when omitted)
+        // so pre-existing direct ->handle(...) calls in tests keep working
+        // unmodified.
+        $usage ??= app(OutboundUsageService::class);
+
         // Checked before the message is ever claimed: emergency stop must
         // never mark a queued message failed or delete it, so this leaves
         // the row untouched and simply re-queues the job for later.
@@ -123,6 +130,11 @@ final class DeliverOutboundMessageJob implements ShouldBeUnique, ShouldQueue
             return;
         }
 
+        // Once per claim (first attempt and every retry) — never per
+        // manual retry *request* alone, only once the job actually claims
+        // and starts the attempt.
+        $usage->recordAttemptStarted($claimed);
+
         $attempts->start($claimed, (string) config('outbound.transport'));
 
         $audit->write(
@@ -143,7 +155,7 @@ final class DeliverOutboundMessageJob implements ShouldBeUnique, ShouldQueue
 
         try {
             if ($claimed->user === null || $claimed->user->status !== UserStatus::Active) {
-                $this->markFailed($claimed, 'user_inactive', 'User is no longer active.', $audit, $attempts);
+                $this->markFailed($claimed, 'user_inactive', 'User is no longer active.', $audit, $attempts, usage: $usage);
 
                 return;
             }
@@ -156,7 +168,7 @@ final class DeliverOutboundMessageJob implements ShouldBeUnique, ShouldQueue
             ], $claimed->user);
         } catch (\Throwable $exception) {
             $code = property_exists($exception, 'errorCode') ? (string) $exception->errorCode : 'authorization_failed';
-            $this->markFailed($claimed, $code, 'Authorization failed before transport submission.', $audit, $attempts);
+            $this->markFailed($claimed, $code, 'Authorization failed before transport submission.', $audit, $attempts, usage: $usage);
 
             return;
         }
@@ -172,7 +184,7 @@ final class DeliverOutboundMessageJob implements ShouldBeUnique, ShouldQueue
                 $transportAttachments = $attachmentSelector->toTransportPayload($selected);
             } catch (\Throwable $exception) {
                 $code = property_exists($exception, 'errorCode') ? (string) $exception->errorCode : 'attachment_unsafe';
-                $this->markFailed($claimed, $code, 'Attachment revalidation failed before transport submission.', $audit, $attempts);
+                $this->markFailed($claimed, $code, 'Attachment revalidation failed before transport submission.', $audit, $attempts, usage: $usage);
 
                 return;
             }
@@ -205,7 +217,7 @@ final class DeliverOutboundMessageJob implements ShouldBeUnique, ShouldQueue
         $result = $transport->send($payload);
 
         if ($result->result === OutboundTransportResult::Accepted) {
-            $this->markSent($claimed, $result->provider, $result->providerMessageId, $audit, $attempts);
+            $this->markSent($claimed, $result->provider, $result->providerMessageId, $audit, $attempts, $usage);
 
             return;
         }
@@ -275,6 +287,8 @@ final class DeliverOutboundMessageJob implements ShouldBeUnique, ShouldQueue
                 $attempts,
                 $result->provider,
                 skipAttemptCompletion: true,
+                usage: $usage,
+                transportAttempted: true,
             );
 
             return;
@@ -290,6 +304,8 @@ final class DeliverOutboundMessageJob implements ShouldBeUnique, ShouldQueue
             $attempts,
             $result->provider,
             attemptResult: $result->result,
+            usage: $usage,
+            transportAttempted: true,
         );
     }
 
@@ -299,6 +315,7 @@ final class DeliverOutboundMessageJob implements ShouldBeUnique, ShouldQueue
         ?string $providerMessageId,
         AuditLogWriter $audit,
         OutboundDeliveryAttemptRecorder $attempts,
+        OutboundUsageService $usage,
     ): void {
         $updated = OutboundMessage::query()
             ->whereKey($message->getKey())
@@ -316,6 +333,8 @@ final class DeliverOutboundMessageJob implements ShouldBeUnique, ShouldQueue
         if ($updated !== 1) {
             return;
         }
+
+        $usage->commit((string) $message->getKey());
 
         $attempts->complete(
             $message,
@@ -350,6 +369,8 @@ final class DeliverOutboundMessageJob implements ShouldBeUnique, ShouldQueue
         ?string $provider = null,
         bool $skipAttemptCompletion = false,
         OutboundTransportResult $attemptResult = OutboundTransportResult::PermanentFailure,
+        ?OutboundUsageService $usage = null,
+        bool $transportAttempted = false,
     ): void {
         $updated = OutboundMessage::query()
             ->whereKey($message->getKey())
@@ -365,6 +386,18 @@ final class DeliverOutboundMessageJob implements ShouldBeUnique, ShouldQueue
 
         if ($updated !== 1) {
             return;
+        }
+
+        $usage ??= app(OutboundUsageService::class);
+        if ($transportAttempted) {
+            // Never released: quota is spent by the attempt regardless of
+            // transport outcome once transport was actually invoked.
+            $usage->recordPermanentFailure((string) $message->getKey());
+        } else {
+            // Never reached the transport call (authorization/suppression/
+            // attachment/user-status failure) — same release rule as
+            // cancelling a still-queued message.
+            $usage->release((string) $message->getKey(), 'pre_transport_failure');
         }
 
         if (! $skipAttemptCompletion) {

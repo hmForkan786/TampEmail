@@ -9,12 +9,14 @@ use App\Exceptions\OutboundSendException;
 use App\Models\OutboundMessage;
 use App\Models\User;
 use App\Services\Audit\AuditLogWriter;
+use App\Services\Outbound\OutboundUsageService;
 use Illuminate\Support\Facades\DB;
 
 final class CancelOutboundMessageAction
 {
     public function __construct(
         private readonly AuditLogWriter $auditLogWriter,
+        private readonly OutboundUsageService $usage,
     ) {}
 
     public function execute(string $messageId, User $user): OutboundMessage
@@ -48,6 +50,13 @@ final class CancelOutboundMessageAction
             }
 
             $fresh = $message->fresh();
+
+            // Safe unconditionally: only `queued` messages reach this
+            // point, and a queued message can never have an in-flight
+            // transport attempt (transport_attempted_at is only ever set
+            // while `sending`).
+            $this->usage->release((string) $fresh->getKey(), 'cancelled_before_transport', (string) $user->getKey());
+
             $this->auditLogWriter->write(
                 'outbound.message_cancelled',
                 (string) $user->getKey(),

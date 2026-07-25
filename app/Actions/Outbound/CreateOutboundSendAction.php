@@ -19,6 +19,7 @@ use App\Services\Outbound\OutboundLaunchControlService;
 use App\Services\Outbound\OutboundRateLimiter;
 use App\Services\Outbound\OutboundRecipientValidator;
 use App\Services\Outbound\OutboundSuppressionService;
+use App\Services\Outbound\OutboundUsageService;
 use Illuminate\Support\Facades\DB;
 
 final class CreateOutboundSendAction
@@ -31,6 +32,7 @@ final class CreateOutboundSendAction
         private readonly OutboundSuppressionService $suppressions,
         private readonly AuditLogWriter $auditLogWriter,
         private readonly OutboundLaunchControlService $launchControl,
+        private readonly OutboundUsageService $usage,
     ) {}
 
     public function execute(CreateOutboundSendData $data, User $user, ?string $apiKeyId = null): OutboundMessage
@@ -117,6 +119,11 @@ final class CreateOutboundSendAction
                 'queued_at' => now(),
                 'is_canary' => $isCanary,
             ]);
+
+            // Inside the same transaction as the insert so a quota
+            // exception rolls the message creation back too — never a
+            // half-created, unreserved message.
+            $this->usage->reserve($user, $message, $data->idempotencyKey);
 
             $this->auditLogWriter->write(
                 'outbound.message_created',

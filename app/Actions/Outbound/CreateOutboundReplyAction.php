@@ -22,6 +22,7 @@ use App\Services\Outbound\OutboundReplyRecipientResolver;
 use App\Services\Outbound\OutboundSubjectHelper;
 use App\Services\Outbound\OutboundSuppressionService;
 use App\Services\Outbound\OutboundThreadingHeaders;
+use App\Services\Outbound\OutboundUsageService;
 use Illuminate\Support\Facades\DB;
 
 final class CreateOutboundReplyAction
@@ -37,6 +38,7 @@ final class CreateOutboundReplyAction
         private readonly OutboundSuppressionService $suppressions,
         private readonly AuditLogWriter $auditLogWriter,
         private readonly OutboundLaunchControlService $launchControl,
+        private readonly OutboundUsageService $usage,
     ) {}
 
     public function execute(CreateOutboundReplyData $data, User $user, ?string $apiKeyId = null): OutboundMessage
@@ -126,6 +128,8 @@ final class CreateOutboundReplyAction
                 'queued_at' => now(),
                 'is_canary' => $isCanary,
             ]);
+
+            $this->usage->reserve($user, $message, $data->idempotencyKey);
 
             $this->auditLogWriter->write('outbound.reply_created', (string) $user->getKey(), $message, null, [
                 'state' => $message->state->value,

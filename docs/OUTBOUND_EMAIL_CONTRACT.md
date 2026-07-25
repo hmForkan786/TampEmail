@@ -272,6 +272,8 @@ outbound.forward_created / outbound.forward_queued / outbound.forward_sent / out
 outbound.retry_scheduled
 outbound.retry_exhausted
 outbound.manual_retry_requested
+outbound.usage_reservation_released
+outbound.usage_corrected
 ```
 
 Never audit: passwords, API tokens, raw SMTP responses, full bodies, BCC addresses, storage paths, attachment bytes.
@@ -450,6 +452,10 @@ Hourly scheduled with `withoutOverlapping`. Manual recheck: Filament **Operation
 When no SPF/DKIM expectations are configured (e.g. empty DKIM tokens + generic provider without SMTP host), enforcement does not block sending.
 
 Audit: `outbound.domain_verification_started`, `outbound.domain_verified`, `outbound.domain_degraded`, `outbound.domain_verification_failed`.
+
+## Subscription usage / entitlement metering (Prompt 618)
+
+Beyond the boolean `send_email`/`reply_email`/`forward_email` gates above, outbound activity is metered against optional per-period plan limits: `outbound_messages_per_period`, `outbound_recipients_per_period`, `outbound_attachment_bytes_per_period`. A plan without one of these features attached is **unlimited** for that dimension (never a silent default) — see `docs/OUTBOUND_USAGE_ACCOUNTING.md` for the full design, reservation lifecycle, release policy, reconciliation command (`php artisan outbound:reconcile-usage`), and the user-visible `GET /api/v1/outbound-usage` endpoint (`outbound_messages:read`). This is entitlement/quota accounting only — no payment collection, invoicing, or metered billing export. Fully independent from the abuse controls (`OutboundRateLimiter`) documented below.
 
 ## Delivery attempts, timeline, and reconciliation (Prompt 614)
 

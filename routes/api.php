@@ -10,6 +10,7 @@ use App\Http\Controllers\Api\V1\InboxEmailController;
 use App\Http\Controllers\Api\V1\MailServerController;
 use App\Http\Controllers\Api\V1\OutboundAttachmentDownloadController;
 use App\Http\Controllers\Api\V1\OutboundMessageController;
+use App\Http\Controllers\Api\V1\OutboundUsageController;
 use App\Http\Controllers\Api\V1\OutboundWebhookController;
 use Illuminate\Support\Facades\Route;
 
@@ -65,6 +66,8 @@ Route::prefix('v1')->name('api.v1.')->middleware(['api.request-log', 'api.key'])
         Route::get('outbound-messages/{message}/attachments/{attachment}', OutboundAttachmentDownloadController::class)
             ->whereUuid(['message', 'attachment'])
             ->name('outbound-messages.attachments.download');
+        Route::get('outbound-usage', [OutboundUsageController::class, 'show'])
+            ->name('outbound-usage.show');
     });
 
     Route::middleware(['api.scope:outbound_messages:write', 'api.rate-limit'])->group(function (): void {

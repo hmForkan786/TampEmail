@@ -22,6 +22,7 @@ use App\Services\Outbound\OutboundRateLimiter;
 use App\Services\Outbound\OutboundRecipientValidator;
 use App\Services\Outbound\OutboundSubjectHelper;
 use App\Services\Outbound\OutboundSuppressionService;
+use App\Services\Outbound\OutboundUsageService;
 use Illuminate\Support\Facades\DB;
 
 final class CreateOutboundForwardAction
@@ -37,6 +38,7 @@ final class CreateOutboundForwardAction
         private readonly OutboundSuppressionService $suppressions,
         private readonly AuditLogWriter $auditLogWriter,
         private readonly OutboundLaunchControlService $launchControl,
+        private readonly OutboundUsageService $usage,
     ) {}
 
     public function execute(CreateOutboundForwardData $data, User $user, ?string $apiKeyId = null): OutboundMessage
@@ -99,6 +101,8 @@ final class CreateOutboundForwardAction
             return $existing;
         }
 
+        $attachmentBytes = array_sum(array_map(static fn ($attachment): int => (int) $attachment->size_bytes, $selectedAttachments));
+
         $this->rateLimiter->assertWithinLimits(
             $user,
             [
@@ -106,12 +110,12 @@ final class CreateOutboundForwardAction
                 ...$recipientSet['cc'],
                 ...$recipientSet['bcc'],
             ],
-            array_sum(array_map(static fn ($attachment): int => (int) $attachment->size_bytes, $selectedAttachments)),
+            $attachmentBytes,
         );
 
         $isCanary = $this->launchControl->isCanary($user, $inbox, $apiKeyId);
 
-        $message = DB::transaction(function () use ($data, $user, $inbox, $email, $recipientSet, $content, $attachmentIds, $fingerprint, $apiKeyId, $isCanary): OutboundMessage {
+        $message = DB::transaction(function () use ($data, $user, $inbox, $email, $recipientSet, $content, $attachmentIds, $fingerprint, $apiKeyId, $isCanary, $attachmentBytes): OutboundMessage {
             $message = OutboundMessage::query()->create([
                 'user_id' => $user->getKey(),
                 'inbox_id' => $inbox->getKey(),
@@ -133,6 +137,8 @@ final class CreateOutboundForwardAction
                 'queued_at' => now(),
                 'is_canary' => $isCanary,
             ]);
+
+            $this->usage->reserve($user, $message, $data->idempotencyKey, $attachmentBytes);
 
             $this->auditLogWriter->write('outbound.forward_created', (string) $user->getKey(), $message, null, [
                 'state' => $message->state->value,
