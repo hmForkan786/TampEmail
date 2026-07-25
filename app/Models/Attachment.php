@@ -96,7 +96,7 @@ class Attachment extends BaseModel
         return $this->belongsTo(Email::class);
     }
 
-    public function inboundHolds(): IlluminateDatabaseEloquentRelationsHasMany
+    public function inboundHolds(): \Illuminate\Database\Eloquent\Relations\HasMany
     {
         return $this->hasMany(InboundHold::class, 'target_id')->where('target_type', 'attachment');
     }
@@ -126,6 +126,23 @@ class Attachment extends BaseModel
     protected function pendingScan(Builder $query): void
     {
         $query->where('scan_status', AttachmentScanStatus::Pending);
+    }
+
+    /**
+     * Scope a query to infected or failed quarantined attachments.
+     */
+    #[Scope]
+    protected function quarantined(Builder $query): void
+    {
+        $query->whereIn('scan_status', [AttachmentScanStatus::Infected, AttachmentScanStatus::Failed]);
+    }
+
+    /**
+     * Determine whether the attachment is in logical quarantine.
+     */
+    public function isQuarantined(): bool
+    {
+        return in_array($this->scan_status, [AttachmentScanStatus::Infected, AttachmentScanStatus::Failed], true);
     }
 
     /**
