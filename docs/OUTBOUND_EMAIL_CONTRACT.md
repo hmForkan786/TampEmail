@@ -328,3 +328,43 @@ A domain column may be added when send foundation lands if needed for per-domain
 - Invalid transport config ⇒ readiness `failed`; messages move to `failed` with sanitized `invalid_config` / `transport_unavailable`.
 - Distinguish user-visible failure categories from internal exception detail.
 - Full ops metrics and Filament page: Prompt 605.
+
+## Transport configuration
+
+| Env | Purpose | Default |
+|---|---|---|
+| `OUTBOUND_ENABLED` | Global kill switch | `false` |
+| `OUTBOUND_SEND_ENABLED` / `OUTBOUND_REPLY_ENABLED` / `OUTBOUND_FORWARD_ENABLED` | Per-operation flags | `false` |
+| `OUTBOUND_TRANSPORT` | `unavailable`, `array`, `smtp`, `mail` | `unavailable` |
+| `OUTBOUND_MAILER` | Laravel mailer name for smtp/mail | `MAIL_MAILER` |
+| `OUTBOUND_SEND_MAX_ATTEMPTS` | Bounded delivery attempts | `3` |
+| `OUTBOUND_SEND_BACKOFF_SECONDS` | Comma-separated backoff | `60,300,900` |
+
+Missing or unknown transport fails closed. Never silently use local `log`/`sendmail` in production.
+
+## Status meanings
+
+| State | Meaning |
+|---|---|
+| `queued` | Waiting for worker claim |
+| `sending` | Atomically claimed |
+| `sent` | Provider **accepted** the message (not mailbox delivery) |
+| `failed` | Permanent failure or retry exhaustion |
+| `cancelled` | Cancelled while queued |
+| `delivered` | Reserved; not set without provider delivery evidence |
+
+## Cancellation and manual retry
+
+- Cancel only while `queued` via `POST /api/v1/outbound-messages/{id}/cancel` (`outbound_messages:write`).
+- Manual retry only for `failed` when the failure category permits retry, entitlements remain valid, and forward attachments still pass safety checks: `POST /api/v1/outbound-messages/{id}/retry`.
+- Audit: `outbound.message_cancelled`, `outbound.manual_retry_requested`, `outbound.retry_scheduled`, `outbound.retry_exhausted`.
+
+## Operations monitoring
+
+Admin Filament page: **Operations → Outbound Email**. Page load never sends external email.
+
+```bash
+php artisan outbound:status --json
+```
+
+Readiness states: `healthy`, `degraded`, `failed`, `unknown` (feature disabled).

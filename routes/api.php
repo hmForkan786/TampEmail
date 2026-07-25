@@ -60,6 +60,12 @@ Route::prefix('v1')->name('api.v1.')->middleware(['api.request-log', 'api.key'])
     Route::middleware(['api.scope:outbound_messages:write', 'api.rate-limit'])->group(function (): void {
         Route::post('outbound-messages', [OutboundMessageController::class, 'store'])
             ->name('outbound-messages.store');
+        Route::post('outbound-messages/{message}/cancel', [OutboundMessageController::class, 'cancel'])
+            ->whereUuid('message')
+            ->name('outbound-messages.cancel');
+        Route::post('outbound-messages/{message}/retry', [OutboundMessageController::class, 'retry'])
+            ->whereUuid('message')
+            ->name('outbound-messages.retry');
         Route::post('emails/{email}/reply', [EmailReplyController::class, 'store'])
             ->whereUuid('email')
             ->name('emails.reply');

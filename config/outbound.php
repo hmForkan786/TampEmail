@@ -84,4 +84,10 @@ return [
 
     'require_idempotency_key' => (bool) env('OUTBOUND_REQUIRE_IDEMPOTENCY_KEY', true),
 
+    'ops' => [
+        'oldest_queued_seconds_threshold' => (int) env('OUTBOUND_OPS_OLDEST_QUEUED_SECONDS', 600),
+        'failed_last_hour_threshold' => (int) env('OUTBOUND_OPS_FAILED_LAST_HOUR', 5),
+        'temporary_failure_rate_threshold' => (int) env('OUTBOUND_OPS_TEMPORARY_FAILURE_RATE', 10),
+    ],
+
 ];

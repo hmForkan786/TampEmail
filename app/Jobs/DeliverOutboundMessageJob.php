@@ -195,6 +195,19 @@ final class DeliverOutboundMessageJob implements ShouldBeUnique, ShouldQueue
 
                 throw new \RuntimeException('Outbound temporary transport failure; retrying.');
             }
+
+            $audit->write(
+                'outbound.retry_exhausted',
+                (string) $claimed->user_id,
+                $claimed,
+                null,
+                ['state' => OutboundMessageState::Failed->value],
+                [
+                    'attempt' => $claimed->attempt_count,
+                    'failure_code' => $result->failureCode,
+                    'provider' => $result->provider,
+                ],
+            );
         }
 
         $this->markFailed(
