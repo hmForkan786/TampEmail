@@ -20,6 +20,7 @@ use App\Models\Subscription;
 use App\Models\User;
 use App\Services\Audit\AuditLogWriter;
 use App\Services\Outbound\FakeOutboundTransport;
+use App\Services\Outbound\OutboundAttachmentSelector;
 use App\Services\Outbound\OutboundAuthorizationService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Queue;
@@ -167,6 +168,7 @@ it('delivers via atomic claim and records sent state', function (): void {
         $ctx['transport'],
         app(OutboundAuthorizationService::class),
         app(AuditLogWriter::class),
+        app(OutboundAttachmentSelector::class),
     );
 
     $message = OutboundMessage::query()->findOrFail($created);
@@ -182,6 +184,7 @@ it('delivers via atomic claim and records sent state', function (): void {
         $ctx['transport'],
         app(OutboundAuthorizationService::class),
         app(AuditLogWriter::class),
+        app(OutboundAttachmentSelector::class),
     );
     expect($ctx['transport']->sent)->toHaveCount(1)
         ->and($message->fresh()->state)->toBe(OutboundMessageState::Sent);
@@ -233,7 +236,7 @@ it('denies foreign inactive domain and entitlement failures', function (): void 
         ->assertJsonPath('error.code', 'operation_disabled');
 
     config(['outbound.send_enabled' => true]);
-    \App\Models\Subscription::query()->where('user_id', $ctx['user']->id)->delete();
+    Subscription::query()->where('user_id', $ctx['user']->id)->delete();
     $this->withToken($ctx['token'])
         ->postJson('/api/v1/outbound-messages', outboundPayload($ctx, ['idempotency_key' => 'k-ent']))
         ->assertForbidden()
@@ -304,6 +307,7 @@ it('handles temporary and permanent transport failures and unavailable config', 
             $ctx['transport'],
             app(OutboundAuthorizationService::class),
             app(AuditLogWriter::class),
+            app(OutboundAttachmentSelector::class),
         );
         expect(false)->toBeTrue();
     } catch (RuntimeException) {
@@ -319,6 +323,7 @@ it('handles temporary and permanent transport failures and unavailable config', 
         $ctx['transport'],
         app(OutboundAuthorizationService::class),
         app(AuditLogWriter::class),
+        app(OutboundAttachmentSelector::class),
     );
     expect(OutboundMessage::query()->find($id2)->state)->toBe(OutboundMessageState::Failed)
         ->and(AuditLog::query()->where('action', 'outbound.message_failed')->exists())->toBeTrue();
@@ -333,6 +338,7 @@ it('handles temporary and permanent transport failures and unavailable config', 
         $unavailable,
         app(OutboundAuthorizationService::class),
         app(AuditLogWriter::class),
+        app(OutboundAttachmentSelector::class),
     );
     expect(OutboundMessage::query()->find($id3)->failure_code)->toBe('transport_unavailable');
 });

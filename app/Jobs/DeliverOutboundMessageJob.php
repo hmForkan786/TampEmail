@@ -10,8 +10,10 @@ use App\Enums\OutboundMessageState;
 use App\Enums\OutboundOperation;
 use App\Enums\OutboundTransportResult;
 use App\Enums\UserStatus;
+use App\Exceptions\OutboundSendException;
 use App\Models\OutboundMessage;
 use App\Services\Audit\AuditLogWriter;
+use App\Services\Outbound\OutboundAttachmentSelector;
 use App\Services\Outbound\OutboundAuthorizationService;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldBeUnique;
@@ -56,6 +58,7 @@ final class DeliverOutboundMessageJob implements ShouldBeUnique, ShouldQueue
         OutboundTransportInterface $transport,
         OutboundAuthorizationService $authorization,
         AuditLogWriter $audit,
+        OutboundAttachmentSelector $attachmentSelector,
     ): void {
         $claimed = DB::transaction(function (): ?OutboundMessage {
             $message = OutboundMessage::query()
@@ -106,7 +109,7 @@ final class DeliverOutboundMessageJob implements ShouldBeUnique, ShouldQueue
             ],
         );
 
-        $claimed->load(['user', 'inbox.domain']);
+        $claimed->load(['user', 'inbox.domain', 'sourceEmail']);
 
         try {
             if ($claimed->user === null || $claimed->user->status !== UserStatus::Active) {
@@ -117,10 +120,27 @@ final class DeliverOutboundMessageJob implements ShouldBeUnique, ShouldQueue
 
             $authorization->assertCanSend($claimed->user, $claimed->inbox, $claimed->operation);
         } catch (\Throwable $exception) {
-            $code = method_exists($exception, 'errorCode') ? (string) $exception->errorCode : 'authorization_failed';
+            $code = property_exists($exception, 'errorCode') ? (string) $exception->errorCode : 'authorization_failed';
             $this->markFailed($claimed, $code, 'Authorization failed before transport submission.', $audit);
 
             return;
+        }
+
+        $transportAttachments = [];
+        if ($claimed->operation === OutboundOperation::Forward && ($claimed->attachment_ids ?? []) !== []) {
+            try {
+                $source = $claimed->sourceEmail;
+                if ($source === null) {
+                    throw new OutboundSendException('email_not_found', 'The original email was not found.', 404);
+                }
+                $selected = $attachmentSelector->selectForForward($source, $claimed->attachment_ids ?? []);
+                $transportAttachments = $attachmentSelector->toTransportPayload($selected);
+            } catch (\Throwable $exception) {
+                $code = property_exists($exception, 'errorCode') ? (string) $exception->errorCode : 'attachment_unsafe';
+                $this->markFailed($claimed, $code, 'Attachment revalidation failed before transport submission.', $audit);
+
+                return;
+            }
         }
 
         $payload = new OutboundMessageData(
@@ -135,7 +155,7 @@ final class DeliverOutboundMessageJob implements ShouldBeUnique, ShouldQueue
             htmlBody: $claimed->html_body,
             inReplyTo: $claimed->in_reply_to,
             references: $claimed->references,
-            attachments: [],
+            attachments: $transportAttachments,
         );
 
         $result = $transport->send($payload);

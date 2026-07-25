@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\Api\V1\AttachmentDownloadController;
+use App\Http\Controllers\Api\V1\EmailForwardController;
 use App\Http\Controllers\Api\V1\EmailReadStateController;
 use App\Http\Controllers\Api\V1\EmailReplyController;
 use App\Http\Controllers\Api\V1\InboundWebhookController;
@@ -62,6 +63,9 @@ Route::prefix('v1')->name('api.v1.')->middleware(['api.request-log', 'api.key'])
         Route::post('emails/{email}/reply', [EmailReplyController::class, 'store'])
             ->whereUuid('email')
             ->name('emails.reply');
+        Route::post('emails/{email}/forward', [EmailForwardController::class, 'store'])
+            ->whereUuid('email')
+            ->name('emails.forward');
     });
 });
 

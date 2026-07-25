@@ -22,6 +22,7 @@ use App\Models\Subscription;
 use App\Models\User;
 use App\Services\Audit\AuditLogWriter;
 use App\Services\Outbound\FakeOutboundTransport;
+use App\Services\Outbound\OutboundAttachmentSelector;
 use App\Services\Outbound\OutboundAuthorizationService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Queue;
@@ -214,6 +215,7 @@ it('supports reply idempotency and transport outcomes', function (): void {
         $ctx['transport'],
         app(OutboundAuthorizationService::class),
         app(AuditLogWriter::class),
+        app(OutboundAttachmentSelector::class),
     );
     expect(OutboundMessage::query()->find($id)->state)->toBe(OutboundMessageState::Sent)
         ->and(AuditLog::query()->where('action', 'outbound.reply_sent')->exists())->toBeTrue();
@@ -222,6 +224,7 @@ it('supports reply idempotency and transport outcomes', function (): void {
         $ctx['transport'],
         app(OutboundAuthorizationService::class),
         app(AuditLogWriter::class),
+        app(OutboundAttachmentSelector::class),
     );
     expect($ctx['transport']->sent)->toHaveCount(1);
 
@@ -234,6 +237,7 @@ it('supports reply idempotency and transport outcomes', function (): void {
         $ctx['transport'],
         app(OutboundAuthorizationService::class),
         app(AuditLogWriter::class),
+        app(OutboundAttachmentSelector::class),
     );
     expect(OutboundMessage::query()->find($failId)->state)->toBe(OutboundMessageState::Failed)
         ->and(AuditLog::query()->where('action', 'outbound.reply_failed')->exists())->toBeTrue();
