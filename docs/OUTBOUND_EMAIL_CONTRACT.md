@@ -656,3 +656,6 @@ Authenticated web routes under `/outbound-drafts` provide the owner-only list, c
 ## Sender profiles (Prompt 623)
 
 Per-inbox sender identity (display name, reply-to, signatures) via `outbound_sender_profiles`. From address always remains the owned inbox. See [OUTBOUND_SENDER_PROFILES.md](./OUTBOUND_SENDER_PROFILES.md).
+# Status notifications
+
+See [Outbound notifications](OUTBOUND_NOTIFICATIONS.md) for isolated system-mail status alerts. These alerts never enter the user outbound delivery pipeline.

@@ -11,6 +11,7 @@ use App\Models\OutboundMessage;
 use App\Models\User;
 use App\Services\Audit\AuditLogWriter;
 use App\Services\Outbound\OutboundDraftService;
+use App\Services\Outbound\OutboundNotificationService;
 use App\Services\Outbound\OutboundRateLimiter;
 use App\Services\Outbound\OutboundScheduleFieldHelper;
 use App\Services\Outbound\OutboundUsageService;
@@ -101,6 +102,7 @@ final class SendScheduledMessageNowAction
         });
 
         if ($dispatchId !== null && $message->state === OutboundMessageState::Queued) {
+            app(OutboundNotificationService::class)->notify($user, 'outbound.queued', $message, [], 'queued:'.$message->id);
             DeliverOutboundMessageJob::dispatch($dispatchId)->afterCommit();
         }
 

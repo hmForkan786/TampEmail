@@ -16,6 +16,7 @@ use App\Services\Audit\AuditLogWriter;
 use App\Services\Outbound\OutboundAuthorizationService;
 use App\Services\Outbound\OutboundContentValidator;
 use App\Services\Outbound\OutboundLaunchControlService;
+use App\Services\Outbound\OutboundNotificationService;
 use App\Services\Outbound\OutboundRateLimiter;
 use App\Services\Outbound\OutboundRecipientValidator;
 use App\Services\Outbound\OutboundSenderProfileService;
@@ -135,7 +136,9 @@ final class CreateOutboundSendAction
 
         $isCanary = $this->launchControl->isCanary($user, $inbox, $apiKeyId);
 
-        $message = DB::transaction(function () use ($data, $user, $inbox, $recipientSet, $content, $fingerprint, $apiKeyId, $isCanary, $replyToAddress, $replyToName, $senderProfileId): OutboundMessage {
+        $isNew = false;
+
+        $message = DB::transaction(function () use ($data, $user, $inbox, $recipientSet, $content, $fingerprint, $apiKeyId, $isCanary, $replyToAddress, $replyToName, $senderProfileId, &$isNew): OutboundMessage {
             $message = OutboundMessage::query()->create([
                 'user_id' => $user->getKey(),
                 'inbox_id' => $inbox->getKey(),
@@ -194,8 +197,14 @@ final class CreateOutboundSendAction
                 ],
             );
 
+            $isNew = true;
+
             return $message;
         });
+
+        if ($isNew) {
+            app(OutboundNotificationService::class)->notify($user, 'outbound.queued', $message, [], 'queued:'.$message->id);
+        }
 
         DeliverOutboundMessageJob::dispatch((string) $message->getKey());
 

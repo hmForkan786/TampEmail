@@ -11,6 +11,7 @@ use App\Models\OutboundMessage;
 use App\Models\User;
 use App\Services\Audit\AuditLogWriter;
 use App\Services\Outbound\OutboundDraftService;
+use App\Services\Outbound\OutboundNotificationService;
 use App\Services\Outbound\OutboundRateLimiter;
 use App\Services\Outbound\OutboundScheduleFieldHelper;
 use App\Services\Outbound\OutboundUsageService;
@@ -186,6 +187,8 @@ final class DispatchDueOutboundMessagesAction
                     ],
                 );
 
+                app(OutboundNotificationService::class)->notify($user, 'outbound.queued', $message, [], 'queued:'.$message->id);
+
                 $dispatchJobId = (string) $message->getKey();
 
                 return 'dispatched';
@@ -251,6 +254,14 @@ final class DispatchDueOutboundMessagesAction
                 'result_code' => $reasonCode,
             ],
         );
+
+        app(OutboundNotificationService::class)->notify(
+            $user,
+            'outbound.schedule_deferred',
+            $message,
+            [],
+            'schedule_deferred:'.$message->id.':'.$reasonCode.':'.now()->format('Y-m-d'),
+        );
     }
 
     private function failToDraft(OutboundMessage $message, User $user, int $scheduleVersion, string $reasonCode): void
@@ -276,6 +287,14 @@ final class DispatchDueOutboundMessagesAction
                 'schedule_version' => $scheduleVersion,
                 'result_code' => $reasonCode,
             ],
+        );
+
+        app(OutboundNotificationService::class)->notify(
+            $user,
+            'outbound.schedule_failed',
+            $message,
+            [],
+            'schedule_failed:'.$message->id.':'.$scheduleVersion,
         );
     }
 

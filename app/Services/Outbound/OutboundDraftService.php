@@ -119,6 +119,7 @@ final class OutboundDraftService
             return $draft;
         });
         if ($claimed) {
+            app(OutboundNotificationService::class)->notify($user, 'outbound.queued', $message, [], 'queued:'.$message->id);
             DeliverOutboundMessageJob::dispatch((string) $message->getKey());
         }
 

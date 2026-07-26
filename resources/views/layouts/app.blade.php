@@ -76,6 +76,7 @@
                             <a href="{{ route('outbound-messages.index') }}">Outbound Messages</a>
                             <a href="{{ route('outbound-drafts.index') }}">Drafts</a>
                             <a href="{{ route('outbound-sender-profiles.index') }}">Sender Profiles</a>
+                            <a href="{{ route('outbound-notifications.index') }}">Notifications</a>
                             <span class="app-nav__user">{{ auth()->user()->email }}</span>
                             <form method="POST" action="{{ route('logout') }}">
                                 @csrf

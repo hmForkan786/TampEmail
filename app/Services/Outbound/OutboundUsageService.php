@@ -102,7 +102,7 @@ final class OutboundUsageService
             }
 
             try {
-                return OutboundUsageReservation::query()->create([
+                $reservation = OutboundUsageReservation::query()->create([
                     'outbound_message_id' => $message->getKey(),
                     'user_id' => $user->getKey(),
                     'subscription_id' => $subscription?->getKey(),
@@ -127,6 +127,10 @@ final class OutboundUsageService
 
                 throw $exception;
             }
+
+            $this->maybeNotifyUsageThresholds($user, $subscription, $usageRows);
+
+            return $reservation;
         });
     }
 
@@ -666,5 +670,49 @@ final class OutboundUsageService
             'The outbound '.str_replace('_', ' ', $dimension).' allowance has been exceeded for this billing period.',
             429,
         );
+    }
+
+    /**
+     * @param  array<string, SubscriptionUsage>  $usageRows
+     */
+    private function maybeNotifyUsageThresholds(User $user, ?Subscription $subscription, array $usageRows): void
+    {
+        if ($subscription === null || ! isset($usageRows['messages'])) {
+            return;
+        }
+
+        $usage = $usageRows['messages'];
+        $limit = (int) $usage->limit_value;
+        if ($limit <= 0) {
+            return;
+        }
+
+        $consumed = (int) $usage->used_value + $this->outstandingReservedUnits($subscription, 'messages', $usage->period_start);
+        $percentage = (int) min(100, (int) floor(($consumed / $limit) * 100));
+        $periodStart = $usage->period_start->format('Y-m-d');
+        $notifications = app(OutboundNotificationService::class);
+
+        if ($consumed >= $limit) {
+            $notifications->notify(
+                $user,
+                'outbound.usage_exhausted',
+                null,
+                ['percentage' => 100],
+                'usage_exhausted:'.$user->id.':'.$periodStart,
+            );
+
+            return;
+        }
+
+        $warningPercent = max(1, min(100, (int) config('outbound_notifications.usage_warning_percent', 80)));
+        if ($percentage >= $warningPercent) {
+            $notifications->notify(
+                $user,
+                'outbound.usage_warning',
+                null,
+                ['percentage' => $percentage],
+                'usage_warning:'.$user->id.':'.$periodStart,
+            );
+        }
     }
 }

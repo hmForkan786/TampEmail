@@ -1,42 +1,9 @@
 <?php
 
-use App\Actions\ApiKey\CreateApiKeyAction;
-use App\Enums\PlatformRole;
-use App\Models\ApiKey;
 use App\Models\MailServer;
-use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 
 uses(RefreshDatabase::class);
-
-function issueMailServerApiKey(array $scopes = ['mail_servers:read']): array
-{
-    $role = in_array('mail_servers:admin', $scopes, true)
-        ? PlatformRole::Admin
-        : PlatformRole::Operator;
-
-    $user = User::factory()->create(['platform_role' => $role]);
-    $issued = app(CreateApiKeyAction::class)->issue(
-        userId: $user->id,
-        name: 'mail-server-test',
-        permissions: $scopes,
-        user: $user,
-    );
-
-    return [$user, $issued->plainToken, $issued->apiKey];
-}
-
-function mailServerPayload(array $overrides = []): array
-{
-    return array_merge([
-        'name' => 'Primary inbound',
-        'hostname' => 'mail.example.test',
-        'provider' => 'smtp',
-        'protocol' => 'smtp',
-        'pool_key' => 'standard',
-        'max_inboxes' => 25,
-    ], $overrides);
-}
 
 beforeEach(function (): void {
     config(['api.key_hash_secret' => 'feature-test-api-key-secret']);

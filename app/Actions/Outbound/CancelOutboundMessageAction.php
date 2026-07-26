@@ -9,6 +9,7 @@ use App\Exceptions\OutboundSendException;
 use App\Models\OutboundMessage;
 use App\Models\User;
 use App\Services\Audit\AuditLogWriter;
+use App\Services\Outbound\OutboundNotificationService;
 use App\Services\Outbound\OutboundScheduleFieldHelper;
 use App\Services\Outbound\OutboundUsageService;
 use Illuminate\Support\Facades\DB;
@@ -83,6 +84,7 @@ final class CancelOutboundMessageAction
                     ...$scheduleMetadata,
                 ],
             );
+            app(OutboundNotificationService::class)->notify($user, 'outbound.cancelled', $fresh, [], 'cancelled:'.$fresh->id);
 
             return $fresh;
         });

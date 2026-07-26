@@ -17,7 +17,9 @@ use App\Services\Audit\AuditLogWriter;
 use App\Services\Outbound\OutboundAttachmentSelector;
 use App\Services\Outbound\OutboundAuthorizationService;
 use App\Services\Outbound\OutboundDeliveryAttemptRecorder;
+use App\Services\Outbound\OutboundFailureCategoryMapper;
 use App\Services\Outbound\OutboundLaunchControlService;
+use App\Services\Outbound\OutboundNotificationService;
 use App\Services\Outbound\OutboundProviderRegistry;
 use App\Services\Outbound\OutboundSenderProfileService;
 use App\Services\Outbound\OutboundSuppressionService;
@@ -160,7 +162,6 @@ final class DeliverOutboundMessageJob implements ShouldBeUnique, ShouldQueue
                 'recipient_count' => $claimed->recipientCount(),
             ],
         );
-
         $claimed->load(['user', 'inbox.domain', 'sourceEmail']);
 
         try {
@@ -370,6 +371,7 @@ final class DeliverOutboundMessageJob implements ShouldBeUnique, ShouldQueue
                 'recipient_count' => $fresh->recipientCount(),
             ],
         );
+        app(OutboundNotificationService::class)->notify($fresh->user, 'outbound.sent', $fresh, [], 'sent:'.$fresh->id);
     }
 
     private function markFailed(
@@ -437,6 +439,7 @@ final class DeliverOutboundMessageJob implements ShouldBeUnique, ShouldQueue
                 'recipient_count' => $fresh->recipientCount(),
             ],
         );
+        app(OutboundNotificationService::class)->notify($fresh->user, 'outbound.failed', $fresh, ['failure_category' => app(OutboundFailureCategoryMapper::class)->userSafeCategory($failureCode)], 'failed:'.$fresh->id);
     }
 
     private function auditAction(OutboundOperation $operation, string $suffix): string

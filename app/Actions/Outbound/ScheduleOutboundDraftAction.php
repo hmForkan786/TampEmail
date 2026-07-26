@@ -10,6 +10,7 @@ use App\Models\OutboundMessage;
 use App\Models\User;
 use App\Services\Audit\AuditLogWriter;
 use App\Services\Outbound\OutboundDraftService;
+use App\Services\Outbound\OutboundNotificationService;
 use App\Services\Outbound\OutboundScheduleTimezone;
 use Illuminate\Support\Facades\DB;
 
@@ -101,6 +102,7 @@ final class ScheduleOutboundDraftAction
                     'operation' => $draft->operation->value,
                 ],
             );
+            app(OutboundNotificationService::class)->notify($user, 'outbound.scheduled', $draft, ['scheduled_at' => $resolved['utc']->toIso8601String()], 'scheduled:'.$draft->id.':'.$scheduleVersion);
 
             return $draft;
         });

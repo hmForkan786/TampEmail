@@ -6,6 +6,7 @@ use App\Actions\ApiKey\CreateApiKeyAction;
 use App\Actions\Outbound\DispatchDueOutboundMessagesAction;
 use App\Enums\OutboundMessageState;
 use App\Jobs\DeliverOutboundMessageJob;
+use App\Jobs\SendOutboundNotificationEmailJob;
 use App\Models\AuditLog;
 use App\Models\OutboundMessage;
 use App\Models\OutboundUsageReservation;
@@ -345,7 +346,8 @@ it('returns suppressed scheduled messages to draft on permanent dispatch failure
     expect($stats['failed'])->toBe(1);
     expect(OutboundMessage::query()->findOrFail($draft->id)->state)->toBe(OutboundMessageState::Draft);
     expect(OutboundUsageReservation::query()->count())->toBe(0);
-    Queue::assertNothingPushed();
+    Queue::assertNotPushed(DeliverOutboundMessageJob::class);
+    Queue::assertPushed(SendOutboundNotificationEmailJob::class, 1);
     expect(AuditLog::query()->where('action', 'outbound.schedule_dispatch_failed')->count())->toBe(1);
 
     CarbonImmutable::setTestNow();

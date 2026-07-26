@@ -4,6 +4,7 @@ use App\Http\Controllers\Web\AuthenticatedSessionController;
 use App\Http\Controllers\Web\OutboundAttachmentDownloadController;
 use App\Http\Controllers\Web\OutboundDraftController;
 use App\Http\Controllers\Web\OutboundMessageController;
+use App\Http\Controllers\Web\OutboundNotificationController;
 use App\Http\Controllers\Web\OutboundSenderProfileController;
 use Illuminate\Support\Facades\Route;
 
@@ -21,6 +22,10 @@ Route::middleware('auth')->group(function (): void {
 
     Route::get('outbound-messages', [OutboundMessageController::class, 'index'])
         ->name('outbound-messages.index');
+    Route::get('outbound-notifications', [OutboundNotificationController::class, 'index'])->name('outbound-notifications.index');
+    Route::post('outbound-notifications/read-all', [OutboundNotificationController::class, 'readAll'])->name('outbound-notifications.read-all');
+    Route::post('outbound-notifications/{notification}/read', [OutboundNotificationController::class, 'read'])->whereUuid('notification')->name('outbound-notifications.read');
+    Route::get('outbound-notification-preferences', [OutboundNotificationController::class, 'preferences'])->name('outbound-notification-preferences.index');
     Route::get('outbound-drafts', [OutboundDraftController::class, 'index'])->name('outbound-drafts.index');
     Route::get('outbound-drafts/compose', [OutboundDraftController::class, 'compose'])->name('outbound-drafts.compose');
     Route::post('outbound-drafts', [OutboundDraftController::class, 'store'])->name('outbound-drafts.store');

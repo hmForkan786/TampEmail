@@ -501,6 +501,7 @@ final class OutboundProviderEventProcessor
                 'provider_event_id_hash' => hash('sha256', $data->providerEventId),
             ],
         );
+        app(OutboundNotificationService::class)->notify($fresh->user, 'outbound.delivered', $fresh, [], 'delivered:'.$fresh->id);
 
         return 'delivered';
     }
@@ -573,6 +574,7 @@ final class OutboundProviderEventProcessor
             provider: $data->provider,
             sourceEventId: null,
         );
+        app(OutboundNotificationService::class)->notify($fresh->user, 'outbound.failed', $fresh, ['failure_category' => 'permanent_delivery_failure'], 'provider-failed:'.$fresh->id);
 
         return 'failed';
     }

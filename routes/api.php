@@ -11,6 +11,8 @@ use App\Http\Controllers\Api\V1\MailServerController;
 use App\Http\Controllers\Api\V1\OutboundAttachmentDownloadController;
 use App\Http\Controllers\Api\V1\OutboundDraftController;
 use App\Http\Controllers\Api\V1\OutboundMessageController;
+use App\Http\Controllers\Api\V1\OutboundNotificationController;
+use App\Http\Controllers\Api\V1\OutboundNotificationPreferenceController;
 use App\Http\Controllers\Api\V1\OutboundSenderProfileController;
 use App\Http\Controllers\Api\V1\OutboundUsageController;
 use App\Http\Controllers\Api\V1\OutboundWebhookController;
@@ -72,6 +74,10 @@ Route::prefix('v1')->name('api.v1.')->middleware(['api.request-log', 'api.key'])
             ->name('outbound-messages.attachments.download');
         Route::get('outbound-usage', [OutboundUsageController::class, 'show'])
             ->name('outbound-usage.show');
+        Route::get('outbound-notification-preferences', [OutboundNotificationPreferenceController::class, 'show']);
+        Route::get('outbound-notifications', [OutboundNotificationController::class, 'index']);
+        Route::get('outbound-notifications/unread-count', [OutboundNotificationController::class, 'count']);
+        Route::get('outbound-notifications/{notification}', [OutboundNotificationController::class, 'show'])->whereUuid('notification');
         Route::get('outbound-sender-profiles', [OutboundSenderProfileController::class, 'index'])
             ->name('outbound-sender-profiles.index');
         Route::get('outbound-sender-profiles/{profile}', [OutboundSenderProfileController::class, 'show'])
@@ -80,6 +86,10 @@ Route::prefix('v1')->name('api.v1.')->middleware(['api.request-log', 'api.key'])
     });
 
     Route::middleware(['api.scope:outbound_messages:write', 'api.rate-limit'])->group(function (): void {
+        Route::patch('outbound-notification-preferences', [OutboundNotificationPreferenceController::class, 'update']);
+        Route::post('outbound-notifications/read-all', [OutboundNotificationController::class, 'readAll']);
+        Route::post('outbound-notifications/{notification}/read', [OutboundNotificationController::class, 'read'])->whereUuid('notification');
+        Route::delete('outbound-notifications/{notification}', [OutboundNotificationController::class, 'destroy'])->whereUuid('notification');
         Route::post('outbound-sender-profiles', [OutboundSenderProfileController::class, 'store'])
             ->name('outbound-sender-profiles.store');
         Route::patch('outbound-sender-profiles/{profile}', [OutboundSenderProfileController::class, 'update'])
