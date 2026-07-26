@@ -44,6 +44,7 @@ final class OutboundMessageResource extends JsonResource
             'source_email_id' => $this->source_email_id,
             'operation' => $this->operation?->value,
             'state' => $this->state?->value,
+            'draft_version' => $this->when($this->state?->value === 'draft', $this->draft_version),
             'from' => [
                 'email' => $this->from_address,
                 'name' => $this->from_display_name,
@@ -74,6 +75,7 @@ final class OutboundMessageResource extends JsonResource
             'delivered_at' => $this->delivered_at,
             'failed_at' => $this->failed_at,
             'cancelled_at' => $this->cancelled_at,
+            'draft_submitted_at' => $this->when($this->draft_submitted_at !== null, $this->draft_submitted_at),
             'failure_code' => $this->failure_code,
             'failure_category' => $this->failure_code !== null ? $categories->userSafeCategory($this->failure_code) : null,
             'can_cancel' => $access->canCancel($this->resource),

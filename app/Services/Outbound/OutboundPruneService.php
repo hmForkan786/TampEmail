@@ -75,12 +75,48 @@ final class OutboundPruneService
             throw new InvalidArgumentException('Outbound retention batch size is bounded to 1000.');
         }
 
+        $report = $this->pruneDrafts($report, $batchSize, $effectiveDryRun);
         $report = $this->redactContent($report, $batchSize, $effectiveDryRun);
         $report = $this->pruneDeliveryAttempts($report, $batchSize, $effectiveDryRun);
         $report = $this->pruneProviderEvents($report, $batchSize, $effectiveDryRun);
         $report = $this->hardDeleteExpiredMessages($report, $batchSize, $effectiveDryRun);
 
         $report['duration'] = round(microtime(true) - $started, 3);
+
+        return $report;
+    }
+
+    /**
+     * @param  array<string, mixed>  $report
+     * @return array<string, mixed>
+     */
+    private function pruneDrafts(array $report, int $batchSize, bool $dryRun): array
+    {
+        $days = (int) config('outbound_retention.draft_days', 30);
+        if ($days < 1) {
+            return $report;
+        }
+        $drafts = OutboundMessage::query()->where('state', OutboundMessageState::Draft->value)->whereNull('draft_deleted_at')->where('updated_at', '<=', now()->subDays($days))->oldest('updated_at')->limit($batchSize)->get();
+        foreach ($drafts as $draft) {
+            if ($draft->isRetentionHeld()) {
+                $report['held']++;
+
+                continue;
+            }
+            $report['eligible_content_redaction']++;
+            if ($dryRun) {
+                continue;
+            }
+            DB::transaction(function () use ($draft, &$report): void {
+                $locked = OutboundMessage::query()->whereKey($draft->getKey())->where('state', OutboundMessageState::Draft->value)->whereNull('draft_deleted_at')->lockForUpdate()->first();
+                if ($locked === null || $locked->isRetentionHeld()) {
+                    return;
+                }
+                $locked->forceFill(['subject' => '[redacted]', 'text_body' => null, 'html_body' => null, 'to_recipients' => [], 'cc_recipients' => null, 'bcc_recipients' => null, 'attachment_ids' => null, 'draft_deleted_at' => now(), 'content_redacted_at' => now()])->save();
+                $this->audit->write('outbound.draft_pruned', null, $locked, null, null, ['state' => 'draft']);
+                $report['content_redacted']++;
+            });
+        }
 
         return $report;
     }

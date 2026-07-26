@@ -2,6 +2,7 @@
 
 use App\Http\Controllers\Web\AuthenticatedSessionController;
 use App\Http\Controllers\Web\OutboundAttachmentDownloadController;
+use App\Http\Controllers\Web\OutboundDraftController;
 use App\Http\Controllers\Web\OutboundMessageController;
 use Illuminate\Support\Facades\Route;
 
@@ -19,6 +20,13 @@ Route::middleware('auth')->group(function (): void {
 
     Route::get('outbound-messages', [OutboundMessageController::class, 'index'])
         ->name('outbound-messages.index');
+    Route::get('outbound-drafts', [OutboundDraftController::class, 'index'])->name('outbound-drafts.index');
+    Route::get('outbound-drafts/compose', [OutboundDraftController::class, 'compose'])->name('outbound-drafts.compose');
+    Route::post('outbound-drafts', [OutboundDraftController::class, 'store'])->name('outbound-drafts.store');
+    Route::get('outbound-drafts/{draft}', [OutboundDraftController::class, 'edit'])->whereUuid('draft')->name('outbound-drafts.edit');
+    Route::patch('outbound-drafts/{draft}', [OutboundDraftController::class, 'update'])->whereUuid('draft')->name('outbound-drafts.update');
+    Route::delete('outbound-drafts/{draft}', [OutboundDraftController::class, 'destroy'])->whereUuid('draft')->name('outbound-drafts.destroy');
+    Route::post('outbound-drafts/{draft}/submit', [OutboundDraftController::class, 'submit'])->whereUuid('draft')->name('outbound-drafts.submit');
     Route::get('outbound-messages/{message}', [OutboundMessageController::class, 'show'])
         ->whereUuid('message')
         ->name('outbound-messages.show');

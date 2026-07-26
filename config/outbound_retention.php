@@ -34,6 +34,10 @@ declare(strict_types=1);
 
 return [
 
+    'draft_days' => ((int) env('OUTBOUND_DRAFT_RETENTION_DAYS', 30) >= 1 && (int) env('OUTBOUND_DRAFT_RETENTION_DAYS', 30) <= 3650)
+        ? (int) env('OUTBOUND_DRAFT_RETENTION_DAYS', 30)
+        : 0,
+
     'free_days' => ((int) env('OUTBOUND_RETENTION_FREE_DAYS', 1) >= 1 && (int) env('OUTBOUND_RETENTION_FREE_DAYS', 1) <= 3650)
         ? (int) env('OUTBOUND_RETENTION_FREE_DAYS', 1)
         : 0,

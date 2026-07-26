@@ -9,6 +9,7 @@ use App\Http\Controllers\Api\V1\InboxController;
 use App\Http\Controllers\Api\V1\InboxEmailController;
 use App\Http\Controllers\Api\V1\MailServerController;
 use App\Http\Controllers\Api\V1\OutboundAttachmentDownloadController;
+use App\Http\Controllers\Api\V1\OutboundDraftController;
 use App\Http\Controllers\Api\V1\OutboundMessageController;
 use App\Http\Controllers\Api\V1\OutboundUsageController;
 use App\Http\Controllers\Api\V1\OutboundWebhookController;
@@ -55,6 +56,8 @@ Route::prefix('v1')->name('api.v1.')->middleware(['api.request-log', 'api.key'])
     });
 
     Route::middleware(['api.scope:outbound_messages:read', 'api.rate-limit'])->group(function (): void {
+        Route::get('outbound-drafts', [OutboundDraftController::class, 'index'])->name('outbound-drafts.index');
+        Route::get('outbound-drafts/{draft}', [OutboundDraftController::class, 'show'])->whereUuid('draft')->name('outbound-drafts.show');
         Route::get('outbound-messages', [OutboundMessageController::class, 'index'])
             ->name('outbound-messages.index');
         Route::get('outbound-messages/{message}', [OutboundMessageController::class, 'show'])
@@ -71,6 +74,10 @@ Route::prefix('v1')->name('api.v1.')->middleware(['api.request-log', 'api.key'])
     });
 
     Route::middleware(['api.scope:outbound_messages:write', 'api.rate-limit'])->group(function (): void {
+        Route::post('outbound-drafts', [OutboundDraftController::class, 'store'])->name('outbound-drafts.store');
+        Route::patch('outbound-drafts/{draft}', [OutboundDraftController::class, 'update'])->whereUuid('draft')->name('outbound-drafts.update');
+        Route::delete('outbound-drafts/{draft}', [OutboundDraftController::class, 'destroy'])->whereUuid('draft')->name('outbound-drafts.destroy');
+        Route::post('outbound-drafts/{draft}/submit', [OutboundDraftController::class, 'submit'])->whereUuid('draft')->name('outbound-drafts.submit');
         Route::post('outbound-messages', [OutboundMessageController::class, 'store'])
             ->name('outbound-messages.store');
         Route::post('outbound-messages/{message}/cancel', [OutboundMessageController::class, 'cancel'])
