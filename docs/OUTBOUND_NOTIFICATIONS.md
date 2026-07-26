@@ -47,3 +47,5 @@ Email delivery uses `SYSTEM_NOTIFICATION_MAILER` (falling back to `MAIL_MAILER`)
 Notification idempotency is enforced by a per-owner unique key. Lifecycle and provider-event hooks use stable message/event keys, so retries and duplicate provider callbacks do not create duplicate notifications. Schedule defer keys are throttled to one notification per message/reason/calendar day; usage alerts are throttled to one warning and one exhausted notification per user billing period start date.
 
 Retention is configured with `OUTBOUND_NOTIFICATION_RETENTION_DAYS` (default 90); account deletion cascades rows. Operational counters use `outbound.metrics.notifications_*` cache keys and contain no PII.
+
+The existing scheduled `outbound:prune --confirm` path deletes expired notification rows in bounded batches. The session UI supports owner-scoped mark-read, mark-all-read, and confirmed dismiss actions. Production deployments must run the dedicated `notifications` queue worker using `deploy/supervisor/temail-notification-worker.conf.example`.

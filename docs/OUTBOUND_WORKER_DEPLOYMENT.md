@@ -16,6 +16,7 @@ attachment scanning):
 | `outbound-delivery` (`QUEUE_OUTBOUND_DELIVERY`) | `DeliverOutboundMessageJob` | SMTP/provider submission only |
 | `outbound-events` (`QUEUE_OUTBOUND_EVENTS`) | `ProcessOutboundProviderEventJob` | Provider webhook ingestion only |
 | `outbound-maintenance` (`QUEUE_OUTBOUND_MAINTENANCE`) | Reserved for future async maintenance jobs | Domain-auth batches, suppression/abuse review actions if they move off the scheduler |
+| `notifications` (`QUEUE_NOTIFICATIONS`) | System status notification mail | `SendOutboundNotificationEmailJob`; never user outbound delivery |
 
 `attachment-scanning` (inbound) remains a separate queue and must never share
 a `--queue` list or worker program with any outbound queue: a ClamAV backlog
@@ -52,6 +53,7 @@ Copy and edit placeholders in:
 - `deploy/supervisor/temail-outbound-delivery-worker.conf.example`
 - `deploy/supervisor/temail-outbound-events-worker.conf.example`
 - `deploy/supervisor/temail-outbound-maintenance-worker.conf.example` (reserved; safe to run against an always-empty queue today)
+- `deploy/supervisor/temail-notification-worker.conf.example` (bounded system-notification email retries)
 
 Each program is isolated (its own Supervisor `[program:]` block, its own log
 files, its own `numprocs`), so a worker crash loop or backlog in one queue
@@ -79,7 +81,7 @@ onto `outbound-delivery`/`outbound-events` from their constructors
 cannot accidentally run on the shared inbound/attachment worker.
 
 The generic `temail-worker.conf.example` (inbound + attachment scanning +
-default) is unchanged and must not list any outbound queue.
+default) is unchanged and must not list any outbound or notification queue.
 
 ## Timeout alignment
 

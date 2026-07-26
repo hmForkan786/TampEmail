@@ -25,6 +25,7 @@ Route::middleware('auth')->group(function (): void {
     Route::get('outbound-notifications', [OutboundNotificationController::class, 'index'])->name('outbound-notifications.index');
     Route::post('outbound-notifications/read-all', [OutboundNotificationController::class, 'readAll'])->name('outbound-notifications.read-all');
     Route::post('outbound-notifications/{notification}/read', [OutboundNotificationController::class, 'read'])->whereUuid('notification')->name('outbound-notifications.read');
+    Route::delete('outbound-notifications/{notification}', [OutboundNotificationController::class, 'destroy'])->whereUuid('notification')->name('outbound-notifications.destroy');
     Route::get('outbound-notification-preferences', [OutboundNotificationController::class, 'preferences'])->name('outbound-notification-preferences.index');
     Route::get('outbound-drafts', [OutboundDraftController::class, 'index'])->name('outbound-drafts.index');
     Route::get('outbound-drafts/compose', [OutboundDraftController::class, 'compose'])->name('outbound-drafts.compose');

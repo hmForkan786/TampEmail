@@ -44,4 +44,12 @@ final class OutboundNotificationController extends Controller
 
         return back();
     }
+
+    public function destroy(Request $request, string $notification): RedirectResponse
+    {
+        $n = OutboundNotification::query()->where('user_id', $request->user()->id)->findOrFail($notification);
+        $n->forceFill(['dismissed_at' => $n->dismissed_at ?? now()])->save();
+
+        return back()->with('outboundStatus', 'Notification dismissed.');
+    }
 }

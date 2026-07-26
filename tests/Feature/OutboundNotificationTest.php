@@ -23,6 +23,7 @@ use App\Services\Outbound\OutboundDeliveryAttemptRecorder;
 use App\Services\Outbound\OutboundDraftService;
 use App\Services\Outbound\OutboundLaunchControlService;
 use App\Services\Outbound\OutboundNotificationService;
+use App\Services\Outbound\OutboundPruneService;
 use App\Services\Outbound\OutboundSuppressionService;
 use Carbon\CarbonImmutable;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -353,4 +354,80 @@ it('renders the notifications index page for the signed in owner', function (): 
         ->assertSee('Notifications')
         ->assertSee('queued')
         ->assertDontSee('PRIVATE BODY');
+});
+
+it('lets the signed in owner dismiss a notification from the web UI', function (): void {
+    $ctx = outboundSendContext();
+    Queue::fake();
+    $this->withToken($ctx['token'])->postJson('/api/v1/outbound-messages', outboundPayload($ctx))->assertCreated();
+    $notification = OutboundNotification::query()->where('user_id', $ctx['user']->id)->firstOrFail();
+
+    $this->actingAs($ctx['user'])
+        ->delete(route('outbound-notifications.destroy', $notification))
+        ->assertRedirect();
+
+    expect($notification->fresh()->dismissed_at)->not->toBeNull();
+    $this->actingAs($ctx['user'])->get(route('outbound-notifications.index'))
+        ->assertDontSee($notification->payload['summary']);
+});
+
+it('does not let another signed in user dismiss an owners notification', function (): void {
+    $owner = outboundSendContext();
+    $other = outboundSendContext();
+    Queue::fake();
+    $this->withToken($owner['token'])->postJson('/api/v1/outbound-messages', outboundPayload($owner))->assertCreated();
+    $notification = OutboundNotification::query()->where('user_id', $owner['user']->id)->firstOrFail();
+
+    $this->actingAs($other['user'])
+        ->delete(route('outbound-notifications.destroy', $notification))
+        ->assertNotFound();
+
+    expect($notification->fresh()->dismissed_at)->toBeNull();
+});
+
+it('prunes expired notifications through the bounded outbound retention path', function (): void {
+    $ctx = outboundSendContext();
+    Queue::fake();
+    config([
+        'outbound_retention.cleanup_enabled' => true,
+        'outbound_notifications.retention_days' => 90,
+    ]);
+    $this->withToken($ctx['token'])->postJson('/api/v1/outbound-messages', outboundPayload($ctx))->assertCreated();
+    $expired = OutboundNotification::query()->where('user_id', $ctx['user']->id)->firstOrFail();
+    $expired->forceFill(['created_at' => now()->subDays(91)])->save();
+
+    $fresh = $expired->replicate(['idempotency_key']);
+    $fresh->forceFill([
+        'idempotency_key' => 'fresh-'.$expired->id,
+        'created_at' => now()->subDays(10),
+        'payload' => ['summary' => 'Fresh outbound status'],
+    ])->save();
+
+    $dryRun = app(OutboundPruneService::class)->prune(true, false, 50);
+    expect($dryRun['eligible_notifications'])->toBe(1)
+        ->and($expired->fresh())->not->toBeNull()
+        ->and($fresh->fresh())->not->toBeNull();
+
+    $report = app(OutboundPruneService::class)->prune(false, true, 1);
+    expect($report['notifications_deleted'])->toBe(1)
+        ->and($expired->fresh())->toBeNull()
+        ->and($fresh->fresh())->not->toBeNull();
+
+    $empty = app(OutboundPruneService::class)->prune(false, true, 50);
+    expect($empty['eligible_notifications'])->toBe(0)
+        ->and($empty['notifications_deleted'])->toBe(0)
+        ->and($fresh->fresh())->not->toBeNull();
+});
+
+it('exposes scheduled messages preferences and unread badge in primary navigation', function (): void {
+    $ctx = outboundSendContext();
+    Queue::fake();
+    $this->withToken($ctx['token'])->postJson('/api/v1/outbound-messages', outboundPayload($ctx))->assertCreated();
+
+    $this->actingAs($ctx['user'])->get(route('outbound-notifications.index'))
+        ->assertOk()
+        ->assertSee('Scheduled')
+        ->assertSee('Notification Preferences')
+        ->assertSee('(1)', false)
+        ->assertSee('aria-label="1 unread notifications"', false);
 });

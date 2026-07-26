@@ -7,6 +7,7 @@ namespace App\Services\Outbound;
 use App\Enums\OutboundMessageState;
 use App\Models\OutboundDeliveryAttempt;
 use App\Models\OutboundMessage;
+use App\Models\OutboundNotification;
 use App\Models\OutboundProviderEvent;
 use App\Services\Audit\AuditLogWriter;
 use Illuminate\Database\Eloquent\Builder;
@@ -79,6 +80,7 @@ final class OutboundPruneService
         $report = $this->redactContent($report, $batchSize, $effectiveDryRun);
         $report = $this->pruneDeliveryAttempts($report, $batchSize, $effectiveDryRun);
         $report = $this->pruneProviderEvents($report, $batchSize, $effectiveDryRun);
+        $report = $this->pruneNotifications($report, $batchSize, $effectiveDryRun);
         $report = $this->hardDeleteExpiredMessages($report, $batchSize, $effectiveDryRun);
 
         $report['duration'] = round(microtime(true) - $started, 3);
@@ -133,6 +135,8 @@ final class OutboundPruneService
             'attempts_deleted' => 0,
             'eligible_provider_events' => 0,
             'provider_events_deleted' => 0,
+            'eligible_notifications' => 0,
+            'notifications_deleted' => 0,
             'eligible_hard_delete' => 0,
             'messages_hard_deleted' => 0,
             'held' => 0,
@@ -142,6 +146,34 @@ final class OutboundPruneService
             'blocked_reason' => null,
             'duration' => 0.0,
         ];
+    }
+
+    /**
+     * @param  array<string, mixed>  $report
+     * @return array<string, mixed>
+     */
+    private function pruneNotifications(array $report, int $batchSize, bool $dryRun): array
+    {
+        $days = (int) config('outbound_notifications.retention_days', 90);
+        if ($days < 1) {
+            return $report;
+        }
+
+        $eligible = OutboundNotification::query()
+            ->where('created_at', '<=', now()->subDays($days));
+
+        $report['eligible_notifications'] = (clone $eligible)
+            ->limit(self::MAX_CANDIDATE_SCAN)
+            ->count();
+
+        if ($dryRun) {
+            return $report;
+        }
+
+        $ids = (clone $eligible)->oldest('created_at')->limit($batchSize)->pluck('id');
+        $report['notifications_deleted'] = OutboundNotification::query()->whereIn('id', $ids)->delete();
+
+        return $report;
     }
 
     /**

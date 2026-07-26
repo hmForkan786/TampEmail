@@ -75,8 +75,22 @@
                         <nav class="app-nav">
                             <a href="{{ route('outbound-messages.index') }}">Outbound Messages</a>
                             <a href="{{ route('outbound-drafts.index') }}">Drafts</a>
+                            <a href="{{ route('outbound-messages.index', ['state' => 'scheduled']) }}">Scheduled</a>
                             <a href="{{ route('outbound-sender-profiles.index') }}">Sender Profiles</a>
-                            <a href="{{ route('outbound-notifications.index') }}">Notifications</a>
+                            @php
+                                $outboundUnreadCount = \App\Models\OutboundNotification::query()
+                                    ->where('user_id', auth()->id())
+                                    ->whereNull('read_at')
+                                    ->whereNull('dismissed_at')
+                                    ->count();
+                            @endphp
+                            <a href="{{ route('outbound-notifications.index') }}">
+                                Notifications
+                                @if ($outboundUnreadCount > 0)
+                                    <span aria-label="{{ $outboundUnreadCount }} unread notifications">({{ $outboundUnreadCount }})</span>
+                                @endif
+                            </a>
+                            <a href="{{ route('outbound-notification-preferences.index') }}">Notification Preferences</a>
                             <span class="app-nav__user">{{ auth()->user()->email }}</span>
                             <form method="POST" action="{{ route('logout') }}">
                                 @csrf
