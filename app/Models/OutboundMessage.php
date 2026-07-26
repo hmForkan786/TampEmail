@@ -25,6 +25,9 @@ use Illuminate\Support\Carbon;
  * @property string $request_fingerprint
  * @property string $from_address
  * @property string|null $from_display_name
+ * @property string|null $sender_profile_id
+ * @property string|null $reply_to_address
+ * @property string|null $reply_to_name
  * @property list<string> $to_recipients
  * @property list<string>|null $cc_recipients
  * @property list<string>|null $bcc_recipients
@@ -86,6 +89,9 @@ class OutboundMessage extends BaseModel
         'request_fingerprint',
         'from_address',
         'from_display_name',
+        'sender_profile_id',
+        'reply_to_address',
+        'reply_to_name',
         'to_recipients',
         'cc_recipients',
         'bcc_recipients',
@@ -180,6 +186,11 @@ class OutboundMessage extends BaseModel
     public function scheduledByUser(): BelongsTo
     {
         return $this->belongsTo(User::class, 'scheduled_by_user_id');
+    }
+
+    public function senderProfile(): BelongsTo
+    {
+        return $this->belongsTo(OutboundSenderProfile::class, 'sender_profile_id');
     }
 
     public function deliveryAttempts(): HasMany

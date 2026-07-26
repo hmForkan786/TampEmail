@@ -69,6 +69,7 @@ final class OutboundMessageController
                     textBody: $request->input('text_body'),
                     htmlBody: $request->input('html_body'),
                     fromDisplayName: $request->input('from_display_name'),
+                    senderProfileId: $request->input('sender_profile_id'),
                 ),
                 $owner,
                 $apiKey !== null ? (string) $apiKey->getKey() : null,

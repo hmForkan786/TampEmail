@@ -61,6 +61,8 @@ Unified polymorphic message subtypes are deferred; they add complexity without b
 | `state` | Lifecycle state |
 | `idempotency_key` | Client key; unique per user |
 | `from_address` / `from_display_name` | Derived sender |
+| `sender_profile_id` | Optional draft/profile link (nullable FK) |
+| `reply_to_address` / `reply_to_name` | Optional Reply-To (must be owned inbox address) |
 | `to` / `cc` / `bcc` | Normalized JSON recipient lists |
 | `subject`, `text_body`, `html_body` | Sanitized content |
 | `in_reply_to`, `references` | Threading headers (reply/forward) |
@@ -650,3 +652,7 @@ Optional sandbox SMTP proof: `RUN_OUTBOUND_SMTP_TESTS=1` with approved test reci
 Draft API routes are `/api/v1/outbound-drafts` (GET/POST), `/api/v1/outbound-drafts/{draft}` (GET/PATCH/DELETE), and `/api/v1/outbound-drafts/{draft}/submit` (POST). Read/write use the existing `outbound_messages` API scopes. PATCH and submit require `version`; stale writes return 409. Submission locks the draft, reruns sender/domain/entitlement/rollout, recipient, suppression, abuse, attachment, content, and usage checks, then atomically queues the same record and dispatches one job after commit. HTML is sanitized on every save. Reply and forward drafts require an owned source email; reply headers and recipient are derived server-side. Audit records contain only operation, version, and counts.
 
 Authenticated web routes under `/outbound-drafts` provide the owner-only list, composer, edit, delete, and submit workflow and call the same domain service as the API. Lists omit bodies, HTML and BCC values. `OUTBOUND_DRAFT_RETENTION_DAYS` defaults to 30; `outbound:prune --confirm` redacts only stale, unheld draft content and recipients, clears attachment references, marks the draft deleted, preserves inbound source attachments and audits once. Repeated pruning is idempotent.
+
+## Sender profiles (Prompt 623)
+
+Per-inbox sender identity (display name, reply-to, signatures) via `outbound_sender_profiles`. From address always remains the owned inbox. See [OUTBOUND_SENDER_PROFILES.md](./OUTBOUND_SENDER_PROFILES.md).

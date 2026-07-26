@@ -11,6 +11,7 @@ use App\Http\Controllers\Api\V1\MailServerController;
 use App\Http\Controllers\Api\V1\OutboundAttachmentDownloadController;
 use App\Http\Controllers\Api\V1\OutboundDraftController;
 use App\Http\Controllers\Api\V1\OutboundMessageController;
+use App\Http\Controllers\Api\V1\OutboundSenderProfileController;
 use App\Http\Controllers\Api\V1\OutboundUsageController;
 use App\Http\Controllers\Api\V1\OutboundWebhookController;
 use Illuminate\Support\Facades\Route;
@@ -71,9 +72,28 @@ Route::prefix('v1')->name('api.v1.')->middleware(['api.request-log', 'api.key'])
             ->name('outbound-messages.attachments.download');
         Route::get('outbound-usage', [OutboundUsageController::class, 'show'])
             ->name('outbound-usage.show');
+        Route::get('outbound-sender-profiles', [OutboundSenderProfileController::class, 'index'])
+            ->name('outbound-sender-profiles.index');
+        Route::get('outbound-sender-profiles/{profile}', [OutboundSenderProfileController::class, 'show'])
+            ->whereUuid('profile')
+            ->name('outbound-sender-profiles.show');
     });
 
     Route::middleware(['api.scope:outbound_messages:write', 'api.rate-limit'])->group(function (): void {
+        Route::post('outbound-sender-profiles', [OutboundSenderProfileController::class, 'store'])
+            ->name('outbound-sender-profiles.store');
+        Route::patch('outbound-sender-profiles/{profile}', [OutboundSenderProfileController::class, 'update'])
+            ->whereUuid('profile')
+            ->name('outbound-sender-profiles.update');
+        Route::delete('outbound-sender-profiles/{profile}', [OutboundSenderProfileController::class, 'destroy'])
+            ->whereUuid('profile')
+            ->name('outbound-sender-profiles.destroy');
+        Route::post('outbound-sender-profiles/{profile}/default', [OutboundSenderProfileController::class, 'makeDefault'])
+            ->whereUuid('profile')
+            ->name('outbound-sender-profiles.default');
+        Route::post('outbound-sender-profiles/{profile}/make-default', [OutboundSenderProfileController::class, 'makeDefault'])
+            ->whereUuid('profile')
+            ->name('outbound-sender-profiles.make-default');
         Route::post('outbound-drafts', [OutboundDraftController::class, 'store'])->name('outbound-drafts.store');
         Route::patch('outbound-drafts/{draft}', [OutboundDraftController::class, 'update'])->whereUuid('draft')->name('outbound-drafts.update');
         Route::delete('outbound-drafts/{draft}', [OutboundDraftController::class, 'destroy'])->whereUuid('draft')->name('outbound-drafts.destroy');

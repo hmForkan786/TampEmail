@@ -63,6 +63,14 @@ final class OutboundMessageResource extends JsonResource
                 'email' => $this->from_address,
                 'name' => $this->from_display_name,
             ],
+            'reply_to' => $this->when(
+                $this->reply_to_address !== null,
+                fn (): array => [
+                    'email' => $this->reply_to_address,
+                    'name' => $this->reply_to_name,
+                ],
+            ),
+            'sender_profile_id' => $this->when($this->sender_profile_id !== null, $this->sender_profile_id),
             'to' => $this->to_recipients ?? [],
             'cc' => $this->cc_recipients ?? [],
             'bcc' => $this->bcc_recipients ?? [],

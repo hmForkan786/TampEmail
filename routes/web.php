@@ -4,6 +4,7 @@ use App\Http\Controllers\Web\AuthenticatedSessionController;
 use App\Http\Controllers\Web\OutboundAttachmentDownloadController;
 use App\Http\Controllers\Web\OutboundDraftController;
 use App\Http\Controllers\Web\OutboundMessageController;
+use App\Http\Controllers\Web\OutboundSenderProfileController;
 use Illuminate\Support\Facades\Route;
 
 Route::get('/', function () {
@@ -52,4 +53,10 @@ Route::middleware('auth')->group(function (): void {
     Route::get('outbound-messages/{message}/attachments/{attachment}', OutboundAttachmentDownloadController::class)
         ->whereUuid(['message', 'attachment'])
         ->name('outbound-messages.attachments.download');
+    Route::get('outbound-sender-profiles', [OutboundSenderProfileController::class, 'index'])->name('outbound-sender-profiles.index');
+    Route::post('outbound-sender-profiles', [OutboundSenderProfileController::class, 'store'])->name('outbound-sender-profiles.store');
+    Route::get('outbound-sender-profiles/{profile}/edit', [OutboundSenderProfileController::class, 'edit'])->whereUuid('profile')->name('outbound-sender-profiles.edit');
+    Route::patch('outbound-sender-profiles/{profile}', [OutboundSenderProfileController::class, 'update'])->whereUuid('profile')->name('outbound-sender-profiles.update');
+    Route::delete('outbound-sender-profiles/{profile}', [OutboundSenderProfileController::class, 'destroy'])->whereUuid('profile')->name('outbound-sender-profiles.destroy');
+    Route::post('outbound-sender-profiles/{profile}/default', [OutboundSenderProfileController::class, 'makeDefault'])->whereUuid('profile')->name('outbound-sender-profiles.default');
 });

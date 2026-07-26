@@ -11,6 +11,7 @@ use App\Models\Inbox;
 use App\Models\OutboundMessage;
 use App\Services\Outbound\OutboundDraftService;
 use App\Services\Outbound\OutboundScheduleTimezone;
+use App\Services\Outbound\OutboundSenderProfileService;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\View\View;
@@ -32,7 +33,7 @@ final class OutboundDraftController extends Controller
 
     public function compose(Request $r): View
     {
-        return view('outbound-drafts.form', ['draft' => null, 'inboxes' => Inbox::query()->where('user_id', $r->user()->id)->where('is_active', true)->get(), 'operation' => $r->query('operation', 'send'), 'timezones' => $this->timezones->commonTimezones()]);
+        return view('outbound-drafts.form', ['draft' => null, 'inboxes' => Inbox::query()->where('user_id', $r->user()->id)->where('is_active', true)->get(), 'profiles' => app(OutboundSenderProfileService::class)->list($r->user()), 'operation' => $r->query('operation', 'send'), 'timezones' => $this->timezones->commonTimezones()]);
     }
 
     public function edit(Request $r, string $draft): View
@@ -40,7 +41,7 @@ final class OutboundDraftController extends Controller
         $d = $this->owned($r, $draft);
         abort_if(! $d, 404);
 
-        return view('outbound-drafts.form', ['draft' => $d, 'inboxes' => Inbox::query()->where('user_id', $r->user()->id)->where('is_active', true)->get(), 'operation' => $d->operation->value, 'timezones' => $this->timezones->commonTimezones()]);
+        return view('outbound-drafts.form', ['draft' => $d, 'inboxes' => Inbox::query()->where('user_id', $r->user()->id)->where('is_active', true)->get(), 'profiles' => app(OutboundSenderProfileService::class)->list($r->user()), 'operation' => $d->operation->value, 'timezones' => $this->timezones->commonTimezones()]);
     }
 
     public function store(Request $r): RedirectResponse
@@ -113,6 +114,6 @@ final class OutboundDraftController extends Controller
     /** @return array<string, mixed> */
     private function input(Request $r): array
     {
-        return $r->only(['inbox_id', 'operation', 'source_email_id', 'to', 'cc', 'bcc', 'subject', 'text_body', 'html_body', 'attachment_ids']);
+        return $r->only(['inbox_id', 'operation', 'source_email_id', 'to', 'cc', 'bcc', 'subject', 'text_body', 'html_body', 'attachment_ids', 'sender_profile_id', 'from_display_name']);
     }
 }

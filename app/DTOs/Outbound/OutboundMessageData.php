@@ -30,6 +30,8 @@ final readonly class OutboundMessageData
         public ?string $inReplyTo = null,
         public ?string $references = null,
         public array $attachments = [],
+        public ?string $replyToAddress = null,
+        public ?string $replyToName = null,
     ) {}
 
     /**
@@ -50,6 +52,8 @@ final readonly class OutboundMessageData
             'in_reply_to' => $this->inReplyTo,
             'references' => $this->references,
             'attachments' => $this->attachments,
+            'reply_to_address' => $this->replyToAddress,
+            'reply_to_name' => $this->replyToName,
         ];
     }
 }

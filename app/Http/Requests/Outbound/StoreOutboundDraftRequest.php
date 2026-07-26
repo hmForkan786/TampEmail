@@ -28,6 +28,8 @@ class StoreOutboundDraftRequest extends FormRequest
             'to' => ['sometimes', 'array'], 'to.*' => ['string', 'max:255'], 'cc' => ['sometimes', 'array'], 'cc.*' => ['string', 'max:255'], 'bcc' => ['sometimes', 'array'], 'bcc.*' => ['string', 'max:255'],
             'subject' => ['sometimes', 'nullable', 'string', 'max:998'], 'text_body' => ['sometimes', 'nullable', 'string'], 'html_body' => ['sometimes', 'nullable', 'string'],
             'attachment_ids' => ['sometimes', 'array'], 'attachment_ids.*' => ['uuid'],
+            'sender_profile_id' => ['sometimes', 'nullable', 'uuid'],
+            'from_display_name' => ['sometimes', 'nullable', 'string', 'max:255'],
             'headers' => ['prohibited'], 'from' => ['prohibited'], 'from_address' => ['prohibited'], 'return_path' => ['prohibited'], 'in_reply_to' => ['prohibited'], 'references' => ['prohibited'], 'raw_mime' => ['prohibited'],
         ];
     }

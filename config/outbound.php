@@ -355,6 +355,24 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Sender profiles (Prompt 623)
+    |--------------------------------------------------------------------------
+    |
+    | Per-inbox sender identity: display name, reply-to, and signatures.
+    | From address always remains the owned inbox address.
+    |
+    */
+
+    'sender_profiles' => [
+        'enabled' => env('OUTBOUND_SENDER_PROFILES_ENABLED', true),
+        'max_name_length' => 100,
+        'max_signature_text_bytes' => 10000,
+        'max_signature_html_bytes' => 20000,
+        'max_per_inbox' => 20,
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
     | Launch readiness / metrics / pause-recommendation thresholds (Prompt 615)
     |--------------------------------------------------------------------------
     |

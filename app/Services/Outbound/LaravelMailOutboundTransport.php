@@ -67,6 +67,8 @@ final class LaravelMailOutboundTransport implements OutboundTransportInterface
                 inReplyTo: $message->inReplyTo,
                 references: $message->references,
                 localDomain: (string) (config('outbound.smtp.local_domain') ?: ''),
+                replyToAddress: $message->replyToAddress,
+                replyToName: $message->replyToName,
             );
 
             foreach ($message->to as $recipient) {
@@ -101,6 +103,14 @@ final class LaravelMailOutboundTransport implements OutboundTransportInterface
                     }
                     if ($message->textBody !== null) {
                         $mail->text($message->textBody);
+                    }
+
+                    if ($envelope['reply_to_address'] !== null) {
+                        if ($envelope['reply_to_name'] !== null) {
+                            $mail->replyTo($envelope['reply_to_address'], $envelope['reply_to_name']);
+                        } else {
+                            $mail->replyTo($envelope['reply_to_address']);
+                        }
                     }
 
                     $symfony = $mail->getSymfonyMessage();

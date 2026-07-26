@@ -18,6 +18,7 @@ use App\Services\Outbound\OutboundContentValidator;
 use App\Services\Outbound\OutboundLaunchControlService;
 use App\Services\Outbound\OutboundRateLimiter;
 use App\Services\Outbound\OutboundRecipientValidator;
+use App\Services\Outbound\OutboundSenderProfileService;
 use App\Services\Outbound\OutboundSuppressionService;
 use App\Services\Outbound\OutboundUsageService;
 use Illuminate\Support\Facades\DB;
@@ -33,6 +34,7 @@ final class CreateOutboundSendAction
         private readonly AuditLogWriter $auditLogWriter,
         private readonly OutboundLaunchControlService $launchControl,
         private readonly OutboundUsageService $usage,
+        private readonly OutboundSenderProfileService $senderProfiles,
     ) {}
 
     public function execute(CreateOutboundSendData $data, User $user, ?string $apiKeyId = null): OutboundMessage
@@ -65,6 +67,38 @@ final class CreateOutboundSendAction
             $data->fromDisplayName,
         );
 
+        $replyToAddress = null;
+        $replyToName = null;
+        $senderProfileId = null;
+
+        if ($data->senderProfileId !== null && $this->senderProfiles->enabled()) {
+            $profile = null;
+            try {
+                $profile = $this->senderProfiles->findOwned($user, $data->senderProfileId);
+                $this->senderProfiles->assertProfileUsable($profile, $inbox);
+                if ((string) $profile->inbox_id !== (string) $inbox->getKey()) {
+                    throw new OutboundSendException('profile_inbox_mismatch', 'The sender profile does not belong to this inbox.', 422);
+                }
+                $snapshot = $this->senderProfiles->snapshotFieldsForMessage($profile);
+                $fromDisplayName = $data->fromDisplayName ?? $snapshot['from_display_name'];
+                $replyToAddress = $snapshot['reply_to_address'];
+                $replyToName = $snapshot['reply_to_name'];
+                $senderProfileId = (string) $profile->getKey();
+                $signed = $this->senderProfiles->applySignatureToBodies($content['text_body'], $content['html_body'], $profile, OutboundOperation::Send);
+                $content['text_body'] = $signed['text_body'];
+                $content['html_body'] = $signed['html_body'];
+                $content = $this->content->validate($data->subject, $content['text_body'], $content['html_body'], $fromDisplayName);
+                $this->senderProfiles->recordApplied($user, $profile, $inbox);
+            } catch (OutboundSendException $exception) {
+                if (in_array($exception->errorCode, ['profile_not_found', 'profile_inactive', 'profile_inbox_mismatch'], true)) {
+                    $this->senderProfiles->recordRejected($user, $exception->errorCode, $profile);
+                }
+                throw $exception;
+            }
+        } else {
+            $fromDisplayName = $content['from_display_name'];
+        }
+
         $fingerprint = hash('sha256', json_encode([
             'operation' => OutboundOperation::Send->value,
             'inbox_id' => (string) $inbox->getKey(),
@@ -75,6 +109,9 @@ final class CreateOutboundSendAction
             'text_body' => $content['text_body'],
             'html_body' => $content['html_body'],
             'from_display_name' => $content['from_display_name'],
+            'reply_to_address' => $replyToAddress,
+            'reply_to_name' => $replyToName,
+            'sender_profile_id' => $senderProfileId,
         ], JSON_THROW_ON_ERROR));
 
         $existing = OutboundMessage::query()
@@ -98,7 +135,7 @@ final class CreateOutboundSendAction
 
         $isCanary = $this->launchControl->isCanary($user, $inbox, $apiKeyId);
 
-        $message = DB::transaction(function () use ($data, $user, $inbox, $recipientSet, $content, $fingerprint, $apiKeyId, $isCanary): OutboundMessage {
+        $message = DB::transaction(function () use ($data, $user, $inbox, $recipientSet, $content, $fingerprint, $apiKeyId, $isCanary, $replyToAddress, $replyToName, $senderProfileId): OutboundMessage {
             $message = OutboundMessage::query()->create([
                 'user_id' => $user->getKey(),
                 'inbox_id' => $inbox->getKey(),
@@ -109,6 +146,9 @@ final class CreateOutboundSendAction
                 'request_fingerprint' => $fingerprint,
                 'from_address' => $inbox->full_address,
                 'from_display_name' => $content['from_display_name'],
+                'sender_profile_id' => $senderProfileId,
+                'reply_to_address' => $replyToAddress,
+                'reply_to_name' => $replyToName,
                 'to_recipients' => $recipientSet['to'],
                 'cc_recipients' => $recipientSet['cc'],
                 'bcc_recipients' => $recipientSet['bcc'],

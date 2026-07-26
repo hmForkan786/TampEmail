@@ -50,6 +50,7 @@ final class StoreOutboundMessageRequest extends FormRequest
             'text_body' => ['sometimes', 'nullable', 'string'],
             'html_body' => ['sometimes', 'nullable', 'string'],
             'from_display_name' => ['sometimes', 'nullable', 'string', 'max:255'],
+            'sender_profile_id' => ['sometimes', 'nullable', 'uuid'],
             'from' => ['prohibited'],
             'from_address' => ['prohibited'],
             'state' => ['prohibited'],

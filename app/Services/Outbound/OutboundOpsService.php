@@ -36,6 +36,7 @@ final class OutboundOpsService
         $providers = $this->providersReport();
         $suppressions = $this->suppressionMetrics();
         $abuse = $this->abuseMetrics();
+        $senderProfiles = $this->senderProfileMetrics();
         $queue = $this->queueReadiness->report();
         $issues = [...$this->issues($readiness, $retries, $volume24h, $suppressions), ...$queue['issues']];
 
@@ -54,6 +55,7 @@ final class OutboundOpsService
             'providers' => $providers,
             'suppressions' => $suppressions,
             'abuse' => $abuse,
+            'sender_profiles' => $senderProfiles,
             'issues' => $issues,
             'thresholds' => [
                 'oldest_queued_seconds' => (int) config('outbound.ops.oldest_queued_seconds_threshold', 600),
@@ -335,6 +337,14 @@ final class OutboundOpsService
                 ->where('created_at', '>=', now()->subDay())
                 ->count(),
         ];
+    }
+
+    /**
+     * @return array<string, int>
+     */
+    public function senderProfileMetrics(): array
+    {
+        return app(OutboundSenderProfileService::class)->metrics();
     }
 
     /**

@@ -28,7 +28,9 @@ final class OutboundHeaderGuard
      *     subject: string,
      *     message_id: string,
      *     in_reply_to: string|null,
-     *     references: string|null
+     *     references: string|null,
+     *     reply_to_address: string|null,
+     *     reply_to_name: string|null,
      * }
      */
     public function sanitizeEnvelope(
@@ -39,6 +41,8 @@ final class OutboundHeaderGuard
         ?string $inReplyTo,
         ?string $references,
         ?string $localDomain = null,
+        ?string $replyToAddress = null,
+        ?string $replyToName = null,
     ): array {
         $fromAddress = $this->assertSafeEmail($fromAddress, 'from');
         $display = $fromDisplayName !== null && trim($fromDisplayName) !== ''
@@ -46,11 +50,17 @@ final class OutboundHeaderGuard
             : null;
         $subject = $this->assertSafeHeaderValue($subject, 'subject', self::MAX_SUBJECT_LENGTH);
         $messageId = $this->buildMessageId($outboundMessageId, $localDomain);
-        $replyTo = $inReplyTo !== null && trim($inReplyTo) !== ''
+        $inReplyToHeader = $inReplyTo !== null && trim($inReplyTo) !== ''
             ? $this->normalizeMessageId($inReplyTo)
             : null;
         $refs = $references !== null && trim($references) !== ''
             ? $this->normalizeReferences($references)
+            : null;
+        $replyTo = $replyToAddress !== null && trim($replyToAddress) !== ''
+            ? $this->assertSafeEmail($replyToAddress, 'reply_to')
+            : null;
+        $replyToDisplay = $replyToName !== null && trim($replyToName) !== ''
+            ? $this->assertOptionalHeaderValue(trim($replyToName), 'reply_to_name', self::MAX_DISPLAY_NAME_LENGTH)
             : null;
 
         return [
@@ -58,8 +68,10 @@ final class OutboundHeaderGuard
             'from_display_name' => $display,
             'subject' => $subject,
             'message_id' => $messageId,
-            'in_reply_to' => $replyTo,
+            'in_reply_to' => $inReplyToHeader,
             'references' => $refs,
+            'reply_to_address' => $replyTo,
+            'reply_to_name' => $replyToDisplay,
         ];
     }
 
@@ -144,6 +156,20 @@ final class OutboundHeaderGuard
             throw new OutboundSendException('invalid_'.$field, "The {$field} value is required.", 422);
         }
 
+        if (mb_strlen($value) > $maxLength) {
+            throw new OutboundSendException($field.'_too_long', "The {$field} exceeds the maximum length.", 422);
+        }
+
+        return $value;
+    }
+
+    private function assertOptionalHeaderValue(string $value, string $field, int $maxLength): string
+    {
+        if (preg_match('/[\r\n\0]/', $value) === 1) {
+            throw new OutboundSendException('header_injection', "The {$field} contains invalid control characters.", 422);
+        }
+
+        $value = trim($value);
         if (mb_strlen($value) > $maxLength) {
             throw new OutboundSendException($field.'_too_long', "The {$field} exceeds the maximum length.", 422);
         }

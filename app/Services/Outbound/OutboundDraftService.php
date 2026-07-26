@@ -12,6 +12,7 @@ use App\Jobs\DeliverOutboundMessageJob;
 use App\Models\Email;
 use App\Models\Inbox;
 use App\Models\OutboundMessage;
+use App\Models\OutboundSenderProfile;
 use App\Models\User;
 use App\Services\Audit\AuditLogWriter;
 use App\Services\Inbound\InboundHtmlSanitizer;
@@ -28,6 +29,7 @@ final class OutboundDraftService
         private readonly OutboundForwardContextBuilder $forwardContext, private readonly OutboundAttachmentSelector $attachments,
         private readonly OutboundSuppressionService $suppressions, private readonly OutboundRateLimiter $rateLimiter,
         private readonly OutboundLaunchControlService $launchControl, private readonly OutboundUsageService $usage,
+        private readonly OutboundSenderProfileService $senderProfiles,
         private readonly AuditLogWriter $audit,
     ) {}
 
@@ -99,6 +101,9 @@ final class OutboundDraftService
                 'subject' => $prepared['subject'],
                 'text_body' => $prepared['text_body'],
                 'html_body' => $prepared['html_body'],
+                'from_display_name' => $prepared['from_display_name'],
+                'reply_to_address' => $prepared['reply_to_address'],
+                'reply_to_name' => $prepared['reply_to_name'],
                 'attachment_ids' => $prepared['attachment_ids'],
                 'in_reply_to' => $prepared['in_reply_to'],
                 'references' => $prepared['references'],
@@ -138,6 +143,9 @@ final class OutboundDraftService
      *     is_canary: bool,
      *     in_reply_to: ?string,
      *     references: ?string,
+     *     from_display_name: ?string,
+     *     reply_to_address: ?string,
+     *     reply_to_name: ?string,
      * }
      */
     public function prepareSendableContent(OutboundMessage $draft, User $user, ?string $apiKeyId = null): array
@@ -194,7 +202,10 @@ final class OutboundDraftService
             $bcc = $set['bcc'];
         }
 
-        $content = $this->content->validate($subject, $text, $html, $draft->from_display_name);
+        $identity = $this->senderProfiles->resolveForSend($draft, $user, $inbox);
+        $subject = $draft->subject;
+
+        $content = $this->content->validate($subject, $identity['text_body'], $identity['html_body'], $identity['from_display_name']);
         $this->suppressions->assertRecipientsAllowed([...$to, ...$cc, ...$bcc], $user);
 
         return [
@@ -204,6 +215,9 @@ final class OutboundDraftService
             'subject' => $content['subject'],
             'text_body' => $content['text_body'],
             'html_body' => $content['html_body'],
+            'from_display_name' => $content['from_display_name'],
+            'reply_to_address' => $identity['reply_to_address'],
+            'reply_to_name' => $identity['reply_to_name'],
             'attachment_ids' => $attachmentIds,
             'attachment_bytes' => $attachmentBytes,
             'inbox' => $inbox,
@@ -213,6 +227,8 @@ final class OutboundDraftService
                 $cc,
                 $bcc,
                 $content,
+                $identity['reply_to_address'],
+                $identity['reply_to_name'],
                 $attachmentIds,
             ], JSON_THROW_ON_ERROR)),
             'is_canary' => $this->launchControl->isCanary($user, $inbox, $apiKeyId),
@@ -269,7 +285,32 @@ final class OutboundDraftService
             throw new OutboundSendException('html_body_too_large', 'The HTML body exceeds the maximum size.', 422);
         }
 
-        return ['inbox_id' => $inbox->getKey(), 'source_email_id' => $sourceId, 'operation' => $operation, 'from_address' => $inbox->full_address, 'to_recipients' => $to, 'cc_recipients' => $cc ?: null, 'bcc_recipients' => $bcc ?: null, 'subject' => $input['subject'] ?? $current?->subject, 'text_body' => $text, 'html_body' => $html, 'attachment_ids' => $attachmentIds ?: null];
+        $profileFields = $this->senderProfiles->resolveDraftProfileFields($user, $inbox, $operation, $input, $current);
+        /** @var OutboundSenderProfile|null $profileForSignature */
+        $profileForSignature = $profileFields['_profile_for_signature'] ?? null;
+        unset($profileFields['_profile_for_signature']);
+
+        $signed = $this->senderProfiles->applySignatureToBodies($text, $html, $profileForSignature, $operation);
+        if ($profileForSignature !== null) {
+            $this->senderProfiles->recordApplied($user, $profileForSignature, $inbox);
+        }
+
+        return array_merge(
+            [
+                'inbox_id' => $inbox->getKey(),
+                'source_email_id' => $sourceId,
+                'operation' => $operation,
+                'from_address' => $inbox->full_address,
+                'to_recipients' => $to,
+                'cc_recipients' => $cc ?: null,
+                'bcc_recipients' => $bcc ?: null,
+                'subject' => $input['subject'] ?? $current?->subject,
+                'text_body' => $signed['text_body'],
+                'html_body' => $signed['html_body'],
+                'attachment_ids' => $attachmentIds ?: null,
+            ],
+            $profileFields,
+        );
     }
 
     private function lockedOwned(User $user, string $id): OutboundMessage

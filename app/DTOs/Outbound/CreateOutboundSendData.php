@@ -21,5 +21,6 @@ final readonly class CreateOutboundSendData
         public ?string $textBody,
         public ?string $htmlBody,
         public ?string $fromDisplayName = null,
+        public ?string $senderProfileId = null,
     ) {}
 }

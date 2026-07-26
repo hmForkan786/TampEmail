@@ -19,6 +19,7 @@ use App\Services\Outbound\OutboundAuthorizationService;
 use App\Services\Outbound\OutboundDeliveryAttemptRecorder;
 use App\Services\Outbound\OutboundLaunchControlService;
 use App\Services\Outbound\OutboundProviderRegistry;
+use App\Services\Outbound\OutboundSenderProfileService;
 use App\Services\Outbound\OutboundSuppressionService;
 use App\Services\Outbound\OutboundUsageService;
 use Illuminate\Bus\Queueable;
@@ -70,12 +71,14 @@ final class DeliverOutboundMessageJob implements ShouldBeUnique, ShouldQueue
         OutboundLaunchControlService $launchControl,
         ?OutboundUsageService $usage = null,
         ?OutboundProviderRegistry $providers = null,
+        ?OutboundSenderProfileService $senderProfiles = null,
     ): void {
         // Optional trailing params (resolved from the container when
         // omitted) so pre-existing direct ->handle(...) calls in tests keep
         // working unmodified.
         $usage ??= app(OutboundUsageService::class);
         $providers ??= app(OutboundProviderRegistry::class);
+        $senderProfiles ??= app(OutboundSenderProfileService::class);
 
         // Checked before the message is ever claimed: emergency stop must
         // never mark a queued message failed or delete it, so this leaves
@@ -205,11 +208,13 @@ final class DeliverOutboundMessageJob implements ShouldBeUnique, ShouldQueue
             cc: $claimed->cc_recipients ?? [],
             bcc: $claimed->bcc_recipients ?? [],
             subject: (string) ($claimed->subject ?? ''),
-            textBody: $claimed->text_body,
-            htmlBody: $claimed->html_body,
+            textBody: $senderProfiles->stripSignatureMarkers($claimed->text_body, false),
+            htmlBody: $senderProfiles->stripSignatureMarkers($claimed->html_body, true),
             inReplyTo: $claimed->in_reply_to,
             references: $claimed->references,
             attachments: $transportAttachments,
+            replyToAddress: $claimed->reply_to_address,
+            replyToName: $claimed->reply_to_name,
         );
 
         // Recorded immediately before the transport call so stale-sending

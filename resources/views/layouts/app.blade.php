@@ -52,7 +52,7 @@
             .btn--danger { background: #fff; color: #b91c1c; border-color: #fecaca; }
             .form-field { margin-bottom: 1rem; }
             .form-field label { display: block; font-size: 0.875rem; margin-bottom: 0.25rem; color: #374151; }
-            .form-field input, .form-field select { width: 100%; box-sizing: border-box; padding: 0.4rem 0.6rem; border: 1px solid #d1d5db; border-radius: 0.375rem; font: inherit; }
+            .form-field input, .form-field select, .form-field textarea { width: 100%; box-sizing: border-box; padding: 0.4rem 0.6rem; border: 1px solid #d1d5db; border-radius: 0.375rem; font: inherit; }
             .filters { display: flex; flex-wrap: wrap; gap: 0.75rem; align-items: end; margin-bottom: 1.25rem; }
             .filters .form-field { margin-bottom: 0; min-width: 10rem; }
             .muted { color: #6b7280; }
@@ -75,6 +75,7 @@
                         <nav class="app-nav">
                             <a href="{{ route('outbound-messages.index') }}">Outbound Messages</a>
                             <a href="{{ route('outbound-drafts.index') }}">Drafts</a>
+                            <a href="{{ route('outbound-sender-profiles.index') }}">Sender Profiles</a>
                             <span class="app-nav__user">{{ auth()->user()->email }}</span>
                             <form method="POST" action="{{ route('logout') }}">
                                 @csrf
