@@ -4,18 +4,24 @@ declare(strict_types=1);
 
 namespace App\Http\Controllers\Web;
 
+use App\Actions\Outbound\ScheduleOutboundDraftAction;
 use App\Exceptions\OutboundSendException;
 use App\Http\Controllers\Controller;
 use App\Models\Inbox;
 use App\Models\OutboundMessage;
 use App\Services\Outbound\OutboundDraftService;
+use App\Services\Outbound\OutboundScheduleTimezone;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\View\View;
 
 final class OutboundDraftController extends Controller
 {
-    public function __construct(private readonly OutboundDraftService $drafts) {}
+    public function __construct(
+        private readonly OutboundDraftService $drafts,
+        private readonly ScheduleOutboundDraftAction $scheduleOutboundDraft,
+        private readonly OutboundScheduleTimezone $timezones,
+    ) {}
 
     public function index(Request $r): View
     {
@@ -26,7 +32,7 @@ final class OutboundDraftController extends Controller
 
     public function compose(Request $r): View
     {
-        return view('outbound-drafts.form', ['draft' => null, 'inboxes' => Inbox::query()->where('user_id', $r->user()->id)->where('is_active', true)->get(), 'operation' => $r->query('operation', 'send')]);
+        return view('outbound-drafts.form', ['draft' => null, 'inboxes' => Inbox::query()->where('user_id', $r->user()->id)->where('is_active', true)->get(), 'operation' => $r->query('operation', 'send'), 'timezones' => $this->timezones->commonTimezones()]);
     }
 
     public function edit(Request $r, string $draft): View
@@ -34,7 +40,7 @@ final class OutboundDraftController extends Controller
         $d = $this->owned($r, $draft);
         abort_if(! $d, 404);
 
-        return view('outbound-drafts.form', ['draft' => $d, 'inboxes' => Inbox::query()->where('user_id', $r->user()->id)->where('is_active', true)->get(), 'operation' => $d->operation->value]);
+        return view('outbound-drafts.form', ['draft' => $d, 'inboxes' => Inbox::query()->where('user_id', $r->user()->id)->where('is_active', true)->get(), 'operation' => $d->operation->value, 'timezones' => $this->timezones->commonTimezones()]);
     }
 
     public function store(Request $r): RedirectResponse
@@ -68,6 +74,24 @@ final class OutboundDraftController extends Controller
         }
 
         return redirect()->route('outbound-drafts.index')->with('outboundStatus', 'Draft deleted.');
+    }
+
+    public function schedule(Request $r, string $draft): RedirectResponse
+    {
+        try {
+            $message = $this->scheduleOutboundDraft->execute(
+                $r->user(),
+                $draft,
+                (int) $r->input('version'),
+                (string) $r->input('local_date'),
+                (string) $r->input('local_time'),
+                (string) $r->input('timezone'),
+            );
+
+            return redirect()->route('outbound-messages.show', $message)->with('outboundStatus', 'Message scheduled.');
+        } catch (OutboundSendException $e) {
+            return back()->withInput()->with('outboundError', $e->getMessage());
+        }
     }
 
     public function submit(Request $r, string $draft): RedirectResponse

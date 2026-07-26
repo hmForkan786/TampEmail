@@ -463,6 +463,10 @@ final class OutboundProviderEventProcessor
             return 'ignored_cancelled';
         }
 
+        if ($message->state === OutboundMessageState::Scheduled) {
+            return 'ignored_state';
+        }
+
         if ($message->state === OutboundMessageState::Delivered) {
             return 'already_delivered';
         }
@@ -509,6 +513,10 @@ final class OutboundProviderEventProcessor
 
         if ($message->state === OutboundMessageState::Cancelled) {
             return 'ignored_cancelled';
+        }
+
+        if ($message->state === OutboundMessageState::Scheduled) {
+            return 'ignored_state';
         }
 
         if ($message->state === OutboundMessageState::Failed) {

@@ -142,6 +142,12 @@ final class OutboundMessageTimelineBuilder
             'outbound.stale_sending_failed_exhausted' => [OutboundTimelineEventType::Failed, 'Delivery failed', 'system'],
             'outbound.message_cancelled' => [OutboundTimelineEventType::Cancelled, 'Cancelled', 'user'],
             'outbound.manual_retry_requested' => [OutboundTimelineEventType::ManualRetry, 'Manual retry requested', 'user'],
+            'outbound.schedule_created' => [OutboundTimelineEventType::ScheduleCreated, 'Scheduled for delivery', 'user'],
+            'outbound.schedule_updated' => [OutboundTimelineEventType::ScheduleUpdated, 'Schedule updated', 'user'],
+            'outbound.schedule_cancelled' => [OutboundTimelineEventType::ScheduleCancelled, 'Schedule cancelled', 'user'],
+            'outbound.schedule_dispatched' => [OutboundTimelineEventType::Queued, 'Queued for delivery', 'system'],
+            'outbound.schedule_dispatch_deferred' => [OutboundTimelineEventType::Delayed, 'Scheduled dispatch deferred', 'system'],
+            'outbound.schedule_dispatch_failed' => [OutboundTimelineEventType::ScheduleCancelled, 'Scheduled dispatch failed', 'system'],
             default => null,
         };
     }

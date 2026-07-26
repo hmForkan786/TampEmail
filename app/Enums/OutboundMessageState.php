@@ -10,10 +10,14 @@ namespace App\Enums;
  * {@see sent} means the configured transport accepted the message.
  * {@see delivered} requires a trusted provider delivery event and
  * must not be set from SMTP/provider acceptance alone.
+ * {@see scheduled} means the message is fully validated and waiting
+ * for a future due time before queueing; it is not editable and does
+ * not consume committed usage until it transitions to {@see queued}.
  */
 enum OutboundMessageState: string
 {
     case Draft = 'draft';
+    case Scheduled = 'scheduled';
     case Queued = 'queued';
     case Sending = 'sending';
     case Sent = 'sent';
@@ -28,6 +32,7 @@ enum OutboundMessageState: string
     {
         return [
             self::Draft->value => 'Draft',
+            self::Scheduled->value => 'Scheduled',
             self::Queued->value => 'Queued',
             self::Sending->value => 'Sending',
             self::Sent->value => 'Sent',
@@ -51,6 +56,41 @@ enum OutboundMessageState: string
             || ($this === self::Failed);
     }
 
+    public function isEditable(): bool
+    {
+        return $this === self::Draft;
+    }
+
+    public function isSchedulable(): bool
+    {
+        return $this === self::Draft;
+    }
+
+    public function isReschedulable(): bool
+    {
+        return $this === self::Scheduled;
+    }
+
+    public function isUnschedulable(): bool
+    {
+        return $this === self::Scheduled;
+    }
+
+    /**
+     * Whether the message may enter {@see Queued} from this state.
+     * Scheduled messages are queueable only when due or via send-now
+     * (enforced by scheduling actions, not this predicate alone).
+     */
+    public function isQueueable(): bool
+    {
+        return in_array($this, [self::Draft, self::Scheduled, self::Failed], true);
+    }
+
+    public function isRetryable(): bool
+    {
+        return $this === self::Failed;
+    }
+
     /**
      * Whether a stale delivery job must refuse to mutate this state.
      */
@@ -65,7 +105,8 @@ enum OutboundMessageState: string
     public function allowedTransitions(): array
     {
         return match ($this) {
-            self::Draft => [self::Queued],
+            self::Draft => [self::Scheduled, self::Queued],
+            self::Scheduled => [self::Scheduled, self::Draft, self::Queued, self::Cancelled],
             self::Queued => [self::Sending, self::Cancelled],
             self::Sending => [self::Sent, self::Failed, self::Queued],
             self::Sent => [self::Delivered, self::Failed],
@@ -85,7 +126,8 @@ enum OutboundMessageState: string
      * state or event:
      *
      * cancelled > delivered > failed (permanent_failure) > sent >
-     * sending (in-flight / temporary_failure territory) > queued > draft.
+     * sending (in-flight / temporary_failure territory) > queued >
+     * scheduled > draft.
      *
      * `delivered` outranks `failed`: a permanent-failure provider event
      * arriving after delivery is ignored. `sent` never outranks `delivered`
@@ -104,7 +146,8 @@ enum OutboundMessageState: string
             self::Sent => 3,
             self::Sending => 4,
             self::Queued => 5,
-            self::Draft => 6,
+            self::Scheduled => 6,
+            self::Draft => 7,
         };
     }
 

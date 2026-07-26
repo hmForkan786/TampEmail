@@ -54,11 +54,19 @@ use Illuminate\Support\Carbon;
  * @property Carbon|null $content_redacted_at
  * @property Carbon|null $retention_hold_until
  * @property string|null $retention_hold_reason_code
+ * @property Carbon|null $scheduled_at
+ * @property string|null $scheduled_timezone
+ * @property string|null $scheduled_by_user_id
+ * @property int $schedule_version
+ * @property Carbon|null $scheduled_claimed_at
+ * @property string|null $schedule_defer_reason
+ * @property Carbon|null $schedule_next_attempt_at
  * @property Carbon|null $created_at
  * @property Carbon|null $updated_at
  * @property-read User $user
  * @property-read Inbox $inbox
  * @property-read Email|null $sourceEmail
+ * @property-read User|null $scheduledByUser
  */
 class OutboundMessage extends BaseModel
 {
@@ -109,6 +117,13 @@ class OutboundMessage extends BaseModel
         'content_redacted_at',
         'retention_hold_until',
         'retention_hold_reason_code',
+        'scheduled_at',
+        'scheduled_timezone',
+        'scheduled_by_user_id',
+        'schedule_version',
+        'scheduled_claimed_at',
+        'schedule_defer_reason',
+        'schedule_next_attempt_at',
     ];
 
     /**
@@ -140,6 +155,10 @@ class OutboundMessage extends BaseModel
             'user_deleted_at' => 'datetime',
             'content_redacted_at' => 'datetime',
             'retention_hold_until' => 'datetime',
+            'scheduled_at' => 'datetime',
+            'schedule_version' => 'integer',
+            'scheduled_claimed_at' => 'datetime',
+            'schedule_next_attempt_at' => 'datetime',
         ]);
     }
 
@@ -156,6 +175,11 @@ class OutboundMessage extends BaseModel
     public function sourceEmail(): BelongsTo
     {
         return $this->belongsTo(Email::class, 'source_email_id');
+    }
+
+    public function scheduledByUser(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'scheduled_by_user_id');
     }
 
     public function deliveryAttempts(): HasMany

@@ -7,13 +7,20 @@ namespace App\Http\Controllers\Api\V1;
 use App\Actions\Outbound\CancelOutboundMessageAction;
 use App\Actions\Outbound\CreateOutboundSendAction;
 use App\Actions\Outbound\DeleteOutboundMessageAction;
+use App\Actions\Outbound\RescheduleOutboundMessageAction;
 use App\Actions\Outbound\RetryOutboundMessageAction;
+use App\Actions\Outbound\SendScheduledMessageNowAction;
+use App\Actions\Outbound\UnscheduleOutboundMessageAction;
 use App\DTOs\Outbound\CreateOutboundSendData;
 use App\Exceptions\OutboundSendException;
+use App\Http\Requests\Outbound\RescheduleOutboundMessageRequest;
+use App\Http\Requests\Outbound\SendScheduledMessageNowRequest;
 use App\Http\Requests\Outbound\StoreOutboundMessageRequest;
+use App\Http\Requests\Outbound\UnscheduleOutboundMessageRequest;
 use App\Http\Resources\OutboundMessageCollection;
 use App\Http\Resources\OutboundMessageResource;
 use App\Http\Responses\ApiErrorResponse;
+use App\Models\OutboundMessage;
 use App\Models\User;
 use App\Services\Outbound\OutboundMessageAccessService;
 use App\Services\Outbound\OutboundMessageListingService;
@@ -28,6 +35,9 @@ final class OutboundMessageController
         private readonly CancelOutboundMessageAction $cancelOutboundMessage,
         private readonly DeleteOutboundMessageAction $deleteOutboundMessage,
         private readonly RetryOutboundMessageAction $retryOutboundMessage,
+        private readonly RescheduleOutboundMessageAction $rescheduleOutboundMessage,
+        private readonly UnscheduleOutboundMessageAction $unscheduleOutboundMessage,
+        private readonly SendScheduledMessageNowAction $sendScheduledMessageNow,
         private readonly OutboundMessageTimelineBuilder $timelineBuilder,
         private readonly OutboundMessageListingService $listingService,
         private readonly OutboundMessageAccessService $accessService,
@@ -109,6 +119,91 @@ final class OutboundMessageController
                 'timeline' => $this->timelineBuilder->build($outbound, admin: false),
             ],
         ]);
+    }
+
+    public function schedule(RescheduleOutboundMessageRequest $request, string $message): OutboundMessageResource|JsonResponse
+    {
+        /** @var User $owner */
+        $owner = $request->attributes->get('apiKeyOwner');
+        $apiKey = $request->attributes->get('apiKey');
+
+        if ($this->accessService->findOwned($owner, $message) === null) {
+            return ApiErrorResponse::make('not_found', 'Outbound message not found.', 404);
+        }
+
+        try {
+            $outbound = $this->rescheduleOutboundMessage->execute(
+                $owner,
+                $message,
+                $request->integer('schedule_version'),
+                $request->string('local_date')->toString(),
+                $request->string('local_time')->toString(),
+                $request->string('timezone')->toString(),
+                $apiKey !== null ? (string) $apiKey->getKey() : null,
+            );
+        } catch (OutboundSendException $exception) {
+            $details = $exception->errorCode === 'schedule_conflict'
+                ? ['schedule_version' => OutboundMessage::query()->whereKey($message)->where('user_id', $owner->getKey())->value('schedule_version')]
+                : [];
+
+            return ApiErrorResponse::make($exception->errorCode, $exception->getMessage(), $exception->status, $details);
+        }
+
+        return new OutboundMessageResource($outbound);
+    }
+
+    public function unschedule(UnscheduleOutboundMessageRequest $request, string $message): OutboundMessageResource|JsonResponse
+    {
+        /** @var User $owner */
+        $owner = $request->attributes->get('apiKeyOwner');
+
+        if ($this->accessService->findOwned($owner, $message) === null) {
+            return ApiErrorResponse::make('not_found', 'Outbound message not found.', 404);
+        }
+
+        try {
+            $outbound = $this->unscheduleOutboundMessage->execute(
+                $owner,
+                $message,
+                $request->integer('schedule_version'),
+            );
+        } catch (OutboundSendException $exception) {
+            $details = $exception->errorCode === 'schedule_conflict'
+                ? ['schedule_version' => OutboundMessage::query()->whereKey($message)->where('user_id', $owner->getKey())->value('schedule_version')]
+                : [];
+
+            return ApiErrorResponse::make($exception->errorCode, $exception->getMessage(), $exception->status, $details);
+        }
+
+        return new OutboundMessageResource($outbound);
+    }
+
+    public function sendNow(SendScheduledMessageNowRequest $request, string $message): OutboundMessageResource|JsonResponse
+    {
+        /** @var User $owner */
+        $owner = $request->attributes->get('apiKeyOwner');
+        $apiKey = $request->attributes->get('apiKey');
+
+        if ($this->accessService->findOwned($owner, $message) === null) {
+            return ApiErrorResponse::make('not_found', 'Outbound message not found.', 404);
+        }
+
+        try {
+            $outbound = $this->sendScheduledMessageNow->execute(
+                $owner,
+                $message,
+                $request->integer('schedule_version'),
+                $apiKey !== null ? (string) $apiKey->getKey() : null,
+            );
+        } catch (OutboundSendException $exception) {
+            $details = $exception->errorCode === 'schedule_conflict'
+                ? ['schedule_version' => OutboundMessage::query()->whereKey($message)->where('user_id', $owner->getKey())->value('schedule_version')]
+                : [];
+
+            return ApiErrorResponse::make($exception->errorCode, $exception->getMessage(), $exception->status, $details);
+        }
+
+        return new OutboundMessageResource($outbound);
     }
 
     public function cancel(Request $request, string $message): OutboundMessageResource|JsonResponse

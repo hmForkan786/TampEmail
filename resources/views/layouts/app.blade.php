@@ -45,6 +45,7 @@
             .badge--failed { background: #fef2f2; color: #b91c1c; }
             .badge--cancelled { background: #f3f4f6; color: #374151; }
             .badge--draft { background: #f3f4f6; color: #374151; }
+            .badge--scheduled { background: #fef3c7; color: #92400e; }
             .btn { display: inline-block; padding: 0.4rem 0.9rem; border-radius: 0.375rem; font-size: 0.875rem; border: 1px solid #d1d5db; background: #fff; color: #111827; cursor: pointer; text-decoration: none; }
             .btn:hover { border-color: #9ca3af; }
             .btn--primary { background: #111827; color: #fff; border-color: #111827; }

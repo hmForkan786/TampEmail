@@ -4,7 +4,9 @@ declare(strict_types=1);
 
 namespace App\Http\Controllers\Api\V1;
 
+use App\Actions\Outbound\ScheduleOutboundDraftAction;
 use App\Exceptions\OutboundSendException;
+use App\Http\Requests\Outbound\ScheduleOutboundDraftRequest;
 use App\Http\Requests\Outbound\StoreOutboundDraftRequest;
 use App\Http\Requests\Outbound\UpdateOutboundDraftRequest;
 use App\Http\Resources\OutboundMessageResource;
@@ -17,7 +19,10 @@ use Illuminate\Http\Request;
 
 final class OutboundDraftController
 {
-    public function __construct(private readonly OutboundDraftService $drafts) {}
+    public function __construct(
+        private readonly OutboundDraftService $drafts,
+        private readonly ScheduleOutboundDraftAction $scheduleOutboundDraft,
+    ) {}
 
     public function index(Request $request): mixed
     { /** @var User $owner */ $owner = $request->attributes->get('apiKeyOwner');
@@ -61,6 +66,28 @@ final class OutboundDraftController
         }
 
         return response()->json(['data' => ['deleted' => true]]);
+    }
+
+    public function schedule(ScheduleOutboundDraftRequest $request, string $draft): OutboundMessageResource|JsonResponse
+    { /** @var User $owner */ $owner = $request->attributes->get('apiKeyOwner');
+        $apiKey = $request->attributes->get('apiKey');
+        try {
+            return new OutboundMessageResource($this->scheduleOutboundDraft->execute(
+                $owner,
+                $draft,
+                $request->integer('version'),
+                $request->string('local_date')->toString(),
+                $request->string('local_time')->toString(),
+                $request->string('timezone')->toString(),
+                $apiKey ? (string) $apiKey->getKey() : null,
+            ));
+        } catch (OutboundSendException $e) {
+            $details = $e->errorCode === 'draft_conflict'
+                ? ['version' => OutboundMessage::query()->whereKey($draft)->where('user_id', $owner->getKey())->value('draft_version')]
+                : [];
+
+            return ApiErrorResponse::make($e->errorCode, $e->getMessage(), $e->status, $details);
+        }
     }
 
     public function submit(Request $request, string $draft): OutboundMessageResource|JsonResponse

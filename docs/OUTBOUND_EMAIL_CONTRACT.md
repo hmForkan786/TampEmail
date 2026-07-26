@@ -75,38 +75,70 @@ Provider credentials must never be stored on the message row.
 ## Lifecycle states
 
 ```text
-draft → queued → sending → sent
+draft → scheduled → queued → sending → sent
+draft → queued → sending → sent          (immediate submit)
                  sending → failed
                  failed → queued          (authorized retry)
                  queued → cancelled
+                 scheduled → draft        (unschedule)
+                 scheduled → cancelled    (cancel while scheduled)
                  sending → queued         (retryable failure with attempts remaining; Prompt 605)
 ```
 
 | State | Meaning |
 |---|---|
-| `draft` | Persisted but not yet accepted for delivery (optional; may be skipped if create+queue is atomic) |
+| `draft` | Persisted but not yet accepted for delivery; editable |
+| `scheduled` | Fully validated, waiting for a future `scheduled_at` UTC time before queueing; not editable; **does not consume committed usage** until it transitions to `queued` |
 | `queued` | Eligible for worker claim |
 | `sending` | Atomically claimed by a delivery job |
 | `sent` | Configured transport **accepted** the message |
-| `delivered` | Reserved for future provider delivery confirmation; **not set** in the initial batch |
+| `delivered` | Provider delivery confirmation |
 | `failed` | Permanent failure or retry exhaustion |
-| `cancelled` | Cancelled while still `queued` |
+| `cancelled` | Cancelled while still `queued` or `scheduled` |
 
 **`sent` ≠ delivered.** SMTP/provider acceptance only proves the transport accepted the payload.
 
-Terminal states for stale-job protection: `sent`, `delivered`, `failed` (when exhausted), `cancelled`. Workers must claim with atomic `queued → sending` and must not overwrite terminal states.
+Terminal states for stale-job protection: `sent`, `delivered`, `failed` (when exhausted), `cancelled`. Workers must claim with atomic `queued → sending` and must not overwrite terminal states. Provider events must not advance `scheduled` messages.
 
 ### Allowed transitions
 
 | From | To | Condition |
 |---|---|---|
+| `draft` | `scheduled` | Validation passed; future local time resolved to UTC |
 | `draft` | `queued` | Validation passed; job dispatched |
+| `scheduled` | `scheduled` | Reschedule (optimistic `schedule_version`) |
+| `scheduled` | `draft` | Unschedule or permanent dispatch failure |
+| `scheduled` | `queued` | Due time reached (dispatcher) or send-now |
+| `scheduled` | `cancelled` | User cancel |
 | `queued` | `sending` | Atomic claim by delivery job |
 | `sending` | `sent` | Transport result `accepted` |
 | `sending` | `failed` | Permanent failure or attempts exhausted |
 | `sending` | `queued` | Retryable failure with attempts remaining |
 | `failed` | `queued` | Explicit authorized manual retry |
 | `queued` | `cancelled` | Atomic cancel before claim |
+
+### Scheduled sending API (Prompt 622)
+
+All endpoints require `outbound_messages:write` and ownership-safe 404 for non-owners.
+
+| Method | Path | Purpose |
+|---|---|---|
+| `POST` | `/api/v1/outbound-drafts/{draft}/schedule` | Schedule a complete draft (`version`, `local_date`, `local_time`, `timezone`) |
+| `PATCH` | `/api/v1/outbound-messages/{message}/schedule` | Reschedule (`schedule_version`, local fields) |
+| `DELETE` | `/api/v1/outbound-messages/{message}/schedule` | Unschedule → returns to `draft` |
+| `POST` | `/api/v1/outbound-messages/{message}/send-now` | Queue immediately (`schedule_version`) |
+
+Error codes: `schedule_time_invalid`, `schedule_timezone_invalid`, `schedule_conflict`, `message_not_schedulable`, `message_not_scheduled`, `schedule_already_dispatched`.
+
+Optimistic concurrency: `version` (draft) / `schedule_version` (scheduled). The resource exposes `scheduled_at` (UTC ISO), `scheduled_timezone`, `scheduled_local_at`, and `can_reschedule` / `can_unschedule` / `can_send_now`. Internal claim/defer fields are never exposed.
+
+**Usage policy:** scheduling and rescheduling do not reserve or commit outbound usage. Usage is reserved only when the message transitions to `queued` (send-now or dispatcher).
+
+**Retention:** draft prune (`outbound:prune`) only targets `state = draft`. Scheduled messages are never pruned as drafts. Unscheduled drafts use `updated_at` for the draft retention window.
+
+**Dispatcher:** `php artisan outbound:dispatch-scheduled` claims due scheduled messages, applies the same send authorization/rate limits as immediate submit, reserves usage, and dispatches `DeliverOutboundMessageJob` after commit. Temporary blocks (e.g. emergency stop) defer dispatch; permanent failures return the message to `draft`.
+
+Audit actions: `outbound.schedule_created`, `outbound.schedule_updated`, `outbound.schedule_cancelled`, `outbound.schedule_dispatched`, `outbound.schedule_dispatch_deferred`, `outbound.schedule_dispatch_failed`.
 
 ## Operations
 

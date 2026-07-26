@@ -31,6 +31,7 @@ final class OutboundOpsService
         $volume24h = $this->volume(now()->subDay());
         $volume7d = $this->volume(now()->subDays(7));
         $retries = $this->retryMetrics();
+        $schedule = $this->scheduleMetrics();
         $provider = $this->providerMetrics(now()->subDay());
         $providers = $this->providersReport();
         $suppressions = $this->suppressionMetrics();
@@ -48,6 +49,7 @@ final class OutboundOpsService
                 'last_7_days' => $volume7d,
             ],
             'retries' => $retries,
+            'schedule' => $schedule,
             'provider' => $provider,
             'providers' => $providers,
             'suppressions' => $suppressions,
@@ -128,6 +130,7 @@ final class OutboundOpsService
 
         return [
             'queued' => (clone $base)->where('state', OutboundMessageState::Queued->value)->count(),
+            'scheduled' => (clone $base)->where('state', OutboundMessageState::Scheduled->value)->count(),
             'sending' => (clone $base)->where('state', OutboundMessageState::Sending->value)->count(),
             'sent' => (clone $base)->where('state', OutboundMessageState::Sent->value)->count(),
             'delivered' => (clone $base)->where('state', OutboundMessageState::Delivered->value)->count(),
@@ -185,6 +188,33 @@ final class OutboundOpsService
             'currently_sending' => $sending,
             'failed_jobs' => $failedJobs,
             'permanent_failures' => $permanent,
+        ];
+    }
+
+    /**
+     * @return array<string, int>
+     */
+    public function scheduleMetrics(): array
+    {
+        $now = now();
+        $scheduledBase = OutboundMessage::query()->where('state', OutboundMessageState::Scheduled->value);
+
+        $dueQuery = (clone $scheduledBase)
+            ->where('scheduled_at', '<=', $now)
+            ->whereNull('scheduled_claimed_at');
+
+        $oldestOverdue = (clone $dueQuery)->orderBy('scheduled_at')->value('scheduled_at');
+
+        $since = now()->subDay();
+
+        return [
+            'scheduled' => (clone $scheduledBase)->count(),
+            'due' => (clone $dueQuery)->count(),
+            'overdue' => (clone $dueQuery)->count(),
+            'oldest_overdue_age_seconds' => $oldestOverdue !== null ? max(0, $now->diffInSeconds($oldestOverdue)) : 0,
+            'dispatched_24h' => AuditLog::query()->where('action', 'outbound.schedule_dispatched')->where('created_at', '>=', $since)->count(),
+            'deferred_24h' => AuditLog::query()->where('action', 'outbound.schedule_dispatch_deferred')->where('created_at', '>=', $since)->count(),
+            'failed_24h' => AuditLog::query()->where('action', 'outbound.schedule_dispatch_failed')->where('created_at', '>=', $since)->count(),
         ];
     }
 

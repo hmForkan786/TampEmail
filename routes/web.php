@@ -27,9 +27,19 @@ Route::middleware('auth')->group(function (): void {
     Route::patch('outbound-drafts/{draft}', [OutboundDraftController::class, 'update'])->whereUuid('draft')->name('outbound-drafts.update');
     Route::delete('outbound-drafts/{draft}', [OutboundDraftController::class, 'destroy'])->whereUuid('draft')->name('outbound-drafts.destroy');
     Route::post('outbound-drafts/{draft}/submit', [OutboundDraftController::class, 'submit'])->whereUuid('draft')->name('outbound-drafts.submit');
+    Route::post('outbound-drafts/{draft}/schedule', [OutboundDraftController::class, 'schedule'])->whereUuid('draft')->name('outbound-drafts.schedule');
     Route::get('outbound-messages/{message}', [OutboundMessageController::class, 'show'])
         ->whereUuid('message')
         ->name('outbound-messages.show');
+    Route::patch('outbound-messages/{message}/schedule', [OutboundMessageController::class, 'schedule'])
+        ->whereUuid('message')
+        ->name('outbound-messages.schedule');
+    Route::delete('outbound-messages/{message}/schedule', [OutboundMessageController::class, 'unschedule'])
+        ->whereUuid('message')
+        ->name('outbound-messages.unschedule');
+    Route::post('outbound-messages/{message}/send-now', [OutboundMessageController::class, 'sendNow'])
+        ->whereUuid('message')
+        ->name('outbound-messages.send-now');
     Route::post('outbound-messages/{message}/cancel', [OutboundMessageController::class, 'cancel'])
         ->whereUuid('message')
         ->name('outbound-messages.cancel');

@@ -89,54 +89,25 @@ final class OutboundDraftService
                 throw new OutboundSendException('already_submitted', 'This draft is no longer editable.', 409);
             }
             $this->assertVersion($draft, $version);
-            $inbox = Inbox::query()->with('domain')->find($draft->inbox_id);
-            if ($inbox === null) {
-                throw new OutboundSendException('inbox_not_found', 'The inbox was not found.', 404);
-            }
-            $this->authorization->assertCanSend($user, $inbox, $draft->operation, $apiKeyId);
-            $source = in_array($draft->operation, [OutboundOperation::Reply, OutboundOperation::Forward], true)
-                ? $this->source($user, $draft)
-                : null;
-            $to = $draft->to_recipients ?? [];
-            $cc = $draft->cc_recipients ?? [];
-            $bcc = $draft->bcc_recipients ?? [];
-            $subject = $draft->subject;
-            $text = $draft->text_body;
-            $html = $draft->html_body;
-            $attachmentIds = $draft->attachment_ids ?? [];
-            $attachmentBytes = 0;
-            if ($draft->operation === OutboundOperation::Reply) {
-                $to = [$this->replyRecipients->resolve($source)];
-                $bcc = [];
-                $set = $this->recipients->validate($to, $cc, []);
-                $to = $set['to'];
-                $cc = $set['cc'];
-                $subject = $this->subjects->replySubject($source->subject, $subject);
-                $headers = $this->threading->forReply($source);
-                $draft->in_reply_to = $headers['in_reply_to'];
-                $draft->references = $headers['references'];
-            } elseif ($draft->operation === OutboundOperation::Forward) {
-                $set = $this->recipients->validate($to, $cc, $bcc);
-                $to = $set['to'];
-                $cc = $set['cc'];
-                $bcc = $set['bcc'];
-                $selected = $this->attachments->selectForForward($source, $attachmentIds);
-                $attachmentIds = array_map(fn ($a): string => (string) $a->getKey(), $selected);
-                $attachmentBytes = array_sum(array_map(fn ($a): int => (int) $a->size_bytes, $selected));
-                $subject = $this->subjects->forwardSubject($source->subject, $subject);
-                $text = $this->forwardContext->buildText($text, $source);
-                $html = $html !== null ? $this->forwardContext->buildHtml($html, $source) : null;
-            } else {
-                $set = $this->recipients->validate($to, $cc, $bcc);
-                $to = $set['to'];
-                $cc = $set['cc'];
-                $bcc = $set['bcc'];
-            }
-            $content = $this->content->validate($subject, $text, $html, $draft->from_display_name);
-            $this->suppressions->assertRecipientsAllowed([...$to, ...$cc, ...$bcc], $user);
-            $this->rateLimiter->assertWithinLimits($user, [...$to, ...$cc, ...$bcc], $attachmentBytes);
-            $draft->forceFill(['state' => OutboundMessageState::Queued, 'to_recipients' => $to, 'cc_recipients' => $cc, 'bcc_recipients' => $bcc, 'subject' => $content['subject'], 'text_body' => $content['text_body'], 'html_body' => $content['html_body'], 'attachment_ids' => $attachmentIds, 'request_fingerprint' => hash('sha256', json_encode([$draft->operation->value, $to, $cc, $bcc, $content, $attachmentIds], JSON_THROW_ON_ERROR)), 'queued_at' => now(), 'draft_submitted_at' => now(), 'is_canary' => $this->launchControl->isCanary($user, $inbox, $apiKeyId)])->save();
-            $this->usage->reserve($user, $draft, $draft->idempotency_key, $attachmentBytes);
+            $prepared = $this->prepareSendableContent($draft, $user, $apiKeyId);
+            $this->rateLimiter->assertWithinLimits($user, [...$prepared['to'], ...$prepared['cc'], ...$prepared['bcc']], $prepared['attachment_bytes']);
+            $draft->forceFill([
+                'state' => OutboundMessageState::Queued,
+                'to_recipients' => $prepared['to'],
+                'cc_recipients' => $prepared['cc'],
+                'bcc_recipients' => $prepared['bcc'],
+                'subject' => $prepared['subject'],
+                'text_body' => $prepared['text_body'],
+                'html_body' => $prepared['html_body'],
+                'attachment_ids' => $prepared['attachment_ids'],
+                'in_reply_to' => $prepared['in_reply_to'],
+                'references' => $prepared['references'],
+                'request_fingerprint' => $prepared['request_fingerprint'],
+                'queued_at' => now(),
+                'draft_submitted_at' => now(),
+                'is_canary' => $prepared['is_canary'],
+            ])->save();
+            $this->usage->reserve($user, $draft, $draft->idempotency_key, $prepared['attachment_bytes']);
             $this->audit($user, 'outbound.draft_submitted', $draft, ['version' => $draft->draft_version]);
             $claimed = true;
 
@@ -147,6 +118,107 @@ final class OutboundDraftService
         }
 
         return $message;
+    }
+
+    /**
+     * Validates draft content, recipients, suppressions, and auth without
+     * rate-limiting, usage reservation, or state transition.
+     *
+     * @return array{
+     *     to: list<string>,
+     *     cc: list<string>,
+     *     bcc: list<string>,
+     *     subject: ?string,
+     *     text_body: ?string,
+     *     html_body: ?string,
+     *     attachment_ids: list<string>,
+     *     attachment_bytes: int,
+     *     inbox: Inbox,
+     *     request_fingerprint: string,
+     *     is_canary: bool,
+     *     in_reply_to: ?string,
+     *     references: ?string,
+     * }
+     */
+    public function prepareSendableContent(OutboundMessage $draft, User $user, ?string $apiKeyId = null): array
+    {
+        if ($draft->draft_deleted_at !== null) {
+            throw new OutboundSendException('draft_not_found', 'Draft not found.', 404);
+        }
+
+        $inbox = Inbox::query()->with('domain')->find($draft->inbox_id);
+        if ($inbox === null) {
+            throw new OutboundSendException('inbox_not_found', 'The inbox was not found.', 404);
+        }
+
+        $this->authorization->assertCanSend($user, $inbox, $draft->operation, $apiKeyId);
+        $source = in_array($draft->operation, [OutboundOperation::Reply, OutboundOperation::Forward], true)
+            ? $this->source($user, $draft)
+            : null;
+        $to = $draft->to_recipients ?? [];
+        $cc = $draft->cc_recipients ?? [];
+        $bcc = $draft->bcc_recipients ?? [];
+        $subject = $draft->subject;
+        $text = $draft->text_body;
+        $html = $draft->html_body;
+        $attachmentIds = $draft->attachment_ids ?? [];
+        $attachmentBytes = 0;
+        $inReplyTo = $draft->in_reply_to;
+        $references = $draft->references;
+
+        if ($draft->operation === OutboundOperation::Reply) {
+            $to = [$this->replyRecipients->resolve($source)];
+            $bcc = [];
+            $set = $this->recipients->validate($to, $cc, []);
+            $to = $set['to'];
+            $cc = $set['cc'];
+            $subject = $this->subjects->replySubject($source->subject, $subject);
+            $headers = $this->threading->forReply($source);
+            $inReplyTo = $headers['in_reply_to'];
+            $references = $headers['references'];
+        } elseif ($draft->operation === OutboundOperation::Forward) {
+            $set = $this->recipients->validate($to, $cc, $bcc);
+            $to = $set['to'];
+            $cc = $set['cc'];
+            $bcc = $set['bcc'];
+            $selected = $this->attachments->selectForForward($source, $attachmentIds);
+            $attachmentIds = array_map(fn ($a): string => (string) $a->getKey(), $selected);
+            $attachmentBytes = array_sum(array_map(fn ($a): int => (int) $a->size_bytes, $selected));
+            $subject = $this->subjects->forwardSubject($source->subject, $subject);
+            $text = $this->forwardContext->buildText($text, $source);
+            $html = $html !== null ? $this->forwardContext->buildHtml($html, $source) : null;
+        } else {
+            $set = $this->recipients->validate($to, $cc, $bcc);
+            $to = $set['to'];
+            $cc = $set['cc'];
+            $bcc = $set['bcc'];
+        }
+
+        $content = $this->content->validate($subject, $text, $html, $draft->from_display_name);
+        $this->suppressions->assertRecipientsAllowed([...$to, ...$cc, ...$bcc], $user);
+
+        return [
+            'to' => $to,
+            'cc' => $cc,
+            'bcc' => $bcc,
+            'subject' => $content['subject'],
+            'text_body' => $content['text_body'],
+            'html_body' => $content['html_body'],
+            'attachment_ids' => $attachmentIds,
+            'attachment_bytes' => $attachmentBytes,
+            'inbox' => $inbox,
+            'request_fingerprint' => hash('sha256', json_encode([
+                $draft->operation->value,
+                $to,
+                $cc,
+                $bcc,
+                $content,
+                $attachmentIds,
+            ], JSON_THROW_ON_ERROR)),
+            'is_canary' => $this->launchControl->isCanary($user, $inbox, $apiKeyId),
+            'in_reply_to' => $inReplyTo,
+            'references' => $references,
+        ];
     }
 
     /**

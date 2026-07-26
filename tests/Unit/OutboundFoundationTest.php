@@ -16,6 +16,7 @@ uses(TestCase::class);
 it('defines outbound message state values and transitions', function (): void {
     expect(array_map(fn (OutboundMessageState $s) => $s->value, OutboundMessageState::cases()))->toBe([
         'draft',
+        'scheduled',
         'queued',
         'sending',
         'sent',
@@ -24,7 +25,13 @@ it('defines outbound message state values and transitions', function (): void {
         'cancelled',
     ]);
 
-    expect(OutboundMessageState::Draft->canTransitionTo(OutboundMessageState::Queued))->toBeTrue()
+    expect(OutboundMessageState::Draft->canTransitionTo(OutboundMessageState::Scheduled))->toBeTrue()
+        ->and(OutboundMessageState::Draft->canTransitionTo(OutboundMessageState::Queued))->toBeTrue()
+        ->and(OutboundMessageState::Scheduled->canTransitionTo(OutboundMessageState::Scheduled))->toBeTrue()
+        ->and(OutboundMessageState::Scheduled->canTransitionTo(OutboundMessageState::Draft))->toBeTrue()
+        ->and(OutboundMessageState::Scheduled->canTransitionTo(OutboundMessageState::Queued))->toBeTrue()
+        ->and(OutboundMessageState::Scheduled->canTransitionTo(OutboundMessageState::Cancelled))->toBeTrue()
+        ->and(OutboundMessageState::Queued->canTransitionTo(OutboundMessageState::Scheduled))->toBeFalse()
         ->and(OutboundMessageState::Queued->canTransitionTo(OutboundMessageState::Sending))->toBeTrue()
         ->and(OutboundMessageState::Queued->canTransitionTo(OutboundMessageState::Cancelled))->toBeTrue()
         ->and(OutboundMessageState::Sending->canTransitionTo(OutboundMessageState::Sent))->toBeTrue()
@@ -33,8 +40,14 @@ it('defines outbound message state values and transitions', function (): void {
         ->and(OutboundMessageState::Failed->canTransitionTo(OutboundMessageState::Queued))->toBeTrue()
         ->and(OutboundMessageState::Sent->canTransitionTo(OutboundMessageState::Delivered))->toBeTrue()
         ->and(OutboundMessageState::Sent->canTransitionTo(OutboundMessageState::Failed))->toBeTrue()
-        ->and(OutboundMessageState::Sent->canTransitionTo(OutboundMessageState::Failed))->toBeTrue()
         ->and(OutboundMessageState::Delivered->canTransitionTo(OutboundMessageState::Failed))->toBeFalse()
+        ->and(OutboundMessageState::Draft->isSchedulable())->toBeTrue()
+        ->and(OutboundMessageState::Scheduled->isReschedulable())->toBeTrue()
+        ->and(OutboundMessageState::Scheduled->isUnschedulable())->toBeTrue()
+        ->and(OutboundMessageState::Queued->isSchedulable())->toBeFalse()
+        ->and(OutboundMessageState::Scheduled->isEditable())->toBeFalse()
+        ->and(OutboundMessageState::Draft->isQueueable())->toBeTrue()
+        ->and(OutboundMessageState::Scheduled->isQueueable())->toBeTrue()
         ->and(OutboundMessageState::Delivered->isTerminal())->toBeTrue()
         ->and(OutboundMessageState::Failed->blocksStaleJobMutation())->toBeTrue()
         ->and(OutboundMessageState::Sent->blocksStaleJobMutation())->toBeTrue()

@@ -6,7 +6,10 @@ namespace App\Http\Controllers\Web;
 
 use App\Actions\Outbound\CancelOutboundMessageAction;
 use App\Actions\Outbound\DeleteOutboundMessageAction;
+use App\Actions\Outbound\RescheduleOutboundMessageAction;
 use App\Actions\Outbound\RetryOutboundMessageAction;
+use App\Actions\Outbound\SendScheduledMessageNowAction;
+use App\Actions\Outbound\UnscheduleOutboundMessageAction;
 use App\Enums\OutboundMessageState;
 use App\Enums\OutboundOperation;
 use App\Exceptions\OutboundSendException;
@@ -20,6 +23,7 @@ use App\Services\Outbound\OutboundLaunchControlService;
 use App\Services\Outbound\OutboundMessageAccessService;
 use App\Services\Outbound\OutboundMessageListingService;
 use App\Services\Outbound\OutboundMessageTimelineBuilder;
+use App\Services\Outbound\OutboundScheduleTimezone;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\View\View;
@@ -41,10 +45,14 @@ final class OutboundMessageController extends Controller
         private readonly CancelOutboundMessageAction $cancelAction,
         private readonly DeleteOutboundMessageAction $deleteAction,
         private readonly RetryOutboundMessageAction $retryAction,
+        private readonly RescheduleOutboundMessageAction $rescheduleAction,
+        private readonly UnscheduleOutboundMessageAction $unscheduleAction,
+        private readonly SendScheduledMessageNowAction $sendNowAction,
         private readonly OutboundLaunchControlService $launchControl,
         private readonly EntitlementService $entitlements,
         private readonly OutboundFailureCategoryMapper $categories,
         private readonly InboundHtmlSanitizer $htmlSanitizer,
+        private readonly OutboundScheduleTimezone $timezones,
     ) {}
 
     public function index(Request $request): View
@@ -85,6 +93,7 @@ final class OutboundMessageController extends Controller
             'created_at' => $message->created_at,
             'sent_at' => $message->sent_at,
             'delivered_at' => $message->delivered_at,
+            'scheduled_at' => $message->scheduled_at,
             'attachment_count' => count($message->attachment_ids ?? []),
             'failure_category' => $message->failure_code !== null
                 ? $this->categories->userSafeCategory($message->failure_code)
@@ -103,14 +112,24 @@ final class OutboundMessageController extends Controller
 
         $outbound->setRelation('safeAttachments', $this->accessService->listSafeAttachments($outbound));
 
+        $scheduledLocalAt = null;
+        if ($outbound->scheduled_at !== null && is_string($outbound->scheduled_timezone) && $outbound->scheduled_timezone !== '') {
+            $scheduledLocalAt = $this->timezones->formatLocal($outbound->scheduled_at->toImmutable(), $outbound->scheduled_timezone);
+        }
+
         return view('outbound-messages.show', [
             'message' => $outbound,
+            'scheduledLocalAt' => $scheduledLocalAt,
             'sanitizedHtmlBody' => $this->safeHtmlForDisplay($outbound->html_body),
             'timeline' => $this->timelineBuilder->build($outbound, admin: false),
             'attemptSummary' => $this->accessService->attemptSummary($outbound),
             'canCancel' => $this->accessService->canCancel($outbound),
             'canRetry' => $this->accessService->canRetry($outbound),
             'canDelete' => $this->accessService->canDelete($outbound),
+            'canReschedule' => $this->accessService->canReschedule($outbound),
+            'canUnschedule' => $this->accessService->canUnschedule($outbound),
+            'canSendNow' => $this->accessService->canSendNow($outbound),
+            'timezones' => $this->timezones->commonTimezones(),
             'attachments' => $outbound->safeAttachments,
             'failureCategory' => $outbound->failure_code !== null
                 ? $this->categories->userSafeCategory($outbound->failure_code)
@@ -133,6 +152,81 @@ final class OutboundMessageController extends Controller
         }
 
         return preg_replace('/(<img\b[^>]*\s)src=(["\'])https?:\/\/[^"\']*\2/i', '$1data-remote-image-blocked=$2$2', $sanitized) ?? $sanitized;
+    }
+
+    public function schedule(Request $request, string $message): RedirectResponse
+    {
+        /** @var User $user */
+        $user = $request->user();
+
+        $outbound = $this->accessService->findOwned($user, $message);
+
+        abort_if($outbound === null, 404);
+
+        try {
+            $this->rescheduleAction->execute(
+                $user,
+                $outbound->getKey(),
+                (int) $request->input('schedule_version'),
+                (string) $request->input('local_date'),
+                (string) $request->input('local_time'),
+                (string) $request->input('timezone'),
+            );
+        } catch (OutboundSendException $exception) {
+            return back()->with('outboundError', $exception->getMessage());
+        }
+
+        return redirect()
+            ->route('outbound-messages.show', $outbound)
+            ->with('outboundStatus', 'Schedule updated.');
+    }
+
+    public function unschedule(Request $request, string $message): RedirectResponse
+    {
+        /** @var User $user */
+        $user = $request->user();
+
+        $outbound = $this->accessService->findOwned($user, $message);
+
+        abort_if($outbound === null, 404);
+
+        try {
+            $draft = $this->unscheduleAction->execute(
+                $user,
+                $outbound->getKey(),
+                (int) $request->input('schedule_version'),
+            );
+        } catch (OutboundSendException $exception) {
+            return back()->with('outboundError', $exception->getMessage());
+        }
+
+        return redirect()
+            ->route('outbound-drafts.edit', $draft)
+            ->with('outboundStatus', 'Schedule cancelled. Message returned to drafts.');
+    }
+
+    public function sendNow(Request $request, string $message): RedirectResponse
+    {
+        /** @var User $user */
+        $user = $request->user();
+
+        $outbound = $this->accessService->findOwned($user, $message);
+
+        abort_if($outbound === null, 404);
+
+        try {
+            $this->sendNowAction->execute(
+                $user,
+                $outbound->getKey(),
+                (int) $request->input('schedule_version'),
+            );
+        } catch (OutboundSendException $exception) {
+            return back()->with('outboundError', $exception->getMessage());
+        }
+
+        return redirect()
+            ->route('outbound-messages.show', $outbound)
+            ->with('outboundStatus', 'Message queued for immediate delivery.');
     }
 
     public function cancel(Request $request, string $message): RedirectResponse

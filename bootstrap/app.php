@@ -67,6 +67,7 @@ return Application::configure(basePath: dirname(__DIR__))
         $schedule->command('outbound:reconcile-unmatched-events')->withoutOverlapping()->everyFifteenMinutes();
         $schedule->command('outbound:reconcile-events')->withoutOverlapping()->everyFifteenMinutes();
         $schedule->command('outbound:reconcile-usage')->withoutOverlapping()->everyFifteenMinutes();
+        $schedule->command('outbound:dispatch-scheduled')->everyMinute()->withoutOverlapping();
     })
     ->withMiddleware(function (Middleware $middleware): void {
         $middleware->append(ApplySecurityHeaders::class);

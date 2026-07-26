@@ -342,6 +342,19 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Scheduled sending (Prompt 622)
+    |--------------------------------------------------------------------------
+    */
+
+    'schedule' => [
+        'enabled' => env('OUTBOUND_SCHEDULE_ENABLED', true),
+        'dispatch_batch_size' => (int) env('OUTBOUND_SCHEDULE_DISPATCH_BATCH', 50),
+        'defer_seconds' => (int) env('OUTBOUND_SCHEDULE_DEFER_SECONDS', 300),
+        'max_defer_seconds' => (int) env('OUTBOUND_SCHEDULE_MAX_DEFER_SECONDS', 900),
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
     | Launch readiness / metrics / pause-recommendation thresholds (Prompt 615)
     |--------------------------------------------------------------------------
     |

@@ -202,6 +202,7 @@ it('enforces state precedence: full documented ordering', function (): void {
         OutboundMessageState::Sent,
         OutboundMessageState::Sending,
         OutboundMessageState::Queued,
+        OutboundMessageState::Scheduled,
         OutboundMessageState::Draft,
     ];
 

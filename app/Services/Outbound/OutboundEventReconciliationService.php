@@ -259,7 +259,7 @@ final class OutboundEventReconciliationService
             $message->state === OutboundMessageState::Failed && $message->failed_at === null => 'failed_missing_failed_at',
             $message->state === OutboundMessageState::Cancelled
                 && ($message->sent_at !== null || $message->delivered_at !== null) => 'cancelled_after_send',
-            in_array($message->state, [OutboundMessageState::Draft, OutboundMessageState::Queued], true)
+            in_array($message->state, [OutboundMessageState::Draft, OutboundMessageState::Queued, OutboundMessageState::Scheduled], true)
                 && ($message->sent_at !== null || $message->delivered_at !== null) => 'premature_terminal_timestamp',
             default => null,
         };

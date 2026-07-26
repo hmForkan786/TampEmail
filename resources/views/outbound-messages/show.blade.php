@@ -46,6 +46,12 @@
                     <div class="muted">Delivered</div>
                     {{ $message->delivered_at?->toDayDateTimeString() ?? '—' }}
                 </div>
+                @if ($message->state->value === 'scheduled' && $scheduledLocalAt)
+                    <div>
+                        <div class="muted">Scheduled for</div>
+                        {{ $scheduledLocalAt }} ({{ $message->scheduled_timezone }})
+                    </div>
+                @endif
                 @if ($message->cancelled_at)
                     <div>
                         <div class="muted">Cancelled</div>
@@ -69,7 +75,15 @@
                 </p>
             @endif
 
-            <div class="row" style="margin-top:1rem;">
+            <div class="row" style="margin-top:1rem; flex-wrap:wrap;">
+                @if ($canSendNow)
+                    <form method="POST" action="{{ route('outbound-messages.send-now', $message) }}">
+                        @csrf
+                        <input type="hidden" name="schedule_version" value="{{ $message->schedule_version }}">
+                        <button type="submit" class="btn btn--primary">Send now</button>
+                    </form>
+                @endif
+
                 @if ($canCancel)
                     <form method="POST" action="{{ route('outbound-messages.cancel', $message) }}">
                         @csrf
@@ -92,6 +106,41 @@
                     </form>
                 @endif
             </div>
+
+            @if ($canReschedule)
+                <form method="POST" action="{{ route('outbound-messages.schedule', $message) }}" class="card" style="margin-top:1rem;">
+                    @csrf
+                    @method('PATCH')
+                    <h2 style="margin-top:0; font-size:1rem;">Reschedule</h2>
+                    <input type="hidden" name="schedule_version" value="{{ $message->schedule_version }}">
+                    <div class="form-field">
+                        <label for="local_date">Date</label>
+                        <input id="local_date" type="date" name="local_date" value="{{ old('local_date') }}" required>
+                    </div>
+                    <div class="form-field">
+                        <label for="local_time">Time</label>
+                        <input id="local_time" type="time" name="local_time" value="{{ old('local_time') }}" required>
+                    </div>
+                    <div class="form-field">
+                        <label for="timezone">Timezone</label>
+                        <select id="timezone" name="timezone" required>
+                            @foreach ($timezones as $tz)
+                                <option value="{{ $tz }}" @selected(old('timezone', $message->scheduled_timezone) === $tz)>{{ $tz }}</option>
+                            @endforeach
+                        </select>
+                    </div>
+                    <button type="submit" class="btn">Update schedule</button>
+                </form>
+            @endif
+
+            @if ($canUnschedule)
+                <form method="POST" action="{{ route('outbound-messages.unschedule', $message) }}" style="margin-top:1rem;" onsubmit="return confirm('Cancel this schedule and return the message to drafts?');">
+                    @csrf
+                    @method('DELETE')
+                    <input type="hidden" name="schedule_version" value="{{ $message->schedule_version }}">
+                    <button type="submit" class="btn btn--danger">Cancel schedule</button>
+                </form>
+            @endif
         </div>
 
         <div class="card">

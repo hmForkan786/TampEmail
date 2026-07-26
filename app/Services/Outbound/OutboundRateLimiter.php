@@ -147,7 +147,11 @@ final class OutboundRateLimiter
             $count = OutboundMessage::query()
                 ->where('user_id', $user->getKey())
                 ->where('created_at', '>=', $since)
-                ->whereNotIn('state', [OutboundMessageState::Cancelled->value, OutboundMessageState::Draft->value])
+                ->whereNotIn('state', [
+                    OutboundMessageState::Cancelled->value,
+                    OutboundMessageState::Draft->value,
+                    OutboundMessageState::Scheduled->value,
+                ])
                 ->count();
             if ($count >= $limit) {
                 Cache::increment('outbound.metrics.throttled_requests');
@@ -187,7 +191,11 @@ final class OutboundRateLimiter
         $recent = OutboundMessage::query()
             ->where('user_id', $user->getKey())
             ->where('created_at', '>=', $since)
-            ->whereNotIn('state', [OutboundMessageState::Cancelled->value])
+            ->whereNotIn('state', [
+                OutboundMessageState::Cancelled->value,
+                OutboundMessageState::Draft->value,
+                OutboundMessageState::Scheduled->value,
+            ])
             ->get(['to_recipients', 'cc_recipients', 'bcc_recipients']);
 
         $seen = [];
@@ -234,7 +242,11 @@ final class OutboundRateLimiter
         $used = (int) OutboundMessage::query()
             ->where('user_id', $user->getKey())
             ->where('created_at', '>=', now()->subDay())
-            ->whereNotIn('state', [OutboundMessageState::Cancelled->value])
+            ->whereNotIn('state', [
+                OutboundMessageState::Cancelled->value,
+                OutboundMessageState::Draft->value,
+                OutboundMessageState::Scheduled->value,
+            ])
             ->sum(DB::raw('COALESCE(LENGTH(text_body),0) + COALESCE(LENGTH(html_body),0)'));
 
         if (($used + max(0, $attachmentBytes)) > $limit) {

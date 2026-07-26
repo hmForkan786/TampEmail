@@ -9,6 +9,7 @@ use App\Models\OutboundMessage;
 use App\Services\Inbound\InboundHtmlSanitizer;
 use App\Services\Outbound\OutboundFailureCategoryMapper;
 use App\Services\Outbound\OutboundMessageAccessService;
+use App\Services\Outbound\OutboundScheduleTimezone;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 
@@ -37,6 +38,12 @@ final class OutboundMessageResource extends JsonResource
         $sanitizer = app(InboundHtmlSanitizer::class);
         $categories = app(OutboundFailureCategoryMapper::class);
         $access = app(OutboundMessageAccessService::class);
+        $timezones = app(OutboundScheduleTimezone::class);
+
+        $scheduledLocalAt = null;
+        if ($this->scheduled_at !== null && is_string($this->scheduled_timezone) && $this->scheduled_timezone !== '') {
+            $scheduledLocalAt = $timezones->formatLocal($this->scheduled_at->toImmutable(), $this->scheduled_timezone);
+        }
 
         return [
             'id' => $this->id,
@@ -45,6 +52,13 @@ final class OutboundMessageResource extends JsonResource
             'operation' => $this->operation?->value,
             'state' => $this->state?->value,
             'draft_version' => $this->when($this->state?->value === 'draft', $this->draft_version),
+            'schedule_version' => $this->when(
+                $this->state?->value === 'scheduled' || (int) $this->schedule_version > 0,
+                (int) $this->schedule_version,
+            ),
+            'scheduled_at' => $this->when($this->scheduled_at !== null, fn () => $this->scheduled_at?->toIso8601String()),
+            'scheduled_timezone' => $this->when($this->scheduled_timezone !== null, $this->scheduled_timezone),
+            'scheduled_local_at' => $this->when($scheduledLocalAt !== null, $scheduledLocalAt),
             'from' => [
                 'email' => $this->from_address,
                 'name' => $this->from_display_name,
@@ -81,6 +95,9 @@ final class OutboundMessageResource extends JsonResource
             'can_cancel' => $access->canCancel($this->resource),
             'can_retry' => $access->canRetry($this->resource),
             'can_delete' => $access->canDelete($this->resource),
+            'can_reschedule' => $access->canReschedule($this->resource),
+            'can_unschedule' => $access->canUnschedule($this->resource),
+            'can_send_now' => $access->canSendNow($this->resource),
             'created_at' => $this->created_at,
             'updated_at' => $this->updated_at,
         ];

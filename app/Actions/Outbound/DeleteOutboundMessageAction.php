@@ -51,7 +51,7 @@ final class DeleteOutboundMessageAction
             $stateBeforeHide = $message->state;
             $wasCancelled = false;
 
-            if ($message->state === OutboundMessageState::Queued) {
+            if (in_array($message->state, [OutboundMessageState::Queued, OutboundMessageState::Scheduled], true)) {
                 $message = $this->cancelOutboundMessage->execute($message->getKey(), $user);
                 $wasCancelled = true;
             }

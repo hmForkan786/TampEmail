@@ -104,7 +104,11 @@
                                     <div class="muted" style="font-size:0.75rem;">{{ str_replace('_', ' ', $row['failure_category']) }}</div>
                                 @endif
                             </td>
-                            <td>{{ $row['created_at']?->toDayDateTimeString() }}</td>
+                            <td>{{ $row['created_at']?->toDayDateTimeString() }}
+                                @if ($row['state'] === 'scheduled' && $row['scheduled_at'])
+                                    <div class="muted" style="font-size:0.75rem;">Due {{ $row['scheduled_at']->toDayDateTimeString() }}</div>
+                                @endif
+                            </td>
                             <td>{{ $row['attachment_count'] }}</td>
                         </tr>
                     @endforeach

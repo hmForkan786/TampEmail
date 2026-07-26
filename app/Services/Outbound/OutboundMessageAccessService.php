@@ -87,7 +87,22 @@ final class OutboundMessageAccessService
 
     public function canCancel(OutboundMessage $message): bool
     {
-        return $message->state === OutboundMessageState::Queued;
+        return in_array($message->state, [OutboundMessageState::Queued, OutboundMessageState::Scheduled], true);
+    }
+
+    public function canReschedule(OutboundMessage $message): bool
+    {
+        return $message->state->isReschedulable() && $message->scheduled_claimed_at === null;
+    }
+
+    public function canUnschedule(OutboundMessage $message): bool
+    {
+        return $message->state->isUnschedulable() && $message->scheduled_claimed_at === null;
+    }
+
+    public function canSendNow(OutboundMessage $message): bool
+    {
+        return $message->state === OutboundMessageState::Scheduled && $message->scheduled_claimed_at === null;
     }
 
     /**

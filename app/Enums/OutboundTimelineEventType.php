@@ -26,6 +26,9 @@ enum OutboundTimelineEventType: string
     case Failed = 'failed';
     case Cancelled = 'cancelled';
     case ManualRetry = 'manual_retry';
+    case ScheduleCreated = 'schedule_created';
+    case ScheduleUpdated = 'schedule_updated';
+    case ScheduleCancelled = 'schedule_cancelled';
     case AdminAction = 'admin_action';
 
     /**
@@ -48,6 +51,9 @@ enum OutboundTimelineEventType: string
             self::Failed,
             self::Cancelled,
             self::ManualRetry,
+            self::ScheduleCreated,
+            self::ScheduleUpdated,
+            self::ScheduleCancelled,
         ];
     }
 }
