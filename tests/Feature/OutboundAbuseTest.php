@@ -9,6 +9,7 @@ use App\Models\Domain;
 use App\Models\Inbox;
 use App\Models\OutboundMessage;
 use App\Models\User;
+use App\Services\Audit\AuditLogWriter;
 use App\Services\Outbound\OutboundOpsService;
 use App\Services\Outbound\OutboundRateLimiter;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -138,6 +139,32 @@ it('blocks temporarily blocked users and restores after expiry', function (): vo
         'outbound_suspended_users',
         'blocked_sends',
     ]);
+});
+
+it('queries abuse signal audit records through the canonical user attribution column', function (): void {
+    config([
+        'outbound.messages_per_minute' => 100,
+        'outbound.messages_per_hour' => 100,
+        'outbound.messages_per_day' => 100,
+        'outbound.abuse.bounce_threshold_24h' => 2,
+        'outbound.abuse.complaint_threshold_24h' => 2,
+        'outbound.abuse.failed_send_threshold_24h' => 1000,
+        'outbound.abuse.suppression_block_threshold_24h' => 2,
+    ]);
+    $ctx = abuseUserContext();
+
+    app(AuditLogWriter::class)->write(
+        'outbound.bounce_received',
+        (string) $ctx['user']->getKey(),
+        null,
+        null,
+        null,
+        ['event_type' => 'bounced'],
+    );
+
+    app(OutboundRateLimiter::class)->assertWithinLimits($ctx['user'], ['safe@example.test']);
+
+    expect(true)->toBeTrue();
 });
 
 it('documents sqlite concurrency limitation for quota locks', function (): void {

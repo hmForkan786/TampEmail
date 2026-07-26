@@ -250,12 +250,12 @@ final class OutboundRateLimiter
 
         $bounces = AuditLog::query()
             ->where('action', 'outbound.bounce_received')
-            ->where('actor_user_id', $user->getKey())
+            ->where('user_id', $user->getKey())
             ->where('created_at', '>=', now()->subDay())
             ->count();
         $complaints = AuditLog::query()
             ->where('action', 'outbound.complaint_received')
-            ->where('actor_user_id', $user->getKey())
+            ->where('user_id', $user->getKey())
             ->where('created_at', '>=', now()->subDay())
             ->count();
         $failed = OutboundMessage::query()
@@ -265,7 +265,7 @@ final class OutboundRateLimiter
             ->count();
         $suppressionBlocks = AuditLog::query()
             ->where('action', 'outbound.send_blocked_by_suppression')
-            ->where('actor_user_id', $user->getKey())
+            ->where('user_id', $user->getKey())
             ->where('created_at', '>=', now()->subDay())
             ->count();
 
