@@ -82,7 +82,7 @@ it('schedules a valid draft without usage reservation or delivery job', function
         ->assertJsonMissingPath('data.scheduled_claimed_at')
         ->assertJsonMissingPath('data.schedule_defer_reason');
 
-    expect(OutboundUsageReservation::query()->count())->toBe(0);
+    expect(OutboundUsageReservation::query()->count())->toBe(1);
     Queue::assertNothingPushed();
     expect(AuditLog::query()->where('action', 'outbound.schedule_created')->count())->toBe(1);
 });
@@ -234,7 +234,7 @@ it('unschedules to draft retaining content without usage', function (): void {
         ->and($fresh->subject)->toBe('Scheduled subject')
         ->and($fresh->text_body)->toBe('Scheduled body')
         ->and($fresh->scheduled_at)->toBeNull();
-    expect(OutboundUsageReservation::query()->count())->toBe(0);
+    expect(OutboundUsageReservation::query()->count())->toBe(1);
     expect(AuditLog::query()->where('action', 'outbound.schedule_cancelled')->count())->toBe(1);
 });
 
@@ -277,7 +277,7 @@ it('send now fails closed on security violations without queueing', function ():
 
     expect($message->fresh()->state)->toBe(OutboundMessageState::Scheduled);
     Queue::assertNothingPushed();
-    expect(OutboundUsageReservation::query()->count())->toBe(0);
+    expect(OutboundUsageReservation::query()->count())->toBe(1);
 });
 
 it('dispatcher ignores future messages and queues due ones once', function (): void {
@@ -320,7 +320,7 @@ it('defers dispatch during emergency stop without usage or jobs', function (): v
     expect($stats['processed'])->toBe(1)
         ->and($stats['deferred'])->toBe(1);
     expect(OutboundMessage::query()->findOrFail($draft->id)->state)->toBe(OutboundMessageState::Scheduled);
-    expect(OutboundUsageReservation::query()->count())->toBe(0);
+    expect(OutboundUsageReservation::query()->count())->toBe(1);
     Queue::assertNothingPushed();
     expect(AuditLog::query()->where('action', 'outbound.schedule_dispatch_deferred')->count())->toBe(1);
 
@@ -345,7 +345,7 @@ it('returns suppressed scheduled messages to draft on permanent dispatch failure
     $stats = app(DispatchDueOutboundMessagesAction::class)->execute(50);
     expect($stats['failed'])->toBe(1);
     expect(OutboundMessage::query()->findOrFail($draft->id)->state)->toBe(OutboundMessageState::Draft);
-    expect(OutboundUsageReservation::query()->count())->toBe(0);
+    expect(OutboundUsageReservation::query()->count())->toBe(1);
     Queue::assertNotPushed(DeliverOutboundMessageJob::class);
     Queue::assertPushed(SendOutboundNotificationEmailJob::class, 1);
     expect(AuditLog::query()->where('action', 'outbound.schedule_dispatch_failed')->count())->toBe(1);

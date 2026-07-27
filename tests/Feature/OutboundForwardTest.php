@@ -63,6 +63,13 @@ function outboundForwardContext(): array
         ['name' => 'Forward Email', 'value_type' => ValueType::Boolean, 'default_value' => ['enabled' => true], 'is_active' => true, 'display_order' => 12],
     );
     $plan->features()->syncWithoutDetaching([$feature->id => ['feature_value' => ['enabled' => true]]]);
+    $sendFeature = Feature::query()->firstOrCreate(
+        ['key' => 'send_email'],
+        ['name' => 'Send Email', 'value_type' => ValueType::Boolean, 'is_active' => true, 'display_order' => 10],
+    );
+    $plan->features()->syncWithoutDetaching([$sendFeature->id => ['feature_value' => ['enabled' => true]]]);
+    $messageLimit = Feature::query()->firstOrCreate(['key' => 'outbound_messages_per_period'], ['name' => 'Outbound messages', 'value_type' => ValueType::Json, 'is_active' => true, 'display_order' => 13]);
+    $plan->features()->syncWithoutDetaching([$messageLimit->id => ['feature_value' => ['limit' => 1000, 'reset_period' => 'monthly']]]);
     Subscription::query()->create([
         'user_id' => $user->id, 'plan_id' => $plan->id, 'status' => SubscriptionStatus::Active,
         'billing_cycle' => BillingCycle::Monthly, 'starts_at' => now()->subDay(), 'auto_renew' => true,

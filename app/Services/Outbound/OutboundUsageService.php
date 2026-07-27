@@ -81,6 +81,19 @@ final class OutboundUsageService
             return null;
         }
 
+        // Message acceptance is a commercial hard boundary. Unlike optional
+        // recipient/byte dimensions, a missing or malformed message limit is
+        // never interpreted as unlimited.
+        if ($this->entitlements->limit($user, (string) config('outbound_usage.feature_keys.messages')) < 1) {
+            $this->audit->write('commercial.outbound_quota_exhausted', (string) $user->getKey(), $message, null, null, [
+                'feature' => 'outbound_messages_per_period',
+                'limit' => 0,
+                'used' => 0,
+                'operation' => $message->operation->value,
+            ]);
+            throw new OutboundSendException('plan_limit_reached', 'Your outbound message quota has been reached.', 429);
+        }
+
         $existing = OutboundUsageReservation::query()
             ->where('outbound_message_id', $message->getKey())
             ->first();
@@ -332,7 +345,7 @@ final class OutboundUsageService
             $report['scanned']++;
             $message = $reservation->outboundMessage;
 
-            $safeToRelease = $message !== null && (
+            $safeToRelease = (
                 $message->state->value === 'cancelled'
                 || ($message->state->value === 'failed' && $message->transport_attempted_at === null)
             );
@@ -479,6 +492,7 @@ final class OutboundUsageService
     }
 
     /**
+     * @param  array{feature: Feature|null, limit: int|null, resetPeriod: ResetPeriod}  $dimension
      * @return array{used: int, remaining: int|null, unlimited: bool, reset_at: string|null}
      */
     private function dimensionSummary(?Subscription $subscription, array $dimension): array
