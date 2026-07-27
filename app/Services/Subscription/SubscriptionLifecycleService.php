@@ -62,6 +62,23 @@ final class SubscriptionLifecycleService
         });
     }
 
+    public function expireNow(Subscription $subscription, ?string $actorId = null, string $source = 'domain'): Subscription
+    {
+        return DB::transaction(function () use ($subscription, $actorId, $source): Subscription {
+            $locked = Subscription::query()->whereKey($subscription->getKey())->lockForUpdate()->firstOrFail();
+            if ($locked->status === SubscriptionStatus::Expired) {
+                return $locked;
+            }
+            $this->assertStatus($locked, [SubscriptionStatus::Active, SubscriptionStatus::Trial]);
+            $old = $locked->status;
+            $at = now();
+            $locked->forceFill(['status' => SubscriptionStatus::Expired, 'auto_renew' => false, 'cancel_at_period_end' => false, 'ends_at' => $at])->save();
+            $this->auditTransition('subscription.expired', $locked, $old, SubscriptionStatus::Expired, $actorId, $source, $at);
+
+            return $locked->fresh();
+        });
+    }
+
     public function renew(Subscription $subscription, CarbonInterface $newEndsAt, ?string $actorId = null, string $source = 'domain'): Subscription
     {
         return DB::transaction(function () use ($subscription, $newEndsAt, $actorId, $source): Subscription {

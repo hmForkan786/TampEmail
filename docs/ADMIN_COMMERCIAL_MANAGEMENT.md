@@ -18,6 +18,10 @@ access; it must retain inbox creation, ads visibility, and at least one inbox.
 All updates use a locked `updated_at` comparison, transaction, atomic pivot
 update, and audit record. There is no entitlement cache to invalidate.
 
+The Plan edit header includes a mapped-feature editor that resolves the
+selected feature from the plan and delegates every mutation to the management
+service; it does not write the pivot directly.
+
 Subscription records are read-only except confirmed lifecycle actions, which
 call `SubscriptionLifecycleService`; raw status fields are never offered.
 Payment checkout, gateway operations, invoices, end-user billing UI, bulk

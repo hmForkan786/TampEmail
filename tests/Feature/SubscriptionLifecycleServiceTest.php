@@ -69,3 +69,14 @@ it('preserves usage history during cancellation', function (): void {
     $service->cancelImmediately($subscription);
     expect(SubscriptionUsage::query()->where('subscription_id', $subscription->id)->value('used_value'))->toBe(5);
 });
+
+it('expires an active subscription idempotently through the lifecycle service', function (): void {
+    [$user, , $subscription, $service] = lifecycleFixture();
+    $service->activate($subscription, now(), now()->addMonth());
+    $service->expireNow($subscription);
+    $service->expireNow($subscription);
+
+    expect($subscription->fresh()->status)->toBe(SubscriptionStatus::Expired)
+        ->and(app(EntitlementService::class)->effectivePlan($user)?->slug)->toBe('free')
+        ->and(AuditLog::query()->where('action', 'subscription.expired')->count())->toBe(1);
+});

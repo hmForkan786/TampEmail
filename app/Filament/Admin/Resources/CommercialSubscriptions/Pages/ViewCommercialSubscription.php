@@ -22,9 +22,11 @@ final class ViewCommercialSubscription extends ViewRecord
     protected function getHeaderActions(): array
     {
         return [
+            Action::make('activate')->label('Activate')->form([DateTimePicker::make('ends_at')->required()->seconds(false)])->action(fn (array $data) => $this->lifecycle('activate', now(), Carbon::parse($data['ends_at']))),
             Action::make('cancelImmediately')->label('Cancel now')->color('danger')->requiresConfirmation()->action(fn () => $this->lifecycle('cancelImmediately')),
             Action::make('cancelAtPeriodEnd')->label('Cancel at period end')->requiresConfirmation()->action(fn () => $this->lifecycle('cancelAtPeriodEnd')),
             Action::make('renew')->label('Renew / reactivate')->form([DateTimePicker::make('ends_at')->required()->seconds(false)])->action(fn (array $data) => $this->lifecycle('renew', Carbon::parse($data['ends_at']))),
+            Action::make('expire')->label('Expire now')->color('danger')->requiresConfirmation()->action(fn () => $this->lifecycle('expireNow')),
         ];
     }
 
