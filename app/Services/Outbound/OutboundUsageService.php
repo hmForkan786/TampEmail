@@ -15,6 +15,7 @@ use App\Models\Subscription;
 use App\Models\SubscriptionUsage;
 use App\Models\User;
 use App\Services\Audit\AuditLogWriter;
+use App\Services\Commercial\CommercialThresholdNotificationService;
 use App\Services\Entitlement\EntitlementService;
 use Illuminate\Auth\Access\AuthorizationException;
 use Illuminate\Database\QueryException;
@@ -702,31 +703,12 @@ final class OutboundUsageService
         }
 
         $consumed = (int) $usage->used_value + $this->outstandingReservedUnits($subscription, 'messages', $usage->period_start);
-        $percentage = (int) min(100, (int) floor(($consumed / $limit) * 100));
-        $periodStart = $usage->period_start->format('Y-m-d');
-        $notifications = app(OutboundNotificationService::class);
-
-        if ($consumed >= $limit) {
-            $notifications->notify(
-                $user,
-                'outbound.usage_exhausted',
-                null,
-                ['percentage' => 100],
-                'usage_exhausted:'.$user->id.':'.$periodStart,
-            );
-
-            return;
-        }
-
-        $warningPercent = max(1, min(100, (int) config('outbound_notifications.usage_warning_percent', 80)));
-        if ($percentage >= $warningPercent) {
-            $notifications->notify(
-                $user,
-                'outbound.usage_warning',
-                null,
-                ['percentage' => $percentage],
-                'usage_warning:'.$user->id.':'.$periodStart,
-            );
-        }
+        app(CommercialThresholdNotificationService::class)->evaluate(
+            $user,
+            'outbound_messages_per_period',
+            $consumed,
+            $limit,
+            $usage->period_start->format('Y-m-d'),
+        );
     }
 }

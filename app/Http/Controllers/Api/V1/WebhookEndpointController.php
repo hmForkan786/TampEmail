@@ -8,7 +8,7 @@ use App\Exceptions\OutboundSendException;
 use App\Models\User;
 use App\Models\WebhookDelivery;
 use App\Models\WebhookEndpoint;
-use App\Services\Commercial\CommercialApiErrorMapper;
+use App\Services\Commercial\CommercialResponseFactory;
 use App\Services\Entitlement\EntitlementService;
 use App\Services\Webhook\WebhookEndpointService;
 use Illuminate\Http\JsonResponse;
@@ -19,6 +19,7 @@ final class WebhookEndpointController
     public function __construct(
         private readonly WebhookEndpointService $webhooks,
         private readonly EntitlementService $entitlements,
+        private readonly CommercialResponseFactory $commercialResponses,
     ) {}
 
     public function index(Request $request): JsonResponse
@@ -218,9 +219,19 @@ final class WebhookEndpointController
             $used = $this->webhooks->activeEndpointCount($user);
             $limit = $this->entitlements->limit($user, 'webhook.max_endpoints');
 
-            return CommercialApiErrorMapper::fromOutboundSendException($exception, $used, $limit);
+            return $this->commercialResponses->fromOutboundSendException(
+                $exception,
+                $user,
+                $used,
+                $limit,
+                'webhook.max_endpoints',
+            );
         }
 
-        return CommercialApiErrorMapper::fromOutboundSendException($exception);
+        return $this->commercialResponses->fromOutboundSendException(
+            $exception,
+            $user,
+            feature: $exception->errorCode === 'feature_not_available' ? 'webhook.access' : null,
+        );
     }
 }

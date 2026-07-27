@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\Web\AuthenticatedSessionController;
+use App\Http\Controllers\Web\MailboxController;
 use App\Http\Controllers\Web\OutboundAttachmentDownloadController;
 use App\Http\Controllers\Web\OutboundDraftController;
 use App\Http\Controllers\Web\OutboundMessageController;
@@ -19,6 +20,7 @@ Route::middleware('guest')->group(function (): void {
 
 Route::middleware('auth')->group(function (): void {
     Route::post('logout', [AuthenticatedSessionController::class, 'destroy'])->name('logout');
+    Route::get('inbox', [MailboxController::class, 'index'])->name('mailbox.index');
 
     Route::get('outbound-messages', [OutboundMessageController::class, 'index'])
         ->name('outbound-messages.index');

@@ -11,15 +11,17 @@ use App\Http\Requests\Outbound\StoreOutboundReplyRequest;
 use App\Http\Resources\OutboundMessageResource;
 use App\Http\Responses\ApiErrorResponse;
 use App\Models\User;
+use App\Services\Commercial\CommercialResponseFactory;
 use Illuminate\Http\JsonResponse;
 
 final class EmailReplyController
 {
     public function __construct(
         private readonly CreateOutboundReplyAction $createOutboundReply,
+        private readonly CommercialResponseFactory $commercialResponses,
     ) {}
 
-    public function store(StoreOutboundReplyRequest $request, string $email): OutboundMessageResource|JsonResponse
+    public function store(StoreOutboundReplyRequest $request, string $email): JsonResponse
     {
         /** @var User $owner */
         $owner = $request->attributes->get('apiKeyOwner');
@@ -39,9 +41,18 @@ final class EmailReplyController
                 $apiKey !== null ? (string) $apiKey->getKey() : null,
             );
         } catch (OutboundSendException $exception) {
-            return ApiErrorResponse::make($exception->errorCode, $exception->getMessage(), $exception->status);
+            return $this->mapCommercialException($exception, $owner);
         }
 
         return (new OutboundMessageResource($message))->response()->setStatusCode(201);
+    }
+
+    private function mapCommercialException(OutboundSendException $exception, User $owner): JsonResponse
+    {
+        if (in_array($exception->errorCode, ['plan_limit_reached', 'feature_not_available'], true)) {
+            return $this->commercialResponses->fromOutboundSendException($exception, $owner);
+        }
+
+        return ApiErrorResponse::make($exception->errorCode, $exception->getMessage(), $exception->status);
     }
 }

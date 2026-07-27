@@ -16,6 +16,8 @@ use App\Repositories\Contracts\ApiKeyRepositoryInterface;
 use App\Services\ApiKey\ApiKeyScopeRegistry;
 use App\Services\ApiKey\ApiKeyTokenGenerator;
 use App\Services\Audit\AuditLogWriter;
+use App\Services\Commercial\CommercialQuotaResolver;
+use App\Services\Commercial\CommercialThresholdNotificationService;
 use App\Services\Entitlement\EntitlementService;
 use Carbon\CarbonInterface;
 use Illuminate\Support\Facades\DB;
@@ -97,7 +99,8 @@ final class CreateApiKeyAction
         ?User $user = null,
     ): ApiKeyIssuanceResult {
         try {
-            return DB::transaction(function () use ($userId, $name, $permissions, $rateLimitPerMinute, $expiresAt, $metadata, $user): ApiKeyIssuanceResult {
+            $lockedUser = null;
+            $result = DB::transaction(function () use ($userId, $name, $permissions, $rateLimitPerMinute, $expiresAt, $metadata, $user, &$lockedUser): ApiKeyIssuanceResult {
                 $lockedUser = $this->resolveLockedUser($userId, $user);
                 $authorizedPermissions = ApiKeyScopeRegistry::authorizeForOwner($lockedUser, $permissions);
                 $this->enforceQuota($lockedUser);
@@ -117,6 +120,11 @@ final class CreateApiKeyAction
 
                 return new ApiKeyIssuanceResult($apiKey, $credentials['plain_token']);
             });
+            if ($lockedUser instanceof User) {
+                $this->notifyInventoryThreshold($lockedUser, 'max_api_keys');
+            }
+
+            return $result;
         } catch (ApiKeyQuotaExceededException $exception) {
             $this->auditQuotaDenial($exception);
 
@@ -189,5 +197,22 @@ final class CreateApiKeyAction
             'used' => $exception->used,
             'remaining' => 0,
         ]);
+    }
+
+    private function notifyInventoryThreshold(User $user, string $featureKey): void
+    {
+        $resolver = app(CommercialQuotaResolver::class);
+        $limit = $resolver->resolveLimit($user, $featureKey);
+        if ($limit === null || $limit === PHP_INT_MAX || $limit <= 0) {
+            return;
+        }
+
+        app(CommercialThresholdNotificationService::class)->evaluate(
+            $user,
+            $featureKey,
+            $resolver->resolveUsed($user, $featureKey, 'inventory'),
+            $limit,
+            'inventory',
+        );
     }
 }

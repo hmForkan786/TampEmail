@@ -22,6 +22,7 @@ use App\Http\Responses\ApiErrorResponse;
 use App\Models\Domain;
 use App\Models\Inbox;
 use App\Models\User;
+use App\Services\Commercial\CommercialResponseFactory;
 use App\Services\Entitlement\EntitlementService;
 use App\Services\Inbox\OwnedInboxVisibilityService;
 use Carbon\Carbon;
@@ -40,6 +41,7 @@ final class InboxController extends Controller
         private readonly DeleteInboxAction $deleteInbox,
         private readonly RenewInboxAction $renewInbox,
         private readonly EntitlementService $entitlements,
+        private readonly CommercialResponseFactory $commercialResponses,
     ) {}
 
     public function store(StoreOwnedInboxRequest $request): JsonResponse
@@ -48,14 +50,14 @@ final class InboxController extends Controller
         $domain = Domain::query()->active()->registrationAllowed()->whereKey($request->validated('domain_id'))->firstOrFail();
         $submittedLocalPart = $request->validated('local_part');
         if (is_string($submittedLocalPart) && $submittedLocalPart !== '' && ! $this->entitlements->allows($owner, 'inbox.custom_alias')) {
-            return $this->commercialDenial(new CommercialEntitlementDeniedException('inbox.custom_alias'));
+            return $this->commercialDenial(new CommercialEntitlementDeniedException('inbox.custom_alias'), $owner);
         }
         $localPart = is_string($submittedLocalPart) && $submittedLocalPart !== ''
             ? $submittedLocalPart
             : $this->generatedLocalPart((string) $domain->domain);
         $retentionHours = $this->entitlements->limit($owner, 'inbox.retention_hours');
         if ($retentionHours < 1) {
-            return $this->commercialDenial(new CommercialEntitlementDeniedException('inbox.retention_hours'));
+            return $this->commercialDenial(new CommercialEntitlementDeniedException('inbox.retention_hours'), $owner);
         }
         $retentionExpiresAt = now()->addHours($retentionHours);
         $requestedExpiresAt = $request->validated('expires_at')
@@ -81,7 +83,7 @@ final class InboxController extends Controller
 
             return (new InboxResource($this->createInbox->execute($data, $owner, $context)))->response()->setStatusCode(201);
         } catch (CommercialEntitlementDeniedException $exception) {
-            return $this->commercialDenial($exception);
+            return $this->commercialDenial($exception, $owner);
         } catch (EligibleMailServerUnavailableException) {
             return ApiErrorResponse::make('mail_server_unavailable', 'No eligible mail server is available.', 503);
         } catch (QueryException $exception) {
@@ -143,20 +145,9 @@ final class InboxController extends Controller
         return $request->attributes->get('apiKeyOwner');
     }
 
-    private function commercialDenial(CommercialEntitlementDeniedException $exception): JsonResponse
+    private function commercialDenial(CommercialEntitlementDeniedException $exception, User $owner): JsonResponse
     {
-        return response()->json([
-            'error' => [
-                'code' => 'plan_limit_reached',
-                'message' => $exception->getMessage(),
-                'details' => array_filter([
-                    'feature' => $exception->feature,
-                    'current_value' => $exception->currentValue,
-                    'allowed_limit' => $exception->allowedLimit,
-                    'upgrade_required' => true,
-                ], static fn (mixed $value): bool => $value !== null),
-            ],
-        ], 403);
+        return $this->commercialResponses->fromCommercialEntitlementDenied($exception, $owner);
     }
 
     private function generatedLocalPart(string $domain): string

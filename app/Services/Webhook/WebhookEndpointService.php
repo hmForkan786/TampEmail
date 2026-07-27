@@ -9,6 +9,8 @@ use App\Models\User;
 use App\Models\WebhookDelivery;
 use App\Models\WebhookEndpoint;
 use App\Services\Audit\AuditLogWriter;
+use App\Services\Commercial\CommercialQuotaResolver;
+use App\Services\Commercial\CommercialThresholdNotificationService;
 use App\Services\Entitlement\EntitlementService;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
@@ -27,7 +29,7 @@ final class WebhookEndpointService
     public function create(User $user, array $data): array
     {
         try {
-            return DB::transaction(function () use ($user, $data): array {
+            $result = DB::transaction(function () use ($user, $data): array {
                 $locked = $this->lockUser($user);
                 $this->assertAccess($locked);
                 WebhookEventRegistry::assertSupported($data['events']);
@@ -55,6 +57,11 @@ final class WebhookEndpointService
 
                 return ['endpoint' => $endpoint, 'secret' => $secret];
             });
+            if (($data['is_active'] ?? true) === true) {
+                $this->notifyInventoryThreshold($user);
+            }
+
+            return $result;
         } catch (OutboundSendException $exception) {
             if ($exception->errorCode === 'plan_limit_reached') {
                 $this->auditEndpointLimitReached($user);
@@ -91,7 +98,7 @@ final class WebhookEndpointService
     public function enable(WebhookEndpoint $endpoint, User $user): WebhookEndpoint
     {
         try {
-            return DB::transaction(function () use ($endpoint, $user): WebhookEndpoint {
+            $endpoint = DB::transaction(function () use ($endpoint, $user): WebhookEndpoint {
                 $locked = $this->lockUser($user);
                 $this->assertAccess($locked);
                 $endpoint = $this->lockEndpoint($endpoint, $user);
@@ -105,6 +112,9 @@ final class WebhookEndpointService
 
                 return $endpoint->refresh();
             });
+            $this->notifyInventoryThreshold($user);
+
+            return $endpoint;
         } catch (OutboundSendException $exception) {
             if ($exception->errorCode === 'plan_limit_reached') {
                 $this->auditEndpointLimitReached($user);
@@ -229,5 +239,22 @@ final class WebhookEndpointService
             ->firstOrFail();
 
         return $locked;
+    }
+
+    private function notifyInventoryThreshold(User $user): void
+    {
+        $resolver = app(CommercialQuotaResolver::class);
+        $limit = $resolver->resolveLimit($user, 'webhook.max_endpoints');
+        if ($limit === null || $limit === PHP_INT_MAX || $limit <= 0) {
+            return;
+        }
+
+        app(CommercialThresholdNotificationService::class)->evaluate(
+            $user,
+            'webhook.max_endpoints',
+            $resolver->resolveUsed($user, 'webhook.max_endpoints', 'inventory'),
+            $limit,
+            'inventory',
+        );
     }
 }

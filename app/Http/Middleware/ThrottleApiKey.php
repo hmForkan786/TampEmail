@@ -7,7 +7,7 @@ namespace App\Http\Middleware;
 use App\Models\User;
 use App\Services\ApiKey\AuthenticatedApiKeyContext;
 use App\Services\Audit\AuditLogWriter;
-use App\Services\Commercial\CommercialApiErrorMapper;
+use App\Services\Commercial\CommercialResponseFactory;
 use App\Services\Entitlement\EntitlementService;
 use Closure;
 use Illuminate\Cache\RateLimiter;
@@ -20,6 +20,7 @@ final class ThrottleApiKey
         private readonly RateLimiter $limiter,
         private readonly EntitlementService $entitlements,
         private readonly AuditLogWriter $audit,
+        private readonly CommercialResponseFactory $responses,
     ) {}
 
     public function handle(Request $request, Closure $next): Response
@@ -42,7 +43,12 @@ final class ThrottleApiKey
 
             return $this->response(
                 $request,
-                CommercialApiErrorMapper::rateLimitExceeded('api.max_requests_per_minute', max(0, $limit), 0),
+                $this->responses->rateLimitExceeded(
+                    'api.max_requests_per_minute',
+                    max(0, $limit),
+                    0,
+                    $owner instanceof User ? $owner : null,
+                ),
                 max(0, $limit),
                 0,
                 $retryAfter,
@@ -80,7 +86,7 @@ final class ThrottleApiKey
 
         $commercial = $this->entitlements->limit($context->owner, 'api.max_requests_per_minute');
         $configured = $context->apiKey->rate_limit_per_minute;
-        $keyLimit = $configured !== null && $configured > 0 ? (int) $configured : $fallback;
+        $keyLimit = $configured > 0 ? $configured : $fallback;
 
         return min($fallback, $commercial, $keyLimit);
     }

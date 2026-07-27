@@ -103,7 +103,7 @@ final class CommercialPlanManagementService
         if (array_key_exists($feature->key, self::FREE_BOOLEAN_INVARIANTS) && ($value['enabled'] ?? null) !== self::FREE_BOOLEAN_INVARIANTS[$feature->key]) {
             throw new CommercialManagementException('This Free-plan entitlement is a protected commercial invariant.');
         }
-        if ($feature->key === 'max_inboxes' && (($value['limit'] ?? 0) < 1)) {
+        if ($feature->key === 'inbox.max_active' && (($value['limit'] ?? 0) < 1)) {
             throw new CommercialManagementException('The Free plan must allow at least one active inbox.');
         }
     }

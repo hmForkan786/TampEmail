@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\Api\V1\AttachmentDownloadController;
+use App\Http\Controllers\Api\V1\CommercialUsageController;
 use App\Http\Controllers\Api\V1\EmailForwardController;
 use App\Http\Controllers\Api\V1\EmailReadStateController;
 use App\Http\Controllers\Api\V1\EmailReplyController;
@@ -75,6 +76,8 @@ Route::prefix('v1')->name('api.v1.')->middleware(['api.request-log', 'api.key'])
             ->name('outbound-messages.attachments.download');
         Route::get('outbound-usage', [OutboundUsageController::class, 'show'])
             ->name('outbound-usage.show');
+        Route::get('commercial/usage', [CommercialUsageController::class, 'show'])
+            ->name('commercial.usage.show');
         Route::get('outbound-notification-preferences', [OutboundNotificationPreferenceController::class, 'show']);
         Route::get('outbound-notifications', [OutboundNotificationController::class, 'index']);
         Route::get('outbound-notifications/unread-count', [OutboundNotificationController::class, 'count']);

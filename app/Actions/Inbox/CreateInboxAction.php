@@ -14,6 +14,8 @@ use App\Models\User;
 use App\Repositories\Contracts\InboxRepositoryInterface;
 use App\Repositories\Contracts\MailServerRepositoryInterface;
 use App\Services\Audit\AuditLogWriter;
+use App\Services\Commercial\CommercialQuotaResolver;
+use App\Services\Commercial\CommercialThresholdNotificationService;
 use App\Services\Entitlement\EntitlementService;
 use App\Services\MailServer\MailServerSelectionService;
 use Illuminate\Support\Facades\DB;
@@ -48,7 +50,7 @@ final class CreateInboxAction
         $this->assertContextAllowsCreate($data, $user, $context);
 
         try {
-            return DB::transaction(function () use ($data, $user, $context): Inbox {
+            $inbox = DB::transaction(function () use ($data, $user, $context): Inbox {
                 if ($user !== null) {
                     $user = $this->lockUserForUpdate($user);
                     $this->enforceQuota($user);
@@ -93,6 +95,12 @@ final class CreateInboxAction
 
                 return $inbox;
             });
+
+            if ($user !== null) {
+                $this->notifyInventoryThreshold($user, 'inbox.max_active');
+            }
+
+            return $inbox;
         } catch (CommercialEntitlementDeniedException $exception) {
             if ($user !== null && $exception->currentValue !== null && $exception->allowedLimit !== null) {
                 $this->auditLogWriter->write('commercial.limit_reached', (string) $user->id, $user, null, null, [
@@ -157,5 +165,22 @@ final class CreateInboxAction
                 'The active inbox limit for your plan has been reached.',
             );
         }
+    }
+
+    private function notifyInventoryThreshold(User $user, string $featureKey): void
+    {
+        $resolver = app(CommercialQuotaResolver::class);
+        $limit = $resolver->resolveLimit($user, $featureKey);
+        if ($limit === null || $limit === PHP_INT_MAX || $limit <= 0) {
+            return;
+        }
+
+        app(CommercialThresholdNotificationService::class)->evaluate(
+            $user,
+            $featureKey,
+            $resolver->resolveUsed($user, $featureKey, 'inventory'),
+            $limit,
+            'inventory',
+        );
     }
 }

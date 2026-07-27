@@ -7,7 +7,7 @@ namespace App\Http\Middleware;
 use App\Models\User;
 use App\Services\ApiKey\AuthenticatedApiKeyContext;
 use App\Services\Audit\AuditLogWriter;
-use App\Services\Commercial\CommercialApiErrorMapper;
+use App\Services\Commercial\CommercialResponseFactory;
 use App\Services\Entitlement\EntitlementService;
 use Closure;
 use Illuminate\Http\Request;
@@ -18,6 +18,7 @@ final class EnsureCommercialApiEntitlement
     public function __construct(
         private readonly EntitlementService $entitlements,
         private readonly AuditLogWriter $audit,
+        private readonly CommercialResponseFactory $responses,
     ) {}
 
     public function handle(Request $request, Closure $next, string $feature): Response
@@ -32,7 +33,7 @@ final class EnsureCommercialApiEntitlement
                 'path' => $request->path(),
             ]);
 
-            return CommercialApiErrorMapper::featureDenied($feature);
+            return $this->responses->featureUnavailable($feature, null, 403, $user instanceof User ? $user : null);
         }
 
         return $next($request);
