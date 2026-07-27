@@ -147,18 +147,18 @@ it('rejects DST gap times and resolves overlap to the earlier occurrence', funct
         'timezone' => 'America/New_York',
     ])->assertStatus(422)->assertJsonPath('error.code', 'schedule_time_invalid');
 
-    CarbonImmutable::setTestNow('2025-11-01 12:00:00');
+    CarbonImmutable::setTestNow('2030-11-02 12:00:00');
     $draft2 = createSendableDraft($ctx);
 
     $response = test()->withToken($ctx['token'])->postJson('/api/v1/outbound-drafts/'.$draft2->id.'/schedule', [
         'version' => $draft2->draft_version,
-        'local_date' => '2025-11-02',
+        'local_date' => '2030-11-03',
         'local_time' => '01:30',
         'timezone' => 'America/New_York',
     ])->assertOk();
 
     $scheduledAt = CarbonImmutable::parse($response->json('data.scheduled_at'));
-    expect($scheduledAt->utc()->format('Y-m-d H:i:s'))->toBe('2025-11-02 05:30:00');
+    expect($scheduledAt->utc()->format('Y-m-d H:i:s'))->toBe('2030-11-03 05:30:00');
 
     CarbonImmutable::setTestNow();
 });
