@@ -33,7 +33,7 @@ it('creates every commercial feature with its declared value type', function ():
     seedCommercialCatalogue();
 
     $types = [
-        'inbox.create' => ValueType::Boolean, 'max_inboxes' => ValueType::Integer,
+        'inbox.create' => ValueType::Boolean, 'inbox.max_active' => ValueType::Integer,
         'inbox.custom_alias' => ValueType::Boolean, 'inbox.public_access' => ValueType::Boolean,
         'inbox.retention_hours' => ValueType::Integer, 'message.max_received' => ValueType::Integer,
         'attachment.download' => ValueType::Boolean, 'attachment.max_size_mb' => ValueType::Integer,
@@ -60,8 +60,8 @@ it('maps the commercial access boundary exactly', function (): void {
     $free = Plan::query()->where('slug', 'free')->firstOrFail();
     $premium = Plan::query()->where('slug', 'premium')->firstOrFail();
 
-    expect(commercialValue($free, 'max_inboxes'))->toBe(['limit' => 3])
-        ->and(commercialValue($premium, 'max_inboxes'))->toBe(['limit' => 25])
+    expect(commercialValue($free, 'inbox.max_active'))->toBe(['limit' => 3])
+        ->and(commercialValue($premium, 'inbox.max_active'))->toBe(['limit' => 25])
         ->and(commercialValue($free, 'send_email'))->toBe(['enabled' => false])
         ->and(commercialValue($premium, 'send_email'))->toBe(['enabled' => true])
         ->and(commercialValue($free, 'inbox.custom_alias'))->toBe(['enabled' => false])

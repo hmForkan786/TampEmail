@@ -33,10 +33,12 @@ function mutationContextFixture(): array
         'slug' => 'ctx-'.uniqid(), 'name' => 'Ctx', 'price_monthly' => '0.00', 'price_yearly' => '0.00',
         'currency' => 'USD', 'is_free' => true, 'is_active' => true, 'display_order' => 1,
     ]);
-    $max = Feature::query()->firstOrCreate(['key' => 'max_inboxes'], ['name' => 'Max', 'value_type' => ValueType::Json, 'is_active' => true, 'display_order' => 1]);
+    $max = Feature::query()->firstOrCreate(['key' => 'inbox.max_active'], ['name' => 'Max', 'value_type' => ValueType::Integer, 'is_active' => true, 'display_order' => 1]);
     $pools = Feature::query()->firstOrCreate(['key' => 'mail_server_pools'], ['name' => 'Pools', 'value_type' => ValueType::Json, 'is_active' => true, 'display_order' => 2]);
+    $create = Feature::query()->firstOrCreate(['key' => 'inbox.create'], ['name' => 'Create inbox', 'value_type' => ValueType::Boolean, 'is_active' => true, 'display_order' => 3]);
     $plan->features()->attach($max->id, ['feature_value' => ['limit' => 10]]);
     $plan->features()->attach($pools->id, ['feature_value' => ['pools' => ['standard']]]);
+    $plan->features()->attach($create->id, ['feature_value' => ['enabled' => true]]);
     Subscription::create([
         'user_id' => $user->id, 'plan_id' => $plan->id, 'status' => SubscriptionStatus::Active,
         'billing_cycle' => BillingCycle::Monthly, 'starts_at' => now()->subDay(), 'auto_renew' => true,

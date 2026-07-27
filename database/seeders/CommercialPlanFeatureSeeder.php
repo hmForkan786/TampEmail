@@ -55,7 +55,7 @@ class CommercialPlanFeatureSeeder extends Seeder
     {
         return [
             $this->feature('inbox.create', 'Create inbox', ValueType::Boolean, 'inbox', 100),
-            $this->feature('max_inboxes', 'Maximum active inboxes', ValueType::Integer, 'inbox', 101),
+            $this->feature('inbox.max_active', 'Maximum active inboxes', ValueType::Integer, 'inbox', 101),
             $this->feature('inbox.custom_alias', 'Custom inbox aliases', ValueType::Boolean, 'inbox', 102),
             $this->feature('inbox.public_access', 'Public inbox access', ValueType::Boolean, 'inbox', 103),
             $this->feature('inbox.retention_hours', 'Inbox retention hours', ValueType::Integer, 'inbox', 104),
@@ -91,7 +91,7 @@ class CommercialPlanFeatureSeeder extends Seeder
     {
         $premium = $plan->slug === self::PREMIUM_PLAN;
         $values = [
-            'inbox.create' => $this->enabled(true), 'max_inboxes' => $this->limit($premium ? 25 : 3), 'inbox.custom_alias' => $this->enabled($premium), 'inbox.public_access' => $this->enabled(true), 'inbox.retention_hours' => $this->limit($premium ? 720 : 24), 'message.max_received' => $this->limit($premium ? 5000 : 100),
+            'inbox.create' => $this->enabled(true), 'inbox.max_active' => $this->limit($premium ? 25 : 3), 'inbox.custom_alias' => $this->enabled($premium), 'inbox.public_access' => $this->enabled(true), 'inbox.retention_hours' => $this->limit($premium ? 720 : 24), 'message.max_received' => $this->limit($premium ? 5000 : 100),
             'attachment.download' => $this->enabled(true), 'attachment.max_size_mb' => $this->limit($premium ? 20 : 5), 'attachment.max_per_message' => $this->limit($premium ? 10 : 3),
             // Existing implementation keys deliberately remain canonical.
             'send_email' => $this->enabled($premium), 'reply_email' => $this->enabled($premium), 'forward_email' => $this->enabled($premium), 'outbound.schedule' => $this->enabled($premium), 'outbound.sender_profiles' => $this->enabled($premium),

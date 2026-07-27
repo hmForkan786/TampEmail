@@ -9,8 +9,9 @@ use App\Enums\BillingCycle;
 use App\Enums\InboxType;
 use App\Enums\SubscriptionStatus;
 use App\Enums\ValueType;
+use App\Exceptions\CommercialEntitlementDeniedException;
 use App\Exceptions\EligibleMailServerUnavailableException;
-use App\Exceptions\InboxQuotaExceededException;
+use App\Models\ApiKey;
 use App\Models\AuditLog;
 use App\Models\Domain;
 use App\Models\Feature;
@@ -20,7 +21,9 @@ use App\Models\Plan;
 use App\Models\Subscription;
 use App\Models\User;
 use App\Services\Audit\AuditLogWriter;
+use App\Services\Audit\AuditPayloadSanitizer;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
+use Illuminate\Database\QueryException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 
@@ -31,7 +34,7 @@ beforeEach(function (): void {
 });
 
 /**
- * @return array{0: User, 1: string, 2: \App\Models\ApiKey}
+ * @return array{0: User, 1: string, 2: ApiKey}
  */
 function lifecycleAuditApiKey(User $user, array $scopes = ['inboxes:write']): array
 {
@@ -46,7 +49,7 @@ function lifecycleAuditApiKey(User $user, array $scopes = ['inboxes:write']): ar
 }
 
 /**
- * @return array{user: User, domain: Domain, mailServer: MailServer, token: string, apiKey: \App\Models\ApiKey, poolKey: string}
+ * @return array{user: User, domain: Domain, mailServer: MailServer, token: string, apiKey: ApiKey, poolKey: string}
  */
 function lifecycleAuditEntitledContext(int $inboxLimit = 5, ?int $serverCapacity = null): array
 {
@@ -66,16 +69,31 @@ function lifecycleAuditEntitledContext(int $inboxLimit = 5, ?int $serverCapacity
     ]);
 
     $maxInboxesFeature = Feature::query()->firstOrCreate(
-        ['key' => 'max_inboxes'],
-        ['name' => 'Max Inboxes', 'value_type' => ValueType::Json, 'is_active' => true, 'display_order' => 1],
+        ['key' => 'inbox.max_active'],
+        ['name' => 'Max Inboxes', 'value_type' => ValueType::Integer, 'is_active' => true, 'display_order' => 1],
     );
     $poolsFeature = Feature::query()->firstOrCreate(
         ['key' => 'mail_server_pools'],
         ['name' => 'Mail Server Pools', 'value_type' => ValueType::Json, 'is_active' => true, 'display_order' => 2],
     );
+    $createFeature = Feature::query()->firstOrCreate(
+        ['key' => 'inbox.create'],
+        ['name' => 'Create inbox', 'value_type' => ValueType::Boolean, 'is_active' => true, 'display_order' => 3],
+    );
+    $aliasFeature = Feature::query()->firstOrCreate(
+        ['key' => 'inbox.custom_alias'],
+        ['name' => 'Custom inbox aliases', 'value_type' => ValueType::Boolean, 'is_active' => true, 'display_order' => 4],
+    );
+    $retentionFeature = Feature::query()->firstOrCreate(
+        ['key' => 'inbox.retention_hours'],
+        ['name' => 'Inbox retention hours', 'value_type' => ValueType::Integer, 'is_active' => true, 'display_order' => 5],
+    );
 
     $plan->features()->attach($maxInboxesFeature->id, ['feature_value' => ['limit' => $inboxLimit]]);
     $plan->features()->attach($poolsFeature->id, ['feature_value' => ['pools' => [$poolKey]]]);
+    $plan->features()->attach($createFeature->id, ['feature_value' => ['enabled' => true]]);
+    $plan->features()->attach($aliasFeature->id, ['feature_value' => ['enabled' => true]]);
+    $plan->features()->attach($retentionFeature->id, ['feature_value' => ['limit' => 720]]);
 
     Subscription::create([
         'user_id' => $user->id,
@@ -335,8 +353,8 @@ it('writes no audit when quota capacity or duplicate create fails', function ():
         lifecycleAuditCreateData($quotaCtx['domain'], $quotaCtx['user'], 'quota2'.bin2hex(random_bytes(2))),
         $quotaCtx['user'],
         InboxMutationContext::forApi((string) $quotaCtx['user']->id, (string) $quotaCtx['apiKey']->id),
-    ))->toThrow(InboxQuotaExceededException::class);
-    expect(AuditLog::query()->count())->toBe(1)
+    ))->toThrow(CommercialEntitlementDeniedException::class);
+    expect(AuditLog::query()->count())->toBe(2)
         ->and(Inbox::query()->where('user_id', $quotaCtx['user']->id)->count())->toBe(1);
 
     $capacityCtx = lifecycleAuditEntitledContext(inboxLimit: 5, serverCapacity: 1);
@@ -366,7 +384,7 @@ it('writes no audit when quota capacity or duplicate create fails', function ():
         $data,
         $duplicateCtx['user'],
         InboxMutationContext::forApi((string) $duplicateCtx['user']->id, (string) $duplicateCtx['apiKey']->id),
-    ))->toThrow(\Illuminate\Database\QueryException::class);
+    ))->toThrow(QueryException::class);
     expect(AuditLog::query()->count())->toBe($auditsAfterDuplicateFirst)
         ->and(Inbox::query()->where('full_address', $data->fullAddress)->count())->toBe(1);
 });
@@ -407,7 +425,7 @@ it('keeps audit writes inside the mutation transaction and applies payload sanit
     $context = InboxMutationContext::forApi((string) $ctx['user']->id, (string) $ctx['apiKey']->id);
 
     $observed = ['in_transaction' => false];
-    $realWriter = new AuditLogWriter(app(\App\Services\Audit\AuditPayloadSanitizer::class));
+    $realWriter = new AuditLogWriter(app(AuditPayloadSanitizer::class));
     $writer = Mockery::mock(AuditLogWriter::class);
     $writer->shouldReceive('write')->once()->andReturnUsing(function (
         string $action,

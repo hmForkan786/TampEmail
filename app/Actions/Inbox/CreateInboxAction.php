@@ -6,6 +6,7 @@ namespace App\Actions\Inbox;
 
 use App\DTOs\Inbox\CreateInboxData;
 use App\DTOs\Inbox\InboxMutationContext;
+use App\Exceptions\CommercialEntitlementDeniedException;
 use App\Exceptions\EligibleMailServerUnavailableException;
 use App\Exceptions\InboxQuotaExceededException;
 use App\Models\Inbox;
@@ -21,7 +22,7 @@ use InvalidArgumentException;
 /**
  * Create and persist a new inbox from validated input data.
  *
- * Enforces the max_inboxes plan entitlement before persistence when an
+ * Enforces commercial creation and active-inbox entitlements before persistence when an
  * authenticated user context is provided, and assigns an entitled mail
  * server inside a single transaction so the selection lock holds.
  */
@@ -46,51 +47,63 @@ final class CreateInboxAction
     {
         $this->assertContextAllowsCreate($data, $user, $context);
 
-        return DB::transaction(function () use ($data, $user, $context): Inbox {
-            if ($user !== null) {
-                $user = $this->lockUserForUpdate($user);
-                $this->enforceQuota($user);
+        try {
+            return DB::transaction(function () use ($data, $user, $context): Inbox {
+                if ($user !== null) {
+                    $user = $this->lockUserForUpdate($user);
+                    $this->enforceQuota($user);
 
-                $mailServer = $this->mailServerSelectionService->selectForUser($user);
+                    $mailServer = $this->mailServerSelectionService->selectForUser($user);
 
-                if ($mailServer === null) {
-                    throw new EligibleMailServerUnavailableException;
+                    if ($mailServer === null) {
+                        throw new EligibleMailServerUnavailableException;
+                    }
+
+                    $data = $data->withMailServerId($mailServer->id);
+                } else {
+                    $poolKey = config('inbox.public_mail_server_pool');
+
+                    if (! is_string($poolKey) || trim($poolKey) === '') {
+                        throw new EligibleMailServerUnavailableException;
+                    }
+
+                    $mailServer = $this->mailServerRepository
+                        ->selectAvailableForPoolsForUpdate([trim($poolKey)]);
+
+                    if ($mailServer === null) {
+                        throw new EligibleMailServerUnavailableException;
+                    }
+
+                    $data = $data->withMailServerId($mailServer->id);
                 }
 
-                $data = $data->withMailServerId($mailServer->id);
-            } else {
-                $poolKey = config('inbox.public_mail_server_pool');
+                $inbox = $this->inboxRepository->create($data);
+                $inbox->refresh();
+                $at = now();
+                $this->auditLogWriter->write('inbox.created', $context->actorUserId, $inbox, [], [
+                    'is_active' => $inbox->is_active,
+                    'expires_at' => $inbox->expires_at,
+                ], [
+                    'source' => $context->source,
+                    'api_key_id' => $context->apiKeyId,
+                    'domain_id' => $inbox->domain_id,
+                    'anonymous' => $context->isAnonymous(),
+                    'changed_at' => $at->toIso8601String(),
+                ], $at);
 
-                if (! is_string($poolKey) || trim($poolKey) === '') {
-                    throw new EligibleMailServerUnavailableException;
-                }
-
-                $mailServer = $this->mailServerRepository
-                    ->selectAvailableForPoolsForUpdate([trim($poolKey)]);
-
-                if ($mailServer === null) {
-                    throw new EligibleMailServerUnavailableException;
-                }
-
-                $data = $data->withMailServerId($mailServer->id);
+                return $inbox;
+            });
+        } catch (CommercialEntitlementDeniedException $exception) {
+            if ($user !== null && $exception->currentValue !== null && $exception->allowedLimit !== null) {
+                $this->auditLogWriter->write('commercial.limit_reached', (string) $user->id, $user, null, null, [
+                    'feature' => $exception->feature,
+                    'current_value' => $exception->currentValue,
+                    'allowed_limit' => $exception->allowedLimit,
+                ]);
             }
 
-            $inbox = $this->inboxRepository->create($data);
-            $inbox->refresh();
-            $at = now();
-            $this->auditLogWriter->write('inbox.created', $context->actorUserId, $inbox, [], [
-                'is_active' => $inbox->is_active,
-                'expires_at' => $inbox->expires_at,
-            ], [
-                'source' => $context->source,
-                'api_key_id' => $context->apiKeyId,
-                'domain_id' => $inbox->domain_id,
-                'anonymous' => $context->isAnonymous(),
-                'changed_at' => $at->toIso8601String(),
-            ], $at);
-
-            return $inbox;
-        });
+            throw $exception;
+        }
     }
 
     private function assertContextAllowsCreate(CreateInboxData $data, ?User $user, InboxMutationContext $context): void
@@ -129,16 +142,20 @@ final class CreateInboxAction
 
     private function enforceQuota(User $user): void
     {
-        $value = $this->entitlementService->featureValue($user, 'max_inboxes');
-
-        if ($value === null || ! array_key_exists('limit', $value) || $value['limit'] === null) {
-            return;
+        if (! $this->entitlementService->allows($user, 'inbox.create')) {
+            throw new CommercialEntitlementDeniedException('inbox.create');
         }
 
-        $count = $this->inboxRepository->countForUser($user->id);
+        $limit = $this->entitlementService->limit($user, 'inbox.max_active');
+        $count = $this->inboxRepository->countActiveForUser($user->id);
 
-        if ($count >= (int) $value['limit']) {
-            throw new InboxQuotaExceededException;
+        if ($count >= $limit) {
+            throw new CommercialEntitlementDeniedException(
+                'inbox.max_active',
+                $count,
+                $limit,
+                'The active inbox limit for your plan has been reached.',
+            );
         }
     }
 }
