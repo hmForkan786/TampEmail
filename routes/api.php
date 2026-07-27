@@ -16,20 +16,21 @@ use App\Http\Controllers\Api\V1\OutboundNotificationPreferenceController;
 use App\Http\Controllers\Api\V1\OutboundSenderProfileController;
 use App\Http\Controllers\Api\V1\OutboundUsageController;
 use App\Http\Controllers\Api\V1\OutboundWebhookController;
+use App\Http\Controllers\Api\V1\WebhookEndpointController;
 use Illuminate\Support\Facades\Route;
 
 Route::prefix('v1')->name('api.v1.')->middleware(['api.request-log', 'api.key'])->group(function (): void {
-    Route::middleware(['api.scope:mail_servers:read', 'api.rate-limit'])->group(function (): void {
+    Route::middleware(['api.scope:mail_servers:read', 'api.entitlement:api.read', 'api.rate-limit'])->group(function (): void {
         Route::get('mail-servers', [MailServerController::class, 'index'])->name('mail-servers.index');
         Route::get('mail-servers/{mailServer}', [MailServerController::class, 'show'])->name('mail-servers.show');
     });
 
-    Route::middleware(['api.scope:mail_servers:write', 'api.rate-limit'])->group(function (): void {
+    Route::middleware(['api.scope:mail_servers:write', 'api.entitlement:api.write', 'api.rate-limit'])->group(function (): void {
         Route::post('mail-servers', [MailServerController::class, 'store'])->name('mail-servers.store');
         Route::match(['put', 'patch'], 'mail-servers/{mailServer}', [MailServerController::class, 'update'])->name('mail-servers.update');
     });
 
-    Route::middleware(['api.scope:inboxes:read', 'api.rate-limit'])->group(function (): void {
+    Route::middleware(['api.scope:inboxes:read', 'api.entitlement:api.read', 'api.rate-limit'])->group(function (): void {
         Route::get('inboxes', [InboxController::class, 'index'])->name('inboxes.index');
         Route::get('inboxes/{inbox}', [InboxController::class, 'show'])->whereUuid('inbox')->name('inboxes.show');
         Route::get('inboxes/{inbox}/emails', [InboxEmailController::class, 'index'])
@@ -43,13 +44,13 @@ Route::prefix('v1')->name('api.v1.')->middleware(['api.request-log', 'api.key'])
             ->name('inboxes.emails.attachments.download');
     });
 
-    Route::middleware(['api.scope:inboxes:write', 'api.rate-limit'])->group(function (): void {
+    Route::middleware(['api.scope:inboxes:write', 'api.entitlement:api.write', 'api.rate-limit'])->group(function (): void {
         Route::post('inboxes', [InboxController::class, 'store'])->name('inboxes.store');
         Route::delete('inboxes/{inbox}', [InboxController::class, 'destroy'])->whereUuid('inbox')->name('inboxes.destroy');
         Route::patch('inboxes/{inbox}/expiration', [InboxController::class, 'renew'])->whereUuid('inbox')->name('inboxes.expiration');
     });
 
-    Route::middleware(['api.scope:inboxes:write', 'api.rate-limit'])->group(function (): void {
+    Route::middleware(['api.scope:inboxes:write', 'api.entitlement:api.write', 'api.rate-limit'])->group(function (): void {
         Route::patch('inboxes/{inbox}/emails/{email}/read', [EmailReadStateController::class, 'read'])
             ->whereUuid(['inbox', 'email'])
             ->name('inboxes.emails.read');
@@ -58,7 +59,7 @@ Route::prefix('v1')->name('api.v1.')->middleware(['api.request-log', 'api.key'])
             ->name('inboxes.emails.unread');
     });
 
-    Route::middleware(['api.scope:outbound_messages:read', 'api.rate-limit'])->group(function (): void {
+    Route::middleware(['api.scope:outbound_messages:read', 'api.entitlement:api.read', 'api.rate-limit'])->group(function (): void {
         Route::get('outbound-drafts', [OutboundDraftController::class, 'index'])->name('outbound-drafts.index');
         Route::get('outbound-drafts/{draft}', [OutboundDraftController::class, 'show'])->whereUuid('draft')->name('outbound-drafts.show');
         Route::get('outbound-messages', [OutboundMessageController::class, 'index'])
@@ -85,7 +86,7 @@ Route::prefix('v1')->name('api.v1.')->middleware(['api.request-log', 'api.key'])
             ->name('outbound-sender-profiles.show');
     });
 
-    Route::middleware(['api.scope:outbound_messages:write', 'api.rate-limit'])->group(function (): void {
+    Route::middleware(['api.scope:outbound_messages:write', 'api.entitlement:api.write', 'api.rate-limit'])->group(function (): void {
         Route::patch('outbound-notification-preferences', [OutboundNotificationPreferenceController::class, 'update']);
         Route::post('outbound-notifications/read-all', [OutboundNotificationController::class, 'readAll']);
         Route::post('outbound-notifications/{notification}/read', [OutboundNotificationController::class, 'read'])->whereUuid('notification');
@@ -135,6 +136,23 @@ Route::prefix('v1')->name('api.v1.')->middleware(['api.request-log', 'api.key'])
         Route::post('emails/{email}/forward', [EmailForwardController::class, 'store'])
             ->whereUuid('email')
             ->name('emails.forward');
+    });
+
+    Route::middleware(['api.scope:outbound_messages:read', 'api.entitlement:api.read', 'api.rate-limit'])->group(function (): void {
+        Route::get('webhooks', [WebhookEndpointController::class, 'index'])->name('webhooks.index');
+        Route::get('webhooks/{webhook}', [WebhookEndpointController::class, 'show'])->whereUuid('webhook')->name('webhooks.show');
+    });
+    Route::middleware(['api.scope:outbound_messages:read', 'api.entitlement:api.read', 'api.entitlement:webhook.access', 'api.rate-limit'])->group(function (): void {
+        Route::get('webhooks/{webhook}/deliveries', [WebhookEndpointController::class, 'deliveries'])->whereUuid('webhook')->name('webhooks.deliveries.index');
+        Route::get('webhooks/{webhook}/deliveries/{delivery}', [WebhookEndpointController::class, 'showDelivery'])->whereUuid(['webhook', 'delivery'])->name('webhooks.deliveries.show');
+    });
+    Route::middleware(['api.scope:outbound_messages:write', 'api.entitlement:api.read', 'api.entitlement:api.write', 'api.entitlement:webhook.access', 'api.rate-limit'])->group(function (): void {
+        Route::post('webhooks', [WebhookEndpointController::class, 'store'])->name('webhooks.store');
+        Route::patch('webhooks/{webhook}', [WebhookEndpointController::class, 'update'])->whereUuid('webhook')->name('webhooks.update');
+        Route::delete('webhooks/{webhook}', [WebhookEndpointController::class, 'destroy'])->whereUuid('webhook')->name('webhooks.destroy');
+        Route::post('webhooks/{webhook}/enable', [WebhookEndpointController::class, 'enable'])->whereUuid('webhook')->name('webhooks.enable');
+        Route::post('webhooks/{webhook}/disable', [WebhookEndpointController::class, 'disable'])->whereUuid('webhook')->name('webhooks.disable');
+        Route::post('webhooks/{webhook}/rotate-secret', [WebhookEndpointController::class, 'rotateSecret'])->whereUuid('webhook')->name('webhooks.rotate-secret');
     });
 });
 

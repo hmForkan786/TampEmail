@@ -4,9 +4,11 @@ declare(strict_types=1);
 
 namespace App\Http\Middleware;
 
-use App\Http\Responses\ApiErrorResponse;
-use App\Models\ApiKey;
+use App\Models\User;
 use App\Services\ApiKey\AuthenticatedApiKeyContext;
+use App\Services\Audit\AuditLogWriter;
+use App\Services\Commercial\CommercialApiErrorMapper;
+use App\Services\Entitlement\EntitlementService;
 use Closure;
 use Illuminate\Cache\RateLimiter;
 use Illuminate\Http\Request;
@@ -14,22 +16,37 @@ use Symfony\Component\HttpFoundation\Response;
 
 final class ThrottleApiKey
 {
-    public function __construct(private readonly RateLimiter $limiter) {}
+    public function __construct(
+        private readonly RateLimiter $limiter,
+        private readonly EntitlementService $entitlements,
+        private readonly AuditLogWriter $audit,
+    ) {}
 
     public function handle(Request $request, Closure $next): Response
     {
         $context = $request->attributes->get('apiKeyContext');
         $key = $this->key($request, $context);
-        $limit = $this->limit($context);
+        $limit = $this->limit($request, $context);
         $decay = 60;
 
-        if ($this->limiter->tooManyAttempts($key, $limit)) {
-            $retryAfter = max(1, $this->limiter->availableIn($key));
-            return $this->response($request, ApiErrorResponse::make(
-                'rate_limit_exceeded',
-                'Too many API requests. Please try again later.',
-                429,
-            ), $limit, 0, $retryAfter);
+        if ($limit < 1 || $this->limiter->tooManyAttempts($key, max(1, $limit))) {
+            $retryAfter = $limit < 1 ? 60 : max(1, $this->limiter->availableIn($key));
+            $owner = $context instanceof AuthenticatedApiKeyContext ? $context->owner : $request->attributes->get('apiKeyOwner');
+            if ($owner instanceof User) {
+                $this->audit->write('commercial.api_rate_limited', (string) $owner->getKey(), null, null, null, [
+                    'feature' => 'api.max_requests_per_minute',
+                    'limit' => $limit,
+                    'remaining' => 0,
+                ]);
+            }
+
+            return $this->response(
+                $request,
+                CommercialApiErrorMapper::rateLimitExceeded('api.max_requests_per_minute', max(0, $limit), 0),
+                max(0, $limit),
+                0,
+                $retryAfter,
+            );
         }
 
         $this->limiter->hit($key, $decay);
@@ -54,14 +71,18 @@ final class ThrottleApiKey
         return 'api-ip:'.$request->ip();
     }
 
-    private function limit(mixed $context): int
+    private function limit(Request $request, mixed $context): int
     {
-        $configured = $context instanceof AuthenticatedApiKeyContext
-            ? $context->apiKey->rate_limit_per_minute
-            : null;
-        $fallback = (int) config('abuse.rate_limits.api_per_minute', 60);
+        $fallback = max(0, (int) config('abuse.rate_limits.api_per_minute', 60));
+        if (! $context instanceof AuthenticatedApiKeyContext) {
+            return $fallback;
+        }
 
-        return $configured !== null && $configured > 0 ? (int) $configured : max(1, $fallback);
+        $commercial = $this->entitlements->limit($context->owner, 'api.max_requests_per_minute');
+        $configured = $context->apiKey->rate_limit_per_minute;
+        $keyLimit = $configured !== null && $configured > 0 ? (int) $configured : $fallback;
+
+        return min($fallback, $commercial, $keyLimit);
     }
 
     private function response(Request $request, Response $response, int $limit, int $remaining, int $retryAfter): Response
@@ -71,6 +92,7 @@ final class ThrottleApiKey
         if ($response->getStatusCode() === 429) {
             $response->headers->set('Retry-After', (string) max(1, $retryAfter));
         }
+
         return $response;
     }
 }

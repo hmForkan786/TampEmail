@@ -12,7 +12,7 @@ use Illuminate\Http\JsonResponse;
 final class ApiErrorResponse
 {
     /**
-     * @param  array<string, list<string>|string>|array<empty>  $details
+     * @param  array<string, mixed>  $details
      */
     public static function make(
         string $code,

@@ -7,6 +7,7 @@ use App\Contracts\OutboundTransportInterface;
 use App\Http\Middleware\ApiRequestLogger;
 use App\Http\Middleware\ApplySecurityHeaders;
 use App\Http\Middleware\AuthenticateApiKey;
+use App\Http\Middleware\EnsureCommercialApiEntitlement;
 use App\Http\Middleware\RequireApiKeyScope;
 use App\Http\Middleware\ThrottleApiKey;
 use App\Http\Responses\ApiErrorResponse;
@@ -77,6 +78,7 @@ return Application::configure(basePath: dirname(__DIR__))
             'api.request-log' => ApiRequestLogger::class,
             'api.scope' => RequireApiKeyScope::class,
             'api.rate-limit' => ThrottleApiKey::class,
+            'api.entitlement' => EnsureCommercialApiEntitlement::class,
         ]);
     })
     ->withExceptions(function (Exceptions $exceptions): void {

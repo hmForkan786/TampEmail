@@ -24,8 +24,7 @@ interface ApiKeyRepositoryInterface extends BaseRepositoryInterface
     /**
      * Find an API key by its hashed secret.
      *
-     * @param string $keyHash Hashed secret of the API key.
-     *
+     * @param  string  $keyHash  Hashed secret of the API key.
      * @return ApiKey|null The matching API key, if found.
      */
     public function findByKeyHash(string $keyHash): ?ApiKey;
@@ -33,10 +32,9 @@ interface ApiKeyRepositoryInterface extends BaseRepositoryInterface
     public function findActiveByPrefixAndHash(string $keyPrefix, string $keyHash): ?ApiKey;
 
     /**
-     * Count the non-revoked API keys owned by the given user.
+     * Count available (non-revoked and non-expired) API keys owned by the given user.
      *
-     * @param string $userId Owning user UUID.
-     *
+     * @param  string  $userId  Owning user UUID.
      * @return int Number of non-revoked API keys owned by the user.
      */
     public function countForUser(string $userId): int;
@@ -47,7 +45,7 @@ interface ApiKeyRepositoryInterface extends BaseRepositoryInterface
      * Matching uses JSON array exact-value containment (not SQL substring wildcards).
      * Already-revoked keys are left unchanged. Returns the number of rows revoked.
      *
-     * @param  list<string>  $scopes Canonical scope values to match.
+     * @param  list<string>  $scopes  Canonical scope values to match.
      */
     public function revokeUnrevokedForUserWithAnyScope(
         string $userId,
@@ -69,8 +67,7 @@ interface ApiKeyRepositoryInterface extends BaseRepositoryInterface
     /**
      * Retrieve a paginated list of API keys matching the given filters.
      *
-     * @param ApiKeyFiltersData $filters Pagination and filter criteria.
-     *
+     * @param  ApiKeyFiltersData  $filters  Pagination and filter criteria.
      * @return LengthAwarePaginator Paginated API key results.
      */
     public function paginate(ApiKeyFiltersData $filters): LengthAwarePaginator;

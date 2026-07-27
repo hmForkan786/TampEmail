@@ -24,6 +24,7 @@ use App\Services\Outbound\OutboundProviderRegistry;
 use App\Services\Outbound\OutboundSenderProfileService;
 use App\Services\Outbound\OutboundSuppressionService;
 use App\Services\Outbound\OutboundUsageService;
+use App\Services\Webhook\WebhookDispatchService;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldBeUnique;
 use Illuminate\Contracts\Queue\ShouldQueue;
@@ -372,6 +373,20 @@ final class DeliverOutboundMessageJob implements ShouldBeUnique, ShouldQueue
             ],
         );
         app(OutboundNotificationService::class)->notify($fresh->user, 'outbound.sent', $fresh, [], 'sent:'.$fresh->id);
+
+        if ($fresh->user !== null) {
+            app(WebhookDispatchService::class)->dispatch(
+                $fresh->user,
+                'outbound.message.sent',
+                (string) $fresh->getKey(),
+                [
+                    'message_id' => (string) $fresh->getKey(),
+                    'subject' => $fresh->subject,
+                    'operation' => $fresh->operation->value,
+                    'recipient_count' => $fresh->recipientCount(),
+                ],
+            );
+        }
     }
 
     private function markFailed(
@@ -440,6 +455,19 @@ final class DeliverOutboundMessageJob implements ShouldBeUnique, ShouldQueue
             ],
         );
         app(OutboundNotificationService::class)->notify($fresh->user, 'outbound.failed', $fresh, ['failure_category' => app(OutboundFailureCategoryMapper::class)->userSafeCategory($failureCode)], 'failed:'.$fresh->id);
+
+        if ($fresh->user !== null) {
+            app(WebhookDispatchService::class)->dispatch(
+                $fresh->user,
+                'outbound.message.failed',
+                (string) $fresh->getKey(),
+                [
+                    'message_id' => (string) $fresh->getKey(),
+                    'failure_code' => $failureCode,
+                    'operation' => $fresh->operation->value,
+                ],
+            );
+        }
     }
 
     private function auditAction(OutboundOperation $operation, string $suffix): string
