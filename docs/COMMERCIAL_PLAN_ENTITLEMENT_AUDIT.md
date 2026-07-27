@@ -100,3 +100,6 @@ Existing outbound behaviour remains unchanged during this audit. The current
 "missing metered feature means unlimited" rule is legacy compatibility only;
 Prompt 630 must remove it from commercial plan resolution after the canonical
 Free and Premium mappings have been provisioned and migration-tested.
+
+Prompt 627 implements the catalogue and explicit mappings described in
+[`COMMERCIAL_PLAN_FEATURE_CATALOGUE.md`](COMMERCIAL_PLAN_FEATURE_CATALOGUE.md).
