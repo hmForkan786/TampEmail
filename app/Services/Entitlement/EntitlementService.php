@@ -7,6 +7,7 @@ namespace App\Services\Entitlement;
 use App\Enums\SubscriptionStatus;
 use App\Enums\ValueType;
 use App\Models\Feature;
+use App\Models\Pivots\FeaturePlan;
 use App\Models\Plan;
 use App\Models\Subscription;
 use App\Models\User;
@@ -30,6 +31,11 @@ final class EntitlementService
             ->whereIn('status', [SubscriptionStatus::Active, SubscriptionStatus::Trial])
             ->where('starts_at', '<=', $now)
             ->where(fn ($query) => $query->whereNull('ends_at')->orWhere('ends_at', '>', $now))
+            ->where(fn ($query) => $query
+                ->where('status', SubscriptionStatus::Active)
+                ->orWhere(fn ($trial) => $trial
+                    ->where('status', SubscriptionStatus::Trial)
+                    ->where(fn ($boundary) => $boundary->whereNull('trial_ends_at')->orWhere('trial_ends_at', '>', $now))))
             ->whereHas('plan', fn ($query) => $query->where('is_active', true))
             ->orderByRaw('case when status = ? then 0 else 1 end', [SubscriptionStatus::Active->value])
             ->orderByDesc('starts_at')
@@ -41,8 +47,12 @@ final class EntitlementService
     /** Resolves the paid/trial plan or the active canonical Free plan. */
     public function effectivePlan(User $user): ?Plan
     {
-        return $this->currentSubscription($user)?->plan
-            ?? Plan::query()->where('slug', self::FREE_PLAN_SLUG)->where('is_active', true)->first();
+        $subscription = $this->currentSubscription($user);
+        if ($subscription !== null) {
+            return $subscription->plan;
+        }
+
+        return Plan::query()->where('slug', self::FREE_PLAN_SLUG)->where('is_active', true)->first();
     }
 
     /** Backwards-compatible name for the effective plan resolver. */
@@ -96,11 +106,17 @@ final class EntitlementService
     public function featureValue(User $user, string $featureKey): ?array
     {
         $feature = $this->getFeature($user, $featureKey);
-        if ($feature === null || $feature->pivot === null || $feature->pivot->feature_value === null) {
+        $plan = $this->effectivePlan($user);
+        if ($feature === null || $plan === null) {
             return null;
         }
 
-        return $feature->pivot->feature_value;
+        $mapping = FeaturePlan::query()
+            ->where('feature_id', $feature->getKey())
+            ->where('plan_id', $plan->getKey())
+            ->first();
+
+        return $mapping?->feature_value;
     }
 
     /** Returns only an active feature explicitly mapped to the effective plan. */
@@ -113,6 +129,11 @@ final class EntitlementService
             return null;
         }
 
-        return $plan->features()->whereKey($feature->getKey())->where('features.is_active', true)->first();
+        $mapped = FeaturePlan::query()
+            ->where('feature_id', $feature->getKey())
+            ->where('plan_id', $plan->getKey())
+            ->exists();
+
+        return $mapped ? $feature : null;
     }
 }

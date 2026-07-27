@@ -17,3 +17,6 @@ are `0`. No missing value represents unlimited.
 must use `allows()` or `limit()`. Existing callers not yet migrated include
 retention, mail-server-pool selection, and outbound usage payload shaping.
 Prompt 629 owns lifecycle mutation and expiry transitions.
+
+The implemented mutation and maintenance contract is documented in
+[`SUBSCRIPTION_LIFECYCLE_CONTRACT.md`](SUBSCRIPTION_LIFECYCLE_CONTRACT.md).

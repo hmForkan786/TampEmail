@@ -51,3 +51,14 @@ it('resolves valid Premium and parses boolean and numeric values fail-closed', f
     $premium->features()->updateExistingPivot($feature->id, ['feature_value' => ['limit' => -1]]);
     expect($service->limit($user, 'max_inboxes'))->toBe(0)->and($service->limit($user, 'missing.limit'))->toBe(0);
 });
+
+it('treats the trial boundary as exclusive before the expiry worker runs', function (): void {
+    [$user, $premium] = resolverFixture();
+    resolverSubscription($user, $premium, [
+        'status' => SubscriptionStatus::Trial,
+        'trial_ends_at' => now(),
+        'ends_at' => now()->addDay(),
+    ]);
+
+    expect(app(EntitlementService::class)->effectivePlan($user)?->slug)->toBe('free');
+});
