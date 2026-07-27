@@ -138,6 +138,12 @@ final class DispatchDueOutboundMessagesAction
 
                 try {
                     $prepared = $this->drafts->prepareSendableContent($message, $user, null);
+                    // A schedule is only an intent. Re-run the same central
+                    // send/reply/forward gate immediately before queueing so
+                    // subscription, plan, inbox/domain, sender-profile, and
+                    // operation entitlements cannot be bypassed after the
+                    // schedule was accepted.
+                    $this->authorization->assertCanSend($user, $message->inbox, $message->operation);
                     $this->authorization->assertCanSchedule($user, $message->operation);
                     $this->rateLimiter->assertWithinLimits($user, [...$prepared['to'], ...$prepared['cc'], ...$prepared['bcc']], $prepared['attachment_bytes']);
                 } catch (OutboundSendException $exception) {

@@ -59,6 +59,11 @@ function outboundOpsContext(): array
         ['name' => 'Send Email', 'value_type' => ValueType::Boolean, 'default_value' => ['enabled' => true], 'is_active' => true, 'display_order' => 10],
     );
     $plan->features()->syncWithoutDetaching([$feature->id => ['feature_value' => ['enabled' => true]]]);
+    $quota = Feature::query()->firstOrCreate(
+        ['key' => 'outbound_messages_per_period'],
+        ['name' => 'Outbound messages', 'value_type' => ValueType::Json, 'default_value' => null, 'is_active' => true, 'display_order' => 11],
+    );
+    $plan->features()->syncWithoutDetaching([$quota->id => ['feature_value' => ['limit' => 100, 'reset_period' => 'monthly']]]);
     Subscription::query()->create([
         'user_id' => $user->id, 'plan_id' => $plan->id, 'status' => SubscriptionStatus::Active,
         'billing_cycle' => BillingCycle::Monthly, 'starts_at' => now()->subDay(), 'auto_renew' => true,
@@ -216,7 +221,7 @@ it('allows manual retry for failed messages and revalidates entitlements', funct
     ]);
     $this->withToken($ctx['token'])->postJson('/api/v1/outbound-messages/'.$id.'/retry')
         ->assertForbidden()
-        ->assertJsonPath('error.code', 'entitlement_denied');
+        ->assertJsonPath('error.code', 'feature_not_available');
 });
 
 it('reports ops readiness volume and json command output without sending mail', function (): void {

@@ -43,13 +43,13 @@ it('resolves valid Premium and parses boolean and numeric values fail-closed', f
     [$user, $premium] = resolverFixture();
     $service = app(EntitlementService::class);
     resolverSubscription($user, $premium);
-    expect($service->effectivePlan($user)?->slug)->toBe('premium')->and($service->allows($user, 'send_email'))->toBeTrue()->and($service->limit($user, 'max_inboxes'))->toBe(25);
+    expect($service->effectivePlan($user)?->slug)->toBe('premium')->and($service->allows($user, 'send_email'))->toBeTrue()->and($service->limit($user, 'inbox.max_active'))->toBe(25);
     $feature = Feature::query()->where('key', 'send_email')->firstOrFail();
     $premium->features()->updateExistingPivot($feature->id, ['feature_value' => ['enabled' => 'false']]);
     expect($service->allows($user, 'send_email'))->toBeFalse()->and($service->allows($user, 'missing.feature'))->toBeFalse();
-    $feature = Feature::query()->where('key', 'max_inboxes')->firstOrFail();
+    $feature = Feature::query()->where('key', 'inbox.max_active')->firstOrFail();
     $premium->features()->updateExistingPivot($feature->id, ['feature_value' => ['limit' => -1]]);
-    expect($service->limit($user, 'max_inboxes'))->toBe(0)->and($service->limit($user, 'missing.limit'))->toBe(0);
+    expect($service->limit($user, 'inbox.max_active'))->toBe(0)->and($service->limit($user, 'missing.limit'))->toBe(0);
 });
 
 it('treats the trial boundary as exclusive before the expiry worker runs', function (): void {

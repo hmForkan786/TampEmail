@@ -157,7 +157,7 @@ it('denies foreign inactive domain and entitlement failures', function (): void 
     $this->withToken($ctx['token'])
         ->postJson('/api/v1/outbound-messages', outboundPayload($ctx, ['idempotency_key' => 'k-ent']))
         ->assertForbidden()
-        ->assertJsonPath('error.code', 'entitlement_denied');
+        ->assertJsonPath('error.code', 'feature_not_available');
 });
 
 it('validates recipients content and blocks arbitrary sender', function (): void {

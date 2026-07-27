@@ -8,8 +8,10 @@ use App\Enums\OutboundMessageState;
 use App\Jobs\DeliverOutboundMessageJob;
 use App\Jobs\SendOutboundNotificationEmailJob;
 use App\Models\AuditLog;
+use App\Models\Feature;
 use App\Models\OutboundMessage;
 use App\Models\OutboundUsageReservation;
+use App\Models\Subscription;
 use App\Models\User;
 use App\Services\Outbound\OutboundDraftService;
 use App\Services\Outbound\OutboundLaunchControlService;
@@ -349,6 +351,31 @@ it('returns suppressed scheduled messages to draft on permanent dispatch failure
     Queue::assertNotPushed(DeliverOutboundMessageJob::class);
     Queue::assertPushed(SendOutboundNotificationEmailJob::class, 1);
     expect(AuditLog::query()->where('action', 'outbound.schedule_dispatch_failed')->count())->toBe(1);
+
+    CarbonImmutable::setTestNow();
+});
+
+it('fails scheduled dispatch deterministically when send entitlement is revoked after acceptance', function (): void {
+    Queue::fake();
+    CarbonImmutable::setTestNow('2030-06-01 10:00:00');
+    $ctx = outboundSendContext();
+    $draft = createSendableDraft($ctx);
+    scheduleDraftViaApi($ctx, $draft, futureScheduleFields('UTC', 60));
+
+    $feature = Feature::query()->where('key', 'send_email')->firstOrFail();
+    Subscription::query()->where('user_id', $ctx['user']->id)->firstOrFail()->plan
+        ->features()->updateExistingPivot($feature->id, ['feature_value' => ['enabled' => false]]);
+
+    CarbonImmutable::setTestNow('2030-06-01 11:30:00');
+    $stats = app(DispatchDueOutboundMessagesAction::class)->execute(50);
+
+    $message = OutboundMessage::query()->findOrFail($draft->id);
+    expect($stats)->toMatchArray(['processed' => 1, 'dispatched' => 0, 'deferred' => 0, 'failed' => 1])
+        ->and($message->state)->toBe(OutboundMessageState::Draft)
+        ->and(OutboundUsageReservation::query()->where('state', 'released')->count())->toBe(1);
+    expect(AuditLog::query()->where('action', 'outbound.schedule_dispatch_failed')
+        ->whereJsonContains('metadata->result_code', 'feature_not_available')->exists())->toBeTrue();
+    Queue::assertNotPushed(DeliverOutboundMessageJob::class);
 
     CarbonImmutable::setTestNow();
 });
