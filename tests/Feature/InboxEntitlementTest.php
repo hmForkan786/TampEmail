@@ -75,7 +75,11 @@ it('enforces active inbox limits, ignores deleted inboxes, and audits denials', 
         Inbox::query()->create(['domain_id' => $domain->id, 'user_id' => $user->id, 'local_part' => 'existing-'.$number, 'full_address' => 'existing-'.$number.'@'.$domain->domain, 'inbox_type' => 'temporary', 'is_active' => true, 'expires_at' => now()->addHour()]);
     }
 
-    createCommercialInbox($token, $domain)->assertForbidden()->assertJsonPath('error.details.feature', 'inbox.max_active')->assertJsonPath('error.details.allowed_limit', 3);
+    createCommercialInbox($token, $domain)->assertForbidden()
+        ->assertJsonPath('error.details.feature', 'inbox.max_active')
+        ->assertJsonPath('error.details.limit', 3)
+        ->assertJsonPath('error.details.used', 3)
+        ->assertJsonPath('error.details.remaining', 0);
     expect(AuditLog::query()->where('action', 'commercial.limit_reached')->where('user_id', $user->id)->exists())->toBeTrue();
 
     Inbox::query()->where('user_id', $user->id)->firstOrFail()->delete();

@@ -32,7 +32,7 @@ it('enforces typed mapping values and Free plan invariants', function (): void {
     $free = Plan::query()->where('slug', 'free')->firstOrFail();
     $service = app(CommercialPlanManagementService::class);
     $send = Feature::query()->where('key', 'send_email')->firstOrFail();
-    $inboxes = Feature::query()->where('key', 'max_inboxes')->firstOrFail();
+    $inboxes = Feature::query()->where('key', 'inbox.max_active')->firstOrFail();
     $expected = $free->updated_at->toIso8601String();
     expect(fn () => $service->updateFeatureValue($admin, $free, $send, ['enabled' => true], $expected, 'test'))->toThrow(CommercialManagementException::class)
         ->and(fn () => $service->updateFeatureValue($admin, $free, $inboxes, ['limit' => 0], $expected, 'test'))->toThrow(CommercialManagementException::class);
