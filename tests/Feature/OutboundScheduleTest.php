@@ -2,7 +2,6 @@
 
 declare(strict_types=1);
 
-use App\Actions\ApiKey\CreateApiKeyAction;
 use App\Actions\Outbound\DispatchDueOutboundMessagesAction;
 use App\Enums\OutboundMessageState;
 use App\Jobs\DeliverOutboundMessageJob;
@@ -12,7 +11,6 @@ use App\Models\Feature;
 use App\Models\OutboundMessage;
 use App\Models\OutboundUsageReservation;
 use App\Models\Subscription;
-use App\Models\User;
 use App\Services\Outbound\OutboundDraftService;
 use App\Services\Outbound\OutboundLaunchControlService;
 use App\Services\Outbound\OutboundPruneService;
@@ -168,13 +166,8 @@ it('rejects DST gap times and resolves overlap to the earlier occurrence', funct
 it('returns ownership-safe 404 and rejects stale draft version conflicts', function (): void {
     $ctx = outboundSendContext();
     $draft = createSendableDraft($ctx);
-    $other = User::factory()->create();
-    $otherToken = app(CreateApiKeyAction::class)->issue(
-        userId: $other->id,
-        name: 'other',
-        permissions: ['outbound_messages:write'],
-        user: $other,
-    )->plainToken;
+    $other = commercialApiUser();
+    $otherToken = $other['token'];
 
     test()->withToken($otherToken)->postJson('/api/v1/outbound-drafts/'.$draft->id.'/schedule', array_merge([
         'version' => $draft->draft_version,

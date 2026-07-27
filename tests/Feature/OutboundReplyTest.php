@@ -72,6 +72,7 @@ function outboundReplyContext(array $emailOverrides = [], array $inboxOverrides 
     $plan->features()->syncWithoutDetaching([$sendFeature->id => ['feature_value' => ['enabled' => true]]]);
     $messageLimit = Feature::query()->firstOrCreate(['key' => 'outbound_messages_per_period'], ['name' => 'Outbound messages', 'value_type' => ValueType::Json, 'is_active' => true, 'display_order' => 13]);
     $plan->features()->syncWithoutDetaching([$messageLimit->id => ['feature_value' => ['limit' => 1000, 'reset_period' => 'monthly']]]);
+    attachApiCommercialFeatures($plan);
     Subscription::query()->create([
         'user_id' => $user->id, 'plan_id' => $plan->id, 'status' => SubscriptionStatus::Active,
         'billing_cycle' => BillingCycle::Monthly, 'starts_at' => now()->subDay(), 'auto_renew' => true,
@@ -160,10 +161,8 @@ it('falls back to sender and rejects non-owners inactive and entitlement failure
         'text_body' => 'Hi',
     ])->assertCreated()->assertJsonPath('data.to.0', 'sender@example.test');
 
-    $other = User::factory()->create();
-    $otherToken = app(CreateApiKeyAction::class)->issue(
-        userId: $other->id, name: 'x', permissions: ['outbound_messages:write'], user: $other,
-    )->plainToken;
+    $other = commercialApiUser();
+    $otherToken = $other['token'];
     $this->withToken($otherToken)->postJson('/api/v1/emails/'.$ctx['email']->id.'/reply', [
         'idempotency_key' => 'denied', 'text_body' => 'no',
     ])->assertNotFound();

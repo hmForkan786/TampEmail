@@ -101,6 +101,8 @@ it('treats infected and failed attachments as quarantined', function (): void {
 it('blocks owner and api downloads for quarantined attachments', function (): void {
     config(['api.key_hash_secret' => 'quarantine-test-secret']);
     $fixture = quarantineFixture(AttachmentScanStatus::Infected);
+    ensureFreeCommercialUser($fixture['owner']);
+    ensureCommercialApiAccess($fixture['owner'], ['inboxes:read']);
     $token = app(CreateApiKeyAction::class)->issue(
         userId: $fixture['owner']->id,
         name: 'q-key',

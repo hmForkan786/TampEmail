@@ -33,6 +33,7 @@ function commercialInboxFixture(string $plan = 'free'): array
     }
     $domain = Domain::query()->create(['domain' => 'commercial-'.bin2hex(random_bytes(3)).'.test', 'display_name' => 'Commercial', 'is_active' => true, 'is_public' => true, 'allow_registration' => true, 'is_healthy' => true, 'retention_hours' => 24]);
     MailServer::query()->create(['name' => 'Commercial mail', 'hostname' => 'commercial.test', 'provider' => 'smtp', 'protocol' => 'smtp', 'is_active' => true, 'priority' => 1, 'last_health_check_at' => now(), 'pool_key' => 'standard']);
+    grantApiWrite($user);
     $token = app(CreateApiKeyAction::class)->issue(userId: $user->id, name: 'commercial-inbox', permissions: ['inboxes:write'], user: $user)->plainToken;
 
     return compact('user', 'domain', 'token');

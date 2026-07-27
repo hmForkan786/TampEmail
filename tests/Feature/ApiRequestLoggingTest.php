@@ -2,7 +2,6 @@
 
 use App\Actions\ApiKey\CreateApiKeyAction;
 use App\Enums\PlatformRole;
-use App\Models\ApiKey;
 use App\Models\ApiRequestLog;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -17,9 +16,12 @@ beforeEach(function (): void {
 function requestLogApiKey(array $scopes = ['mail_servers:read'], int $limit = 60): array
 {
     $user = User::factory()->create(['platform_role' => PlatformRole::Operator]);
+    ensureFreeCommercialUser($user);
+    ensureCommercialApiAccess($user, $scopes);
     $issued = app(CreateApiKeyAction::class)->issue(userId: $user->id, name: 'request-log', permissions: $scopes, user: $user);
     $issued->apiKey->update(['rate_limit_per_minute' => $limit]);
     RateLimiter::clear('api-key:'.$issued->apiKey->id);
+
     return [$user, $issued->plainToken, $issued->apiKey];
 }
 

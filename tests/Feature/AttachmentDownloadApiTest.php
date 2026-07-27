@@ -20,6 +20,9 @@ beforeEach(function (): void {
 
 function attachmentDownloadKey(User $owner, array $scopes = ['inboxes:read']): string
 {
+    ensureFreeCommercialUser($owner);
+    ensureCommercialApiAccess($owner, $scopes);
+
     return app(CreateApiKeyAction::class)->issue(
         userId: $owner->id,
         name: 'attachment-download-key',

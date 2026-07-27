@@ -34,5 +34,5 @@ it('falls back to Free and denies outbound access when an active subscription ex
 
     $this->withToken($ctx['token'])->postJson('/api/v1/outbound-messages', outboundPayload($ctx))
         ->assertForbidden()->assertJsonPath('error.code', 'feature_not_available');
-    expect(app(EntitlementService::class)->effectivePlan($ctx['user']))->toBeNull();
+    expect(app(EntitlementService::class)->effectivePlan($ctx['user'])?->slug)->toBe('free');
 });

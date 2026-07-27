@@ -38,6 +38,8 @@ beforeEach(function (): void {
  */
 function lifecycleAuditApiKey(User $user, array $scopes = ['inboxes:write']): array
 {
+    ensureFreeCommercialUser($user);
+    ensureCommercialApiAccess($user, $scopes);
     $issued = app(CreateApiKeyAction::class)->issue(
         userId: $user->id,
         name: 'inbox-lifecycle-audit',
@@ -54,7 +56,6 @@ function lifecycleAuditApiKey(User $user, array $scopes = ['inboxes:write']): ar
 function lifecycleAuditEntitledContext(int $inboxLimit = 5, ?int $serverCapacity = null): array
 {
     $user = User::factory()->create();
-    [, $token, $apiKey] = lifecycleAuditApiKey($user);
     $poolKey = 'lifecycle-'.bin2hex(random_bytes(4));
 
     $plan = Plan::create([
@@ -94,6 +95,14 @@ function lifecycleAuditEntitledContext(int $inboxLimit = 5, ?int $serverCapacity
     $plan->features()->attach($createFeature->id, ['feature_value' => ['enabled' => true]]);
     $plan->features()->attach($aliasFeature->id, ['feature_value' => ['enabled' => true]]);
     $plan->features()->attach($retentionFeature->id, ['feature_value' => ['limit' => 720]]);
+    foreach (['api.read' => ValueType::Boolean, 'api.write' => ValueType::Boolean, 'api.max_requests_per_minute' => ValueType::Integer] as $key => $type) {
+        $feature = Feature::query()->firstOrCreate(
+            ['key' => $key],
+            ['name' => $key, 'value_type' => $type, 'is_active' => true, 'display_order' => 6],
+        );
+        $value = $key === 'api.max_requests_per_minute' ? ['limit' => 120] : ['enabled' => true];
+        $plan->features()->attach($feature->id, ['feature_value' => $value]);
+    }
 
     Subscription::create([
         'user_id' => $user->id,
@@ -131,6 +140,16 @@ function lifecycleAuditEntitledContext(int $inboxLimit = 5, ?int $serverCapacity
         'max_inboxes' => $serverCapacity,
         'metadata' => ['token' => 'server-fixture-marker', 'password' => 'server-fixture-marker'],
     ]);
+
+    ensureCommercialApiAccess($user, ['inboxes:write']);
+    $issued = app(CreateApiKeyAction::class)->issue(
+        userId: $user->id,
+        name: 'inbox-lifecycle-audit',
+        permissions: ['inboxes:write'],
+        user: $user,
+    );
+    $token = $issued->plainToken;
+    $apiKey = $issued->apiKey;
 
     return compact('user', 'domain', 'mailServer', 'token', 'apiKey', 'poolKey');
 }

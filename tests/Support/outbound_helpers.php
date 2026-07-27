@@ -22,6 +22,7 @@ if (! function_exists('outboundSendContext')) {
      */
     function outboundSendContext(array $overrides = []): array
     {
+        seedCommercialCatalogue();
         $user = User::factory()->create();
         $plan = Plan::query()->create([
             'slug' => 'outbound-'.uniqid(),
@@ -59,6 +60,7 @@ if (! function_exists('outboundSendContext')) {
             ['name' => 'Outbound messages', 'value_type' => ValueType::Json, 'is_active' => true, 'display_order' => 12],
         );
         $plan->features()->syncWithoutDetaching([$messageLimit->id => ['feature_value' => ['limit' => 1000, 'reset_period' => 'monthly']]]);
+        attachApiCommercialFeatures($plan);
 
         Subscription::query()->create([
             'user_id' => $user->id,

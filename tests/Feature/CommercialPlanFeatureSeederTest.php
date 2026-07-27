@@ -8,11 +8,6 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 
 uses(RefreshDatabase::class);
 
-function seedCommercialCatalogue(): void
-{
-    app(CommercialPlanFeatureSeeder::class)->run();
-}
-
 function commercialValue(Plan $plan, string $key): array
 {
     return $plan->fresh()->features()->where('key', $key)->firstOrFail()->pivot->feature_value;

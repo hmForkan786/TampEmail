@@ -96,6 +96,8 @@ function outboundUsageContext(array $overrides = []): array
         ]);
     }
 
+    attachApiCommercialFeatures($plan);
+
     $subscription = Subscription::query()->create([
         'user_id' => $user->id,
         'plan_id' => $plan->id,

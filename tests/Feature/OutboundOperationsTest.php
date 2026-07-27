@@ -64,6 +64,7 @@ function outboundOpsContext(): array
         ['name' => 'Outbound messages', 'value_type' => ValueType::Json, 'default_value' => null, 'is_active' => true, 'display_order' => 11],
     );
     $plan->features()->syncWithoutDetaching([$quota->id => ['feature_value' => ['limit' => 100, 'reset_period' => 'monthly']]]);
+    attachApiCommercialFeatures($plan);
     Subscription::query()->create([
         'user_id' => $user->id, 'plan_id' => $plan->id, 'status' => SubscriptionStatus::Active,
         'billing_cycle' => BillingCycle::Monthly, 'starts_at' => now()->subDay(), 'auto_renew' => true,
