@@ -21,6 +21,7 @@ use App\Repositories\Eloquent\EloquentInboxRepository;
 use App\Repositories\Eloquent\EloquentMailServerRepository;
 use App\Repositories\Eloquent\EloquentPlanRepository;
 use App\Repositories\Eloquent\EloquentSubscriptionRepository;
+use App\Services\Billing\PaymentGatewayRegistry;
 use App\Services\Dns\PhpDnsResolver;
 use App\Services\Ops\ProcessHeartbeatWriter;
 use App\Services\Outbound\GenericOutboundProviderEventParser;
@@ -119,6 +120,8 @@ class AppServiceProvider extends ServiceProvider
                 $app->make(OutboundTransportConfigValidator::class),
             );
         });
+
+        $this->app->singleton(PaymentGatewayRegistry::class);
     }
 
     /**
