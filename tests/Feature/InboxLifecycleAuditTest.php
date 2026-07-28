@@ -366,14 +366,17 @@ it('writes no audit when quota capacity or duplicate create fails', function ():
         $quotaCtx['user'],
         InboxMutationContext::forApi((string) $quotaCtx['user']->id, (string) $quotaCtx['apiKey']->id),
     );
-    expect(AuditLog::query()->count())->toBe(1);
+    // Limit=1 saturates inventory: inbox.created plus commercial threshold crossings (80/90/100).
+    expect(AuditLog::query()->where('action', 'inbox.created')->count())->toBe(1)
+        ->and(AuditLog::query()->where('action', 'commercial.usage_threshold_crossed')->count())->toBe(3);
 
     expect(fn () => app(CreateInboxAction::class)->execute(
         lifecycleAuditCreateData($quotaCtx['domain'], $quotaCtx['user'], 'quota2'.bin2hex(random_bytes(2))),
         $quotaCtx['user'],
         InboxMutationContext::forApi((string) $quotaCtx['user']->id, (string) $quotaCtx['apiKey']->id),
     ))->toThrow(CommercialEntitlementDeniedException::class);
-    expect(AuditLog::query()->count())->toBe(2)
+    expect(AuditLog::query()->where('action', 'inbox.created')->count())->toBe(1)
+        ->and(AuditLog::query()->where('action', 'commercial.limit_reached')->count())->toBe(1)
         ->and(Inbox::query()->where('user_id', $quotaCtx['user']->id)->count())->toBe(1);
 
     $capacityCtx = lifecycleAuditEntitledContext(inboxLimit: 5, serverCapacity: 1);
