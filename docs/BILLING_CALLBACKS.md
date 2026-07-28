@@ -15,3 +15,6 @@ The signed browser return may enqueue a status query and redirects to
 subscription. Future adapters supply provider-specific timestamp/signature
 verification. PAN, CVV, PIN, OTP, credentials, tokens, and raw secrets are not
 persisted.
+# Security trust boundary
+
+All provider callbacks are verified against their exact raw request bytes before this ingestion flow. See [BILLING_WEBHOOK_SECURITY.md](BILLING_WEBHOOK_SECURITY.md) for signature, timestamp, nonce, acknowledgement, and retention policies.

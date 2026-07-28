@@ -52,3 +52,6 @@ Billing operations emit:
 - Invalid state transition
 - Conflicting provider transaction reference across orders
 - Malformed/unknown provider state in strict paths
+# Provider callback cryptography
+
+Provider callback authenticity is enforced by the dedicated verification boundary described in [BILLING_WEBHOOK_SECURITY.md](BILLING_WEBHOOK_SECURITY.md), with rotation procedures in [BILLING_WEBHOOK_KEY_ROTATION.md](BILLING_WEBHOOK_KEY_ROTATION.md).

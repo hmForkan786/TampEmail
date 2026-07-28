@@ -70,3 +70,6 @@ See `config/billing.php` and `.env.example` placeholders. Never commit live cred
 6. Run relational concurrency tests on MySQL/PostgreSQL before production cutover.
 
 See also: [`BILLING_EXISTING_AUDIT.md`](BILLING_EXISTING_AUDIT.md), [`BILLING_STATE_MACHINES.md`](BILLING_STATE_MACHINES.md), [`BILLING_SECURITY.md`](BILLING_SECURITY.md).
+# Verified callback boundary
+
+HTTP callback → exact `RawWebhookRequest` → provider verifier → timestamp/nonce protection → existing callback ingestion → durable provider event → processing job. Failed verification stops before financial state.

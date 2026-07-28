@@ -9,8 +9,8 @@ use DateTimeImmutable;
 final readonly class WebhookVerificationResult
 {
     /**
-     * @param array<string, scalar|null> $safeFailureContext
-     * @param array<string, scalar|null> $verificationMetadata
+     * @param  array<string, scalar|null>  $safeFailureContext
+     * @param  array<string, scalar|null>  $verificationMetadata
      */
     public function __construct(
         public bool $verified,

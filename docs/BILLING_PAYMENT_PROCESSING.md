@@ -14,3 +14,6 @@ Public payment state is derived from the ledger. Reconciliation detects drift
 against operational order state. Full payment completes checkout sessions and
 dispatches the existing unique activation job after commit; activation failure
 never rolls back financial truth.
+# Webhook prerequisite
+
+HTTP-originated payment events reach this pipeline only after Prompt 639 cryptographic verification. Internal tests may call ingestion directly; that is not an external trust path.
