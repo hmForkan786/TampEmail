@@ -3,6 +3,7 @@
 use App\Http\Controllers\Web\AuthenticatedSessionController;
 use App\Http\Controllers\Web\BillingReturnController;
 use App\Http\Controllers\Web\MailboxController;
+use App\Http\Controllers\Web\ManualCryptoInstructionController;
 use App\Http\Controllers\Web\OutboundAttachmentDownloadController;
 use App\Http\Controllers\Web\OutboundDraftController;
 use App\Http\Controllers\Web\OutboundMessageController;
@@ -17,6 +18,10 @@ Route::get('/', function () {
 Route::get('billing/return/{provider}', BillingReturnController::class)
     ->middleware(['signed', 'throttle:billing-return'])
     ->name('billing.return');
+Route::get('billing/manual-crypto/{snapshot}', ManualCryptoInstructionController::class)
+    ->middleware(['signed', 'throttle:billing-return'])
+    ->whereUuid('snapshot')
+    ->name('billing.manual-crypto.instructions');
 
 Route::middleware('guest')->group(function (): void {
     Route::get('login', [AuthenticatedSessionController::class, 'create'])->name('login');

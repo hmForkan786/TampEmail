@@ -1,6 +1,7 @@
 <?php
 
 use App\Services\Billing\Gateways\FakePaymentGateway;
+use App\Services\Billing\Gateways\ManualCryptoPaymentGateway;
 use App\Services\Billing\Gateways\SslCommerzPaymentGateway;
 use App\Services\Billing\Gateways\StripePaymentGateway;
 
@@ -18,6 +19,7 @@ return [
         'fake' => FakePaymentGateway::class,
         'sslcommerz' => SslCommerzPaymentGateway::class,
         'stripe' => StripePaymentGateway::class,
+        'manual_crypto' => ManualCryptoPaymentGateway::class,
     ],
 
     'order_expiry_minutes' => (int) env('BILLING_ORDER_EXPIRY_MINUTES', 30),
@@ -168,6 +170,26 @@ return [
         'health_check' => [
             'enabled' => filter_var(env('STRIPE_HEALTH_CHECK_ENABLED', true), FILTER_VALIDATE_BOOL),
             'cache_ttl_seconds' => (int) env('STRIPE_HEALTH_CHECK_CACHE_TTL_SECONDS', 60),
+        ],
+    ],
+    'manual_crypto' => [
+        'enabled' => filter_var(env('MANUAL_CRYPTO_ENABLED', false), FILTER_VALIDATE_BOOL),
+        'asset' => 'USDT',
+        'network' => 'TRC20',
+        'allowed_order_currencies' => ['USD'],
+        'evidence_disk' => env('MANUAL_CRYPTO_EVIDENCE_DISK', 'local'),
+        'max_screenshot_kilobytes' => (int) env('MANUAL_CRYPTO_MAX_SCREENSHOT_KB', 5120),
+        'wallets' => [
+            'primary' => [
+                'id' => 'primary',
+                'network' => 'TRC20',
+                'address' => env('MANUAL_CRYPTO_TRC20_ADDRESS', ''),
+                'enabled' => filter_var(env('MANUAL_CRYPTO_PRIMARY_WALLET_ENABLED', false), FILTER_VALIDATE_BOOL),
+                'priority' => 100,
+                'rotation_group' => 'default',
+                'created_at' => env('MANUAL_CRYPTO_PRIMARY_WALLET_CREATED_AT'),
+                'disabled_at' => env('MANUAL_CRYPTO_PRIMARY_WALLET_DISABLED_AT'),
+            ],
         ],
     ],
     'payment_sync' => [

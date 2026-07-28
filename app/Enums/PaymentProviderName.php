@@ -12,6 +12,7 @@ enum PaymentProviderName: string
     case Fake = 'fake';
     case Stripe = 'stripe';
     case SslCommerz = 'sslcommerz';
+    case ManualCrypto = 'manual_crypto';
     case Bkash = 'bkash';
     case Nagad = 'nagad';
 
