@@ -23,8 +23,8 @@ The commercial contract is not complete yet:
 - A missing metered outbound feature means unlimited, while a missing inbox or
   API-key quota also skips enforcement. That is unsafe as the Free fallback.
 - Subscription selection does not currently reject an inactive plan or an
-  `ends_at` date in the past. `User::isPremium()` separately uses its `hasOne`
-  relation and therefore can disagree with the central resolver.
+  `ends_at` date in the past. (Prompt 635 removed the unused `User::isPremium()`
+  helper so entitlement resolution stays on `EntitlementService` only.)
 - Cancellation, expiry, failed-payment, grace-period and plan-change rules
   have not been modelled as a commercial lifecycle.
 

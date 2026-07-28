@@ -17,12 +17,13 @@ not registered in `DatabaseSeeder` because applying commercial plan values to
 an existing production database must remain an explicit operator action.
 
 Feature keys use the existing implementation keys where they already exist:
-`inbox.max_active` -> `max_inboxes`, `api.keys.max_active` -> `max_api_keys`,
 `outbound.send` -> `send_email`, `outbound.reply` -> `reply_email`,
 `outbound.forward` -> `forward_email`, and
 `outbound.max_messages_per_period` -> `outbound_messages_per_period`.
+Inbox inventory uses `inbox.max_active` (not a separate `max_inboxes`
+feature key). API key inventory uses `max_api_keys`.
 
-The complete catalogue is: `inbox.create`, `max_inboxes`,
+The complete catalogue is: `inbox.create`, `inbox.max_active`,
 `inbox.custom_alias`, `inbox.public_access`, `inbox.retention_hours`,
 `message.max_received`, `attachment.download`, `attachment.max_size_mb`,
 `attachment.max_per_message`, `send_email`, `reply_email`, `forward_email`,

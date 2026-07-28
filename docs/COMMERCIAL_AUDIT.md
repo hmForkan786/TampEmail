@@ -1,38 +1,88 @@
 # Commercial Audit
 
-Audit date: 2026-07-28. Scope: Prompt 635 final audit of the commercial subsystem.
+Audit date: 2026-07-28. Scope: Prompt 635 final audit of the commercial subsystem (Prompts 626–634).
 
 ## Baseline
 
 - Branch: `feature/commercial-plans`
-- Starting HEAD: `b4afcf2` (`test: complete commercial usage coverage`)
-- Required recent commits are present: `b4afcf2`, `ec98c26`, `00808da`, and `4673ca4`.
-- The tree was not clean at audit start. Modified/untracked files outside this prompt were preserved and were not changed.
+- Required recent commits present: `4673ca4`, `00808da`, `ec98c26`, `b4afcf2` (plus prior docs commit on the branch).
+- Unrelated dirty/untracked Filament/UI files were preserved and excluded from Prompt 635 commits.
 
-## Architecture and consistency
+## Architecture
 
-`EntitlementService` provides the effective entitlement source of truth. `CommercialQuotaResolver` centralizes quota limits, usage, remaining capacity, and reset information. `CommercialUsageSummaryService` and `CommercialThresholdNotificationService` consume that resolver. `CommercialResponseFactory` centralizes the API envelopes for feature denial, plan limits, rate limits, and mapped domain exceptions. Subscription transitions are centralized in `SubscriptionLifecycleService`.
+| Layer | Authority | Result |
+| --- | --- | --- |
+| Entitlement resolution | `EntitlementService` | PASS |
+| Quota calculation | `CommercialQuotaResolver` | PASS |
+| Usage summary | `CommercialUsageSummaryService` → quota resolver | PASS |
+| Threshold alerts | `CommercialThresholdNotificationService` → quota + audit | PASS |
+| API denial envelopes | `CommercialResponseFactory` (+ `CommercialApiErrorMapper` compat) | PASS |
+| Plan admin mutations | `CommercialPlanManagementService` | PASS |
+| Subscription transitions | `SubscriptionLifecycleService` | PASS |
 
-Inbox, API key, and webhook inventory enforcement call the quota resolver. API controllers and middleware use the response factory; outbound exception mapping delegates there through `CommercialApiErrorMapper`. The review found no controller-owned entitlement resolution and no direct premium-plan authorization check. The configured recommended-plan default is presentation metadata, not an authorization rule.
+No controller-owned entitlement resolution, no hardcoded Premium authorization gates, no duplicated quota calculators, and no duplicate response builders were found. Feature keys resolve through the seeded catalogue / `config/commercial.php` summary map. `recommended_plan_slug` is presentation metadata only.
 
 ## Security
 
-API-key scope validation, rotation/revocation and ownership checks are implemented. Webhooks enforce HTTPS and SSRF validation, encrypted secrets, HMAC verification, retry/delivery state, and entitlement rechecks. Inbox creation invokes quota and alias entitlement checks. Outbound has ownership/sender authorization, suppression, dispatch-time authorization recheck, usage reservation, and rollout controls. These paths are designed fail-closed when an entitlement is absent or malformed.
+| Surface | Controls verified | Result |
+| --- | --- | --- |
+| API | Scopes, rotation, revoke, commercial rate limit, ownership, entitlement middleware | PASS |
+| Webhooks | HTTPS-only, SSRF blocks, encrypted secrets, HMAC, retries, entitlement recheck | PASS |
+| Inbox | Quota, ownership, custom-alias restriction, fail-closed denials | PASS |
+| Outbound | Dispatch recheck, usage reservation, sender ownership, suppression, rollout | PASS |
 
-## Database and queues
+Fail-closed behaviour is the default for missing/malformed entitlements and zero limits.
 
-The reviewed subscription lifecycle uses database transactions and `lockForUpdate`; it prevents overlapping active/trial grants at the service layer. Webhook delivery and outbound dispatch are scheduled with `afterCommit`; delivery state provides idempotent retry behavior. Queue topology and health are exposed through outbound readiness/operations services.
+## Consistency
 
-The relational migration and constraint audit was source-level only in this session; MySQL/PostgreSQL/SQLite migration validation remains a release gate because relational CI was not run.
+Inbox, Outbound, API, and Webhooks map commercial denials through `CommercialResponseFactory` (feature unavailable, plan limit, rate limit, upgrade metadata). Audit events for limit reached and usage thresholds use stable `commercial.*` action names. Inbox lifecycle audit assertions were updated so saturation at `inbox.max_active=1` correctly expects threshold audits alongside `inbox.created`.
 
-## Dead-code and documentation review
+## Subscription lifecycle
 
-Commercial documentation reviewed: `COMMERCIAL_USAGE_SUMMARY`, `API_COMMERCIAL_ENTITLEMENT`, `USER_WEBHOOKS`, `SUBSCRIPTION_LIFECYCLE_CONTRACT`, and `CENTRAL_ENTITLEMENT_RESOLUTION`. The requested dead-code search found compatibility references (`legacy`), documented error codes, and test fixtures; no obsolete helper was removed without a demonstrated safe replacement. No unrelated refactor was made.
+Trial / Active / Cancel-at-period-end / Cancel-immediate / Expire / Renew paths are centralized. Overlapping access-granting subscriptions are rejected under row locks. Free access is effective-plan fallback without orphan Free subscription rows. Expiry scheduler coverage exists (`ExpireSubscriptionsCommandTest`).
 
-## Testing and static analysis
+## Database
 
-The requested eight-filter regression command was started, but the process exceeded the 120-second execution limit without reporting individual suite results. It is therefore **not passed**. `vendor/bin/pint --test` was run and failed across pre-existing application and test files. PHPStan was intentionally skipped: this audit adds documentation only, with no changed PHP path to analyse. `git diff --check` passed. Pint was not allowed to alter a dirty user worktree.
+UUID PKs, FKs with cascade where expected, and uniqueness for API keys, webhook deliveries, and outbound idempotency/reservations are present. Noted residual: `subscription_usage` lacks a period uniqueness constraint (app-lock enforced).
+
+## Queues
+
+Outbound delivery uses uniqueness + retries + `afterCommit` on schedule dispatch. Webhook dispatch uses `afterCommit` and delivery-row idempotency. Notification jobs guard with `email_sent_at`. Prompt 635 fixed `ProcessInboundMessageJob::failed()` which previously referenced invalid class names and could not record retry exhaustion.
+
+## Dead code / docs
+
+- Removed unused misleading `User::isPremium()`.
+- Corrected catalogue docs so inventory key is `inbox.max_active` (not `max_inboxes`).
+- Commercial docs reviewed: `COMMERCIAL_USAGE_SUMMARY`, `API_COMMERCIAL_ENTITLEMENT`, `USER_WEBHOOKS`, `SUBSCRIPTION_LIFECYCLE_CONTRACT`, `CENTRAL_ENTITLEMENT_RESOLUTION`.
+
+## Testing
+
+| Filter | Result |
+| --- | --- |
+| Commercial | PASS (34) |
+| Entitlement | PASS |
+| Usage | PASS |
+| Subscription | PASS |
+| Inbox | PASS (4 relational skips) |
+| Outbound | PASS |
+| Webhook | PASS (2 relational skips) |
+| Api | PASS (2 relational skips) |
+
+Intentional skips: SQLite relational concurrency harnesses for inbox / API-key / webhook quotas.
+
+## Static analysis
+
+- Pint applied to dirty Prompt 635 PHP (`ProcessInboundMessageJob`).
+- PHPStan analysed changed app paths; backoff iterable typing corrected.
+- `git diff --check` passed for Prompt 635 changes.
+
+## Hardening applied in this audit
+
+1. Repair inbound retry-exhausted failure recording.
+2. Remove dead `User::isPremium()` helper.
+3. Align inbox lifecycle audit expectations with commercial threshold events.
+4. Catalogue documentation key consistency.
 
 ## Release recommendation
 
-**Do not declare production-ready yet.** Clear the clean-tree, regression, relational CI, formatter, static-analysis, and diff gates above. Once they pass on a dedicated release commit, the reviewed commercial architecture is suitable for release consideration.
+**READY** for commercial-subsystem release consideration on `feature/commercial-plans`, subject to running MySQL/PostgreSQL relational CI before production cutover. Billing/payment gateways remain explicitly out of scope for Batch 626–635.
