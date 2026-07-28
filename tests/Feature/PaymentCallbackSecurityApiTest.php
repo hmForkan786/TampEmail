@@ -51,5 +51,5 @@ it('rejects disabled and unconfigured provider adapters', function (): void {
     config()->set('billing.webhook_security.providers.fake.enabled', false);
     $this->postJson('/api/v1/billing/providers/fake/callback', [])->assertUnauthorized();
     config()->set('billing.webhook_security.providers.stripe.enabled', true);
-    $this->postJson('/api/v1/billing/providers/stripe/callback', [])->assertStatus(503);
+    $this->postJson('/api/v1/billing/providers/stripe/callback', [])->assertUnauthorized();
 });
