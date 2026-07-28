@@ -2,6 +2,7 @@
 
 use App\Http\Controllers\Api\V1\AttachmentDownloadController;
 use App\Http\Controllers\Api\V1\BillingCheckoutController;
+use App\Http\Controllers\Api\V1\BillingInvoiceController;
 use App\Http\Controllers\Api\V1\CommercialUsageController;
 use App\Http\Controllers\Api\V1\EmailForwardController;
 use App\Http\Controllers\Api\V1\EmailReadStateController;
@@ -39,6 +40,15 @@ Route::prefix('v1')->name('api.v1.')->middleware(['api.request-log', 'api.key'])
         Route::post('admin/billing/manual-crypto-claims/{claim}/approve', [ManualCryptoReviewController::class, 'approve'])->whereUuid('claim')->name('admin.billing.manual-crypto.approve');
         Route::post('admin/billing/manual-crypto-claims/{claim}/reject', [ManualCryptoReviewController::class, 'reject'])->whereUuid('claim')->name('admin.billing.manual-crypto.reject');
         Route::post('admin/billing/manual-crypto-claims/{claim}/reopen', [ManualCryptoReviewController::class, 'reopen'])->whereUuid('claim')->name('admin.billing.manual-crypto.reopen');
+        Route::get('billing/invoices', [BillingInvoiceController::class, 'index'])->name('billing.invoices.index');
+        Route::get('billing/invoices/export', [BillingInvoiceController::class, 'export'])->name('billing.invoices.export');
+        Route::get('billing/invoices/{invoice}', [BillingInvoiceController::class, 'show'])->whereUuid('invoice')->name('billing.invoices.show');
+        Route::get('billing/invoices/{invoice}/download', [BillingInvoiceController::class, 'download'])->whereUuid('invoice')->name('billing.invoices.download');
+        Route::get('billing/payments', [BillingInvoiceController::class, 'payments'])->name('billing.payments.index');
+        Route::get('billing/orders', [BillingInvoiceController::class, 'orders'])->name('billing.orders.index');
+        Route::get('admin/billing/invoices', [BillingInvoiceController::class, 'adminIndex'])->name('admin.billing.invoices.index');
+        Route::get('admin/billing/invoices/{invoice}', [BillingInvoiceController::class, 'adminShow'])->whereUuid('invoice')->name('admin.billing.invoices.show');
+        Route::get('admin/billing/invoices/{invoice}/download', [BillingInvoiceController::class, 'adminDownload'])->whereUuid('invoice')->name('admin.billing.invoices.download');
     });
     Route::middleware(['api.scope:mail_servers:read', 'api.entitlement:api.read', 'api.rate-limit'])->group(function (): void {
         Route::get('mail-servers', [MailServerController::class, 'index'])->name('mail-servers.index');
