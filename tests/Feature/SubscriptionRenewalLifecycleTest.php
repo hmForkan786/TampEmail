@@ -24,6 +24,7 @@ use Illuminate\Support\Facades\Event;
 
 uses(RefreshDatabase::class);
 
+/** @param array<string, mixed> $attributes */
 function renewalLifecycleSubscription(SubscriptionStatus $status = SubscriptionStatus::Active, array $attributes = []): Subscription
 {
     app(CommercialPlanFeatureSeeder::class)->run();
@@ -127,7 +128,7 @@ it('recovers grace and expired subscriptions only through paid-order activation'
     expect($subscription->fresh()->status)->toBe(SubscriptionStatus::Active)
         ->and($subscription->fresh()->ends_at?->isFuture())->toBeTrue()
         ->and(PaymentTransaction::query()->count())->toBe(0);
-})->with([SubscriptionStatus::Grace, SubscriptionStatus::Expired]);
+})->with([[SubscriptionStatus::Grace], [SubscriptionStatus::Expired]]);
 
 it('does not automatically renew cancelled subscriptions and fails closed for invalid config', function (): void {
     $cancelled = renewalLifecycleSubscription(SubscriptionStatus::Cancelled);
