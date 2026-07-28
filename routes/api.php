@@ -171,6 +171,7 @@ Route::prefix('v1')->name('api.v1.')->middleware(['api.request-log', 'api.key'])
 Route::post('v1/inbound/webhook', InboundWebhookController::class)->name('api.v1.inbound.webhook');
 Route::post('v1/billing/providers/{provider}/callback', PaymentProviderCallbackController::class)
     ->middleware('throttle:billing-callback')
+    ->where('provider', 'fake|stripe|sslcommerz|bkash|nagad')
     ->name('api.v1.billing.providers.callback');
 Route::post('v1/webhooks/outbound/{provider}', OutboundWebhookController::class)
     ->name('api.v1.webhooks.outbound');

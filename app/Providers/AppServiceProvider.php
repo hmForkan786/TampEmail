@@ -22,6 +22,9 @@ use App\Repositories\Eloquent\EloquentMailServerRepository;
 use App\Repositories\Eloquent\EloquentPlanRepository;
 use App\Repositories\Eloquent\EloquentSubscriptionRepository;
 use App\Services\Billing\PaymentGatewayRegistry;
+use App\Services\Billing\Webhook\FakeProviderWebhookVerifier;
+use App\Services\Billing\Webhook\ProviderWebhookVerifierRegistry;
+use App\Services\Billing\Webhook\UnconfiguredProviderWebhookVerifier;
 use App\Services\Dns\PhpDnsResolver;
 use App\Services\Ops\ProcessHeartbeatWriter;
 use App\Services\Outbound\GenericOutboundProviderEventParser;
@@ -122,6 +125,13 @@ class AppServiceProvider extends ServiceProvider
         });
 
         $this->app->singleton(PaymentGatewayRegistry::class);
+        $this->app->singleton(ProviderWebhookVerifierRegistry::class, fn ($app): ProviderWebhookVerifierRegistry => new ProviderWebhookVerifierRegistry([
+            $app->make(FakeProviderWebhookVerifier::class),
+            new UnconfiguredProviderWebhookVerifier('stripe'),
+            new UnconfiguredProviderWebhookVerifier('sslcommerz'),
+            new UnconfiguredProviderWebhookVerifier('bkash'),
+            new UnconfiguredProviderWebhookVerifier('nagad'),
+        ]));
     }
 
     /**
@@ -159,7 +169,14 @@ class AppServiceProvider extends ServiceProvider
         });
 
         RateLimiter::for('billing-return', fn (Request $request): Limit => Limit::perMinute(30)->by($request->ip()));
-        RateLimiter::for('billing-callback', fn (Request $request): Limit => Limit::perMinute(120)->by($request->ip().':'.$request->route('provider')));
+        RateLimiter::for('billing-callback', function (Request $request): array {
+            $provider = strtolower((string) $request->route('provider'));
+
+            return [
+                Limit::perMinute((int) config('billing.webhook_security.rate_limits.per_ip_per_minute', 120))->by('billing-webhook-ip:'.$request->ip()),
+                Limit::perMinute((int) config('billing.webhook_security.rate_limits.per_provider_per_minute', 300))->by('billing-webhook-provider:'.$provider),
+            ];
+        });
 
         Queue::starting(function (WorkerStarting $event): void {
             app(ProcessHeartbeatWriter::class)->recordWorkerStarting($event->connectionName, (string) $event->queue);
