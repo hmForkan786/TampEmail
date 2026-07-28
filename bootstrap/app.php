@@ -3,6 +3,7 @@
 use App\Console\Commands\ExpireBillingCheckoutsCommand;
 use App\Console\Commands\ProcessRuntimeSmoke;
 use App\Console\Commands\PruneBillingWebhookSecurityCommand;
+use App\Console\Commands\SslCommerzHealthCommand;
 use App\Console\Commands\SyncBillingPaymentStatusCommand;
 use App\Console\Commands\VerifyBillingWebhookCommand;
 use App\Contracts\AttachmentScannerInterface;
@@ -40,6 +41,7 @@ return Application::configure(basePath: dirname(__DIR__))
         SyncBillingPaymentStatusCommand::class,
         PruneBillingWebhookSecurityCommand::class,
         VerifyBillingWebhookCommand::class,
+        SslCommerzHealthCommand::class,
         ProcessRuntimeSmoke::class,
     ])
     ->withBindings([

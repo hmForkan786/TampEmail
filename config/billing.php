@@ -1,6 +1,7 @@
 <?php
 
 use App\Services\Billing\Gateways\FakePaymentGateway;
+use App\Services\Billing\Gateways\SslCommerzPaymentGateway;
 
 return [
     'default_gateway' => env('BILLING_DEFAULT_GATEWAY', 'fake'),
@@ -14,6 +15,7 @@ return [
     /** @var array<string, class-string> Provider slug to gateway implementation. */
     'gateways' => [
         'fake' => FakePaymentGateway::class,
+        'sslcommerz' => SslCommerzPaymentGateway::class,
     ],
 
     'order_expiry_minutes' => (int) env('BILLING_ORDER_EXPIRY_MINUTES', 30),
@@ -45,6 +47,8 @@ return [
 
     'callbacks' => [
         'max_payload_bytes' => (int) env('BILLING_CALLBACK_MAX_BYTES', 262144),
+        'max_fields' => (int) env('BILLING_CALLBACK_MAX_FIELDS', 100),
+        'max_field_bytes' => (int) env('BILLING_CALLBACK_MAX_FIELD_BYTES', 4096),
     ],
     'fake' => [
         'require_signature' => filter_var(env('BILLING_FAKE_REQUIRE_SIGNATURE', false), FILTER_VALIDATE_BOOL),
@@ -74,9 +78,52 @@ return [
                 'allowed_source_ips' => array_values(array_filter(array_map('trim', explode(',', (string) env('FAKE_PAYMENT_WEBHOOK_ALLOWED_IPS', ''))))),
             ],
             'stripe' => ['enabled' => false],
-            'sslcommerz' => ['enabled' => false],
+            'sslcommerz' => [
+                'enabled' => filter_var(env('SSLCOMMERZ_ENABLED', false), FILTER_VALIDATE_BOOL),
+                'required_headers' => [],
+                'allowed_source_ips' => array_values(array_filter(array_map('trim', explode(',', (string) env('SSLCOMMERZ_ALLOWED_IPS', ''))))),
+            ],
             'bkash' => ['enabled' => false],
             'nagad' => ['enabled' => false],
+        ],
+    ],
+    'sslcommerz' => [
+        'enabled' => filter_var(env('SSLCOMMERZ_ENABLED', false), FILTER_VALIDATE_BOOL),
+        'environment' => env('SSLCOMMERZ_ENV', 'sandbox'),
+        'default_store' => env('SSLCOMMERZ_DEFAULT_STORE', 'default'),
+        'stores' => [
+            'default' => [
+                'enabled' => filter_var(env('SSLCOMMERZ_DEFAULT_STORE_ENABLED', true), FILTER_VALIDATE_BOOL),
+                'environment' => env('SSLCOMMERZ_DEFAULT_STORE_ENV', env('SSLCOMMERZ_ENV', 'sandbox')),
+                'store_id' => env('SSLCOMMERZ_STORE_ID'),
+                'store_password' => env('SSLCOMMERZ_STORE_PASSWORD'),
+            ],
+        ],
+        'allowed_currencies' => array_values(array_filter(array_map(
+            static fn (string $currency): string => strtoupper(trim($currency)),
+            explode(',', (string) env('SSLCOMMERZ_ALLOWED_CURRENCIES', 'BDT')),
+        ))),
+        'maintenance_mode' => filter_var(env('SSLCOMMERZ_MAINTENANCE_MODE', false), FILTER_VALIDATE_BOOL),
+        'api' => [
+            'sandbox_base_url' => env('SSLCOMMERZ_SANDBOX_BASE_URL', 'https://sandbox.sslcommerz.com'),
+            'production_base_url' => env('SSLCOMMERZ_PRODUCTION_BASE_URL', 'https://securepay.sslcommerz.com'),
+            'timeout_seconds' => (int) env('SSLCOMMERZ_TIMEOUT_SECONDS', 30),
+            'connect_timeout_seconds' => (int) env('SSLCOMMERZ_CONNECT_TIMEOUT_SECONDS', 10),
+        ],
+        'validation' => [
+            'retry_attempts' => (int) env('SSLCOMMERZ_VALIDATION_RETRY_ATTEMPTS', 3),
+        ],
+        'checkout' => [
+            'product_name' => env('SSLCOMMERZ_PRODUCT_NAME', 'SaaS subscription'),
+            'product_category' => env('SSLCOMMERZ_PRODUCT_CATEGORY', 'software'),
+            'support_phone' => env('SSLCOMMERZ_SUPPORT_PHONE', ''),
+            'neutral_address' => env('SSLCOMMERZ_NEUTRAL_ADDRESS', 'Not applicable'),
+            'neutral_city' => env('SSLCOMMERZ_NEUTRAL_CITY', 'Dhaka'),
+            'neutral_country' => env('SSLCOMMERZ_NEUTRAL_COUNTRY', 'Bangladesh'),
+        ],
+        'health_check' => [
+            'enabled' => filter_var(env('SSLCOMMERZ_HEALTH_CHECK_ENABLED', true), FILTER_VALIDATE_BOOL),
+            'cache_ttl_seconds' => (int) env('SSLCOMMERZ_HEALTH_CHECK_CACHE_TTL_SECONDS', 60),
         ],
     ],
     'payment_sync' => [
