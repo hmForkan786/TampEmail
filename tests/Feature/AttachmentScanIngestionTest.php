@@ -19,6 +19,7 @@ use App\Models\Inbox;
 use App\Models\User;
 use App\Policies\AttachmentVisibilityPolicy;
 use App\Services\Inbound\AttachmentScanService;
+use Database\Seeders\CommercialPlanFeatureSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Storage;
 
@@ -207,6 +208,7 @@ it('records expected events and remains idempotent on repeated job execution', f
 
 it('allows clean downloads and denies non-clean states without exposing threat internals', function (): void {
     config(['api.key_hash_secret' => 'attachment-ingestion-test-secret']);
+    app(CommercialPlanFeatureSeeder::class)->run();
     Storage::fake('attachments');
     $owner = User::factory()->create();
     $domain = Domain::query()->create([
