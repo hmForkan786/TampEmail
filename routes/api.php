@@ -18,6 +18,7 @@ use App\Http\Controllers\Api\V1\OutboundNotificationPreferenceController;
 use App\Http\Controllers\Api\V1\OutboundSenderProfileController;
 use App\Http\Controllers\Api\V1\OutboundUsageController;
 use App\Http\Controllers\Api\V1\OutboundWebhookController;
+use App\Http\Controllers\Api\V1\PaymentProviderCallbackController;
 use App\Http\Controllers\Api\V1\WebhookEndpointController;
 use Illuminate\Support\Facades\Route;
 
@@ -27,6 +28,7 @@ Route::prefix('v1')->name('api.v1.')->middleware(['api.request-log', 'api.key'])
         Route::get('billing/orders/{billingOrder}', [BillingCheckoutController::class, 'show'])->whereUuid('billingOrder')->name('billing.orders.show');
         Route::post('billing/orders/{billingOrder}/resume', [BillingCheckoutController::class, 'resume'])->whereUuid('billingOrder')->name('billing.orders.resume');
         Route::post('billing/orders/{billingOrder}/cancel', [BillingCheckoutController::class, 'cancel'])->whereUuid('billingOrder')->name('billing.orders.cancel');
+        Route::post('billing/orders/{billingOrder}/sync', [BillingCheckoutController::class, 'sync'])->whereUuid('billingOrder')->name('billing.orders.sync');
     });
     Route::middleware(['api.scope:mail_servers:read', 'api.entitlement:api.read', 'api.rate-limit'])->group(function (): void {
         Route::get('mail-servers', [MailServerController::class, 'index'])->name('mail-servers.index');
@@ -167,5 +169,8 @@ Route::prefix('v1')->name('api.v1.')->middleware(['api.request-log', 'api.key'])
 });
 
 Route::post('v1/inbound/webhook', InboundWebhookController::class)->name('api.v1.inbound.webhook');
+Route::post('v1/billing/providers/{provider}/callback', PaymentProviderCallbackController::class)
+    ->middleware('throttle:billing-callback')
+    ->name('api.v1.billing.providers.callback');
 Route::post('v1/webhooks/outbound/{provider}', OutboundWebhookController::class)
     ->name('api.v1.webhooks.outbound');

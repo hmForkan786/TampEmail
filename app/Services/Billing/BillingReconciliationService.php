@@ -16,7 +16,10 @@ use Illuminate\Support\Facades\DB;
 
 final class BillingReconciliationService
 {
-    public function __construct(private readonly AuditLogWriter $audit) {}
+    public function __construct(
+        private readonly AuditLogWriter $audit,
+        private readonly BillingPaymentStatusService $paymentStatus,
+    ) {}
 
     /** @return Collection<int, array<string, mixed>> */
     public function detectAnomalies(int $limit = 100): Collection
@@ -39,6 +42,16 @@ final class BillingReconciliationService
                     'billing_order_id' => $order->getKey(),
                 ]);
             });
+
+        BillingOrder::query()->limit($limit)->get()->each(function (BillingOrder $order) use ($findings): void {
+            $projection = $this->paymentStatus->project($order);
+            if (($projection['payment_status'] === 'paid') !== ($order->status === BillingOrderStatus::Paid)) {
+                $findings->push([
+                    'type' => 'payment_projection_drift',
+                    'billing_order_id' => $order->getKey(),
+                ]);
+            }
+        });
 
         BillingOrder::query()
             ->where('status', BillingOrderStatus::Processing)

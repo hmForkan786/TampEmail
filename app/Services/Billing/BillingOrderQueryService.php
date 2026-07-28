@@ -13,7 +13,8 @@ final class BillingOrderQueryService
 {
     public function owned(string $orderId, string $userId): BillingOrder
     {
-        return BillingOrder::query()->with('plan')->whereKey($orderId)->where('user_id', $userId)->firstOrFail();
+        return BillingOrder::query()->with(['plan', 'paymentTransactions', 'checkoutSessions'])
+            ->whereKey($orderId)->where('user_id', $userId)->firstOrFail();
     }
 
     public function history(string $userId, int $limit = 50): Collection
@@ -40,5 +41,12 @@ final class BillingOrderQueryService
     public function byProviderReference(string $provider, string $reference): ?BillingOrder
     {
         return BillingOrder::query()->where('provider', $provider)->where('provider_reference', $reference)->first();
+    }
+
+    public function staleProcessing(int $minutes, int $limit = 100): Collection
+    {
+        return BillingOrder::query()->where('status', BillingOrderStatus::Processing)
+            ->where('updated_at', '<=', now()->subMinutes(max(1, $minutes)))
+            ->oldest('updated_at')->limit(max(1, min(1000, $limit)))->get();
     }
 }

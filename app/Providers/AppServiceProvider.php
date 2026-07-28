@@ -159,6 +159,7 @@ class AppServiceProvider extends ServiceProvider
         });
 
         RateLimiter::for('billing-return', fn (Request $request): Limit => Limit::perMinute(30)->by($request->ip()));
+        RateLimiter::for('billing-callback', fn (Request $request): Limit => Limit::perMinute(120)->by($request->ip().':'.$request->route('provider')));
 
         Queue::starting(function (WorkerStarting $event): void {
             app(ProcessHeartbeatWriter::class)->recordWorkerStarting($event->connectionName, (string) $event->queue);

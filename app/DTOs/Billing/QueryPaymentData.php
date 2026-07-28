@@ -10,5 +10,7 @@ final readonly class QueryPaymentData
         public string $provider,
         public string $providerTransactionId,
         public string $billingOrderId,
+        public ?int $expectedAmountMinor = null,
+        public ?string $expectedCurrency = null,
     ) {}
 }

@@ -42,4 +42,18 @@ return [
         'activation' => env('BILLING_QUEUE_ACTIVATION', 'default'),
         'reconciliation' => env('BILLING_QUEUE_RECONCILIATION', 'default'),
     ],
+
+    'callbacks' => [
+        'max_payload_bytes' => (int) env('BILLING_CALLBACK_MAX_BYTES', 262144),
+    ],
+    'fake' => [
+        'require_signature' => filter_var(env('BILLING_FAKE_REQUIRE_SIGNATURE', false), FILTER_VALIDATE_BOOL),
+        'callback_secret' => env('BILLING_FAKE_CALLBACK_SECRET', 'fake-testing-secret'),
+    ],
+    'payment_sync' => [
+        'enabled' => filter_var(env('BILLING_PAYMENT_SYNC_ENABLED', true), FILTER_VALIDATE_BOOL),
+        'stale_after_minutes' => (int) env('BILLING_PAYMENT_SYNC_STALE_MINUTES', 10),
+        'batch_size' => (int) env('BILLING_PAYMENT_SYNC_BATCH_SIZE', 100),
+        'max_attempts_per_order' => (int) env('BILLING_PAYMENT_SYNC_MAX_ATTEMPTS', 12),
+    ],
 ];

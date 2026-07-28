@@ -22,10 +22,14 @@ use Illuminate\Support\Carbon;
  * @property string $currency
  * @property string $provider_transaction_id
  * @property string|null $provider_event_id
+ * @property string|null $authorization_reference
+ * @property string|null $parent_transaction_id
  * @property string $idempotency_key
  * @property string|null $failure_code
  * @property string|null $failure_message
  * @property Carbon|null $processed_at
+ * @property Carbon|null $occurred_at
+ * @property string|null $provider_status
  * @property string|null $payload_fingerprint
  * @property array<string, mixed>|null $metadata
  */
@@ -44,10 +48,14 @@ class PaymentTransaction extends BaseModel
         'currency',
         'provider_transaction_id',
         'provider_event_id',
+        'authorization_reference',
+        'parent_transaction_id',
         'idempotency_key',
         'failure_code',
         'failure_message',
         'processed_at',
+        'occurred_at',
+        'provider_status',
         'payload_fingerprint',
         'metadata',
     ];
@@ -59,6 +67,7 @@ class PaymentTransaction extends BaseModel
             'status' => PaymentTransactionStatus::class,
             'amount_minor' => 'integer',
             'processed_at' => 'datetime',
+            'occurred_at' => 'datetime',
             'metadata' => 'array',
         ]);
     }

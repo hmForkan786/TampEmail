@@ -2,6 +2,7 @@
 
 use App\Console\Commands\ExpireBillingCheckoutsCommand;
 use App\Console\Commands\ProcessRuntimeSmoke;
+use App\Console\Commands\SyncBillingPaymentStatusCommand;
 use App\Contracts\AttachmentScannerInterface;
 use App\Contracts\InboundWebhookDispatcher;
 use App\Contracts\OutboundTransportInterface;
@@ -34,6 +35,7 @@ return Application::configure(basePath: dirname(__DIR__))
     )
     ->withCommands([
         ExpireBillingCheckoutsCommand::class,
+        SyncBillingPaymentStatusCommand::class,
         ProcessRuntimeSmoke::class,
     ])
     ->withBindings([
@@ -73,6 +75,9 @@ return Application::configure(basePath: dirname(__DIR__))
         $schedule->command('outbound:dispatch-scheduled')->everyMinute()->withoutOverlapping();
         $schedule->command('subscriptions:expire --batch=100')->everyFiveMinutes()->withoutOverlapping();
         $schedule->command('billing:expire-checkouts')->everyFiveMinutes()->withoutOverlapping();
+        if (config('billing.payment_sync.enabled', true)) {
+            $schedule->command('billing:sync-payment-status')->everyFiveMinutes()->withoutOverlapping();
+        }
     })
     ->withMiddleware(function (Middleware $middleware): void {
         $middleware->append(ApplySecurityHeaders::class);
