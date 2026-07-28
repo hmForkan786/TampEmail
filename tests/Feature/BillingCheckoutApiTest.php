@@ -58,3 +58,24 @@ it('does not disclose another users order', function (): void {
     expect(BillingOrder::query()->whereKey($orderId)->exists())->toBeTrue();
     $this->withToken($otherToken)->getJson("/api/v1/billing/orders/{$orderId}")->assertNotFound();
 });
+
+it('synchronizes an owned processing order and exposes only safe payment projection', function (): void {
+    app(CommercialPlanFeatureSeeder::class)->run();
+    $user = User::factory()->create();
+    ensureFreeCommercialUser($user);
+    $token = issueCommercialApiKey($user, ['outbound_messages:read']);
+    $plan = Plan::query()->where('slug', 'premium')->sole();
+    $orderId = $this->withToken($token)->postJson('/api/v1/billing/checkout', [
+        'plan_id' => $plan->getKey(), 'gateway' => 'fake', 'idempotency_key' => 'sync-owner-001',
+        'success_url' => '/success', 'cancel_url' => '/cancel',
+    ])->json('data.order_id');
+    BillingOrder::query()->whereKey($orderId)->update(['provider_reference' => 'fake_success_owner_sync']);
+
+    $this->withToken($token)->postJson("/api/v1/billing/orders/{$orderId}/sync")
+        ->assertOk()->assertJsonPath('data.payment_status', 'succeeded');
+    $this->withToken($token)->getJson("/api/v1/billing/orders/{$orderId}")
+        ->assertOk()->assertJsonPath('data.payment_status', 'paid')
+        ->assertJsonPath('data.order_status', 'paid')
+        ->assertJsonMissingPath('data.provider_event_id')
+        ->assertJsonMissingPath('data.provider_fee');
+});
