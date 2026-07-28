@@ -55,6 +55,11 @@ return [
         'reconciliation' => env('BILLING_QUEUE_RECONCILIATION', 'default'),
     ],
 
+    'invoice' => [
+        'prefix' => env('BILLING_INVOICE_PREFIX', 'INV'),
+        'number_padding' => (int) env('BILLING_INVOICE_NUMBER_PADDING', 6),
+    ],
+
     'callbacks' => [
         'max_payload_bytes' => (int) env('BILLING_CALLBACK_MAX_BYTES', 262144),
         'max_fields' => (int) env('BILLING_CALLBACK_MAX_FIELDS', 100),

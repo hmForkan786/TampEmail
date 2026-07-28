@@ -6,6 +6,7 @@ namespace App\Services\Billing;
 
 use App\Exceptions\Billing\CheckoutException;
 use App\Exceptions\Billing\DisabledPaymentProviderException;
+use App\Exceptions\Billing\InvoiceException;
 use App\Exceptions\Billing\UnknownPaymentProviderException;
 use App\Http\Responses\ApiErrorResponse;
 use Illuminate\Http\JsonResponse;
@@ -14,6 +15,9 @@ final class BillingResponseFactory
 {
     public function fromThrowable(\Throwable $exception): JsonResponse
     {
+        if ($exception instanceof InvoiceException) {
+            return ApiErrorResponse::make($exception->errorCode, $exception->getMessage(), $exception->status, $exception->details);
+        }
         if ($exception instanceof CheckoutException) {
             return ApiErrorResponse::make($exception->errorCode, $this->message($exception->errorCode), $exception->status, $exception->details);
         }

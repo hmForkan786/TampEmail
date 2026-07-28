@@ -9,6 +9,7 @@ use App\Enums\BillingOrderType;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Support\Carbon;
 
 /**
@@ -93,6 +94,11 @@ class BillingOrder extends BaseModel
     public function paymentTransactions(): HasMany
     {
         return $this->hasMany(PaymentTransaction::class);
+    }
+
+    public function invoice(): HasOne
+    {
+        return $this->hasOne(BillingInvoice::class);
     }
 
     public function checkoutSessions(): HasMany

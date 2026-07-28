@@ -21,6 +21,7 @@ use App\Models\BillingOrder;
 use App\Models\PaymentProviderEvent;
 use App\Models\PaymentTransaction;
 use App\Services\Audit\AuditLogWriter;
+use App\Services\Billing\Invoice\InvoiceService;
 use App\Services\Billing\StateMachines\BillingOrderStateMachine;
 use App\Services\Billing\StateMachines\PaymentProviderEventStateMachine;
 use App\ValueObjects\Money;
@@ -35,6 +36,7 @@ final class PaymentProcessingService
         private readonly PaymentProviderEventStateMachine $eventStateMachine,
         private readonly PaymentOrderMatcher $orderMatcher,
         private readonly PaymentSettlementService $settlements,
+        private readonly InvoiceService $invoices,
         private readonly AuditLogWriter $audit,
     ) {}
 
@@ -182,6 +184,8 @@ final class PaymentProcessingService
         $order = $this->orderMatcher->match($verified);
 
         if ($order->status === BillingOrderStatus::Paid) {
+            $this->invoices->issuePaidFromOrder($order);
+
             return $order;
         }
 
@@ -255,6 +259,7 @@ final class PaymentProcessingService
             ])->save();
             $this->completeCheckoutSessions($locked);
             $this->recordSettlementIfPresent($verified, $transaction);
+            $this->invoices->issuePaidFromOrder($locked->fresh() ?? $locked, $transaction);
 
             $this->audit->write('billing.payment.succeeded', $locked->user_id, $locked, null, [
                 'provider_transaction_id' => $verified->providerTransactionId,
@@ -451,6 +456,7 @@ final class PaymentProcessingService
         $order->forceFill(['status' => BillingOrderStatus::Paid, 'paid_at' => now(), 'metadata' => $metadata])->save();
         $this->completeCheckoutSessions($order);
         $this->recordSettlementIfPresent($verified, $transaction);
+        $this->invoices->issuePaidFromOrder($order->fresh() ?? $order, $transaction);
         ActivatePaidSubscriptionJob::dispatch((string) $order->getKey())->afterCommit()
             ->onQueue((string) config('billing.queues.activation', 'default'));
         $this->audit->write('billing.subscription.activation_dispatched', $order->user_id, $order);
