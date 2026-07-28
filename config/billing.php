@@ -2,6 +2,7 @@
 
 use App\Services\Billing\Gateways\FakePaymentGateway;
 use App\Services\Billing\Gateways\SslCommerzPaymentGateway;
+use App\Services\Billing\Gateways\StripePaymentGateway;
 
 return [
     'default_gateway' => env('BILLING_DEFAULT_GATEWAY', 'fake'),
@@ -16,6 +17,7 @@ return [
     'gateways' => [
         'fake' => FakePaymentGateway::class,
         'sslcommerz' => SslCommerzPaymentGateway::class,
+        'stripe' => StripePaymentGateway::class,
     ],
 
     'order_expiry_minutes' => (int) env('BILLING_ORDER_EXPIRY_MINUTES', 30),
@@ -77,7 +79,11 @@ return [
                 'required_headers' => ['x-fake-signature', 'x-fake-timestamp', 'x-fake-nonce'],
                 'allowed_source_ips' => array_values(array_filter(array_map('trim', explode(',', (string) env('FAKE_PAYMENT_WEBHOOK_ALLOWED_IPS', ''))))),
             ],
-            'stripe' => ['enabled' => false],
+            'stripe' => [
+                'enabled' => filter_var(env('STRIPE_ENABLED', false), FILTER_VALIDATE_BOOL),
+                'required_headers' => ['stripe-signature'],
+                'allowed_source_ips' => [],
+            ],
             'sslcommerz' => [
                 'enabled' => filter_var(env('SSLCOMMERZ_ENABLED', false), FILTER_VALIDATE_BOOL),
                 'required_headers' => [],
@@ -124,6 +130,44 @@ return [
         'health_check' => [
             'enabled' => filter_var(env('SSLCOMMERZ_HEALTH_CHECK_ENABLED', true), FILTER_VALIDATE_BOOL),
             'cache_ttl_seconds' => (int) env('SSLCOMMERZ_HEALTH_CHECK_CACHE_TTL_SECONDS', 60),
+        ],
+    ],
+    'stripe' => [
+        'enabled' => filter_var(env('STRIPE_ENABLED', false), FILTER_VALIDATE_BOOL),
+        'environment' => env('STRIPE_ENV', 'test'),
+        'default_account' => env('STRIPE_DEFAULT_ACCOUNT', 'default'),
+        'accounts' => [
+            'default' => [
+                'enabled' => filter_var(env('STRIPE_DEFAULT_ACCOUNT_ENABLED', true), FILTER_VALIDATE_BOOL),
+                'environment' => env('STRIPE_DEFAULT_ACCOUNT_ENV', env('STRIPE_ENV', 'test')),
+                'secret_key' => env('STRIPE_SECRET_KEY'),
+                'publishable_key' => env('STRIPE_PUBLISHABLE_KEY'),
+                'webhook_secrets' => array_values(array_filter([env('STRIPE_WEBHOOK_SECRET'), env('STRIPE_WEBHOOK_SECRET_RETIRING')])),
+                'stripe_account' => env('STRIPE_CONNECTED_ACCOUNT'),
+            ],
+        ],
+        'api_version' => env('STRIPE_API_VERSION'),
+        'allowed_currencies' => array_values(array_filter(array_map(
+            static fn (string $currency): string => strtolower(trim($currency)),
+            explode(',', (string) env('STRIPE_ALLOWED_CURRENCIES', 'usd')),
+        ))),
+        'checkout' => [
+            'payment_method_types' => array_values(array_filter(array_map('trim', explode(',', (string) env('STRIPE_PAYMENT_METHOD_TYPES', 'card'))))),
+            'expires_after_minutes' => (int) env('STRIPE_CHECKOUT_EXPIRES_AFTER_MINUTES', 30),
+        ],
+        'webhooks' => [
+            'tolerance_seconds' => (int) env('STRIPE_WEBHOOK_TOLERANCE_SECONDS', 300),
+            'max_secrets_to_try' => (int) env('STRIPE_WEBHOOK_MAX_SECRETS_TO_TRY', 2),
+        ],
+        'api' => [
+            'timeout_seconds' => (int) env('STRIPE_TIMEOUT_SECONDS', 30),
+            'connect_timeout_seconds' => (int) env('STRIPE_CONNECT_TIMEOUT_SECONDS', 10),
+            'max_network_retries' => (int) env('STRIPE_MAX_NETWORK_RETRIES', 2),
+        ],
+        'maintenance_mode' => filter_var(env('STRIPE_MAINTENANCE_MODE', false), FILTER_VALIDATE_BOOL),
+        'health_check' => [
+            'enabled' => filter_var(env('STRIPE_HEALTH_CHECK_ENABLED', true), FILTER_VALIDATE_BOOL),
+            'cache_ttl_seconds' => (int) env('STRIPE_HEALTH_CHECK_CACHE_TTL_SECONDS', 60),
         ],
     ],
     'payment_sync' => [
