@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\Web\AuthenticatedSessionController;
+use App\Http\Controllers\Web\BillingReturnController;
 use App\Http\Controllers\Web\MailboxController;
 use App\Http\Controllers\Web\OutboundAttachmentDownloadController;
 use App\Http\Controllers\Web\OutboundDraftController;
@@ -12,6 +13,10 @@ use Illuminate\Support\Facades\Route;
 Route::get('/', function () {
     return view('welcome');
 });
+
+Route::get('billing/return/{provider}', BillingReturnController::class)
+    ->middleware(['signed', 'throttle:billing-return'])
+    ->name('billing.return');
 
 Route::middleware('guest')->group(function (): void {
     Route::get('login', [AuthenticatedSessionController::class, 'create'])->name('login');

@@ -20,6 +20,18 @@ return [
     'processing_timeout_minutes' => (int) env('BILLING_PROCESSING_TIMEOUT_MINUTES', 15),
     'webhook_retention_days' => (int) env('BILLING_WEBHOOK_RETENTION_DAYS', 90),
 
+    'checkout' => [
+        'allowed_redirect_hosts' => array_values(array_unique(array_filter([
+            parse_url((string) env('APP_URL', 'http://localhost'), PHP_URL_HOST),
+            ...array_map('trim', explode(',', (string) env('BILLING_ALLOWED_REDIRECT_HOSTS', 'app.test'))),
+        ]))),
+        'allow_relative_redirects' => filter_var(env('BILLING_ALLOW_RELATIVE_REDIRECTS', true), FILTER_VALIDATE_BOOL),
+        'allow_same_plan_renewal' => filter_var(env('BILLING_ALLOW_SAME_PLAN_RENEWAL', true), FILTER_VALIDATE_BOOL),
+        'session_resume_window_minutes' => (int) env('BILLING_CHECKOUT_RESUME_WINDOW_MINUTES', 30),
+        'order_expiry_minutes' => (int) env('BILLING_ORDER_EXPIRY_MINUTES', 30),
+        'expiry_batch_size' => (int) env('BILLING_CHECKOUT_EXPIRY_BATCH_SIZE', 100),
+    ],
+
     'reconciliation' => [
         'enabled' => filter_var(env('BILLING_RECONCILIATION_ENABLED', true), FILTER_VALIDATE_BOOL),
         'batch_size' => (int) env('BILLING_RECONCILIATION_BATCH_SIZE', 100),

@@ -1,5 +1,6 @@
 <?php
 
+use App\Console\Commands\ExpireBillingCheckoutsCommand;
 use App\Console\Commands\ProcessRuntimeSmoke;
 use App\Contracts\AttachmentScannerInterface;
 use App\Contracts\InboundWebhookDispatcher;
@@ -32,6 +33,7 @@ return Application::configure(basePath: dirname(__DIR__))
         health: '/up',
     )
     ->withCommands([
+        ExpireBillingCheckoutsCommand::class,
         ProcessRuntimeSmoke::class,
     ])
     ->withBindings([
@@ -70,6 +72,7 @@ return Application::configure(basePath: dirname(__DIR__))
         $schedule->command('outbound:reconcile-usage')->withoutOverlapping()->everyFifteenMinutes();
         $schedule->command('outbound:dispatch-scheduled')->everyMinute()->withoutOverlapping();
         $schedule->command('subscriptions:expire --batch=100')->everyFiveMinutes()->withoutOverlapping();
+        $schedule->command('billing:expire-checkouts')->everyFiveMinutes()->withoutOverlapping();
     })
     ->withMiddleware(function (Middleware $middleware): void {
         $middleware->append(ApplySecurityHeaders::class);

@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\Api\V1\AttachmentDownloadController;
+use App\Http\Controllers\Api\V1\BillingCheckoutController;
 use App\Http\Controllers\Api\V1\CommercialUsageController;
 use App\Http\Controllers\Api\V1\EmailForwardController;
 use App\Http\Controllers\Api\V1\EmailReadStateController;
@@ -21,6 +22,12 @@ use App\Http\Controllers\Api\V1\WebhookEndpointController;
 use Illuminate\Support\Facades\Route;
 
 Route::prefix('v1')->name('api.v1.')->middleware(['api.request-log', 'api.key'])->group(function (): void {
+    Route::middleware('throttle:billing-checkout')->group(function (): void {
+        Route::post('billing/checkout', [BillingCheckoutController::class, 'store'])->name('billing.checkout.store');
+        Route::get('billing/orders/{billingOrder}', [BillingCheckoutController::class, 'show'])->whereUuid('billingOrder')->name('billing.orders.show');
+        Route::post('billing/orders/{billingOrder}/resume', [BillingCheckoutController::class, 'resume'])->whereUuid('billingOrder')->name('billing.orders.resume');
+        Route::post('billing/orders/{billingOrder}/cancel', [BillingCheckoutController::class, 'cancel'])->whereUuid('billingOrder')->name('billing.orders.cancel');
+    });
     Route::middleware(['api.scope:mail_servers:read', 'api.entitlement:api.read', 'api.rate-limit'])->group(function (): void {
         Route::get('mail-servers', [MailServerController::class, 'index'])->name('mail-servers.index');
         Route::get('mail-servers/{mailServer}', [MailServerController::class, 'show'])->name('mail-servers.show');

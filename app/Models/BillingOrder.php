@@ -6,10 +6,10 @@ namespace App\Models;
 
 use App\Enums\BillingOrderStatus;
 use App\Enums\BillingOrderType;
+use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Support\Carbon;
-use Illuminate\Database\Eloquent\Collection;
 
 /**
  * @property string $id
@@ -31,6 +31,8 @@ use Illuminate\Database\Eloquent\Collection;
  * @property Carbon|null $cancelled_at
  * @property array<string, mixed>|null $metadata
  * @property-read Collection<int, PaymentTransaction> $paymentTransactions
+ * @property-read Plan $plan
+ * @property-read Collection<int, BillingCheckoutSession> $checkoutSessions
  */
 class BillingOrder extends BaseModel
 {
@@ -91,5 +93,10 @@ class BillingOrder extends BaseModel
     public function paymentTransactions(): HasMany
     {
         return $this->hasMany(PaymentTransaction::class);
+    }
+
+    public function checkoutSessions(): HasMany
+    {
+        return $this->hasMany(BillingCheckoutSession::class);
     }
 }

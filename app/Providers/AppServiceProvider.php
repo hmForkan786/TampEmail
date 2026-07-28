@@ -149,6 +149,17 @@ class AppServiceProvider extends ServiceProvider
                 ->by($request->ip());
         });
 
+        RateLimiter::for('billing-checkout', function (Request $request): array {
+            $owner = (string) ($request->user()?->getKey() ?: $request->ip());
+
+            return [
+                Limit::perMinute(10)->by('billing-user:'.$owner),
+                Limit::perMinute(30)->by('billing-ip:'.$request->ip()),
+            ];
+        });
+
+        RateLimiter::for('billing-return', fn (Request $request): Limit => Limit::perMinute(30)->by($request->ip()));
+
         Queue::starting(function (WorkerStarting $event): void {
             app(ProcessHeartbeatWriter::class)->recordWorkerStarting($event->connectionName, (string) $event->queue);
         });
