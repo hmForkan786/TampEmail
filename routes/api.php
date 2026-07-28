@@ -10,6 +10,8 @@ use App\Http\Controllers\Api\V1\InboundWebhookController;
 use App\Http\Controllers\Api\V1\InboxController;
 use App\Http\Controllers\Api\V1\InboxEmailController;
 use App\Http\Controllers\Api\V1\MailServerController;
+use App\Http\Controllers\Api\V1\ManualCryptoClaimController;
+use App\Http\Controllers\Api\V1\ManualCryptoReviewController;
 use App\Http\Controllers\Api\V1\OutboundAttachmentDownloadController;
 use App\Http\Controllers\Api\V1\OutboundDraftController;
 use App\Http\Controllers\Api\V1\OutboundMessageController;
@@ -29,6 +31,14 @@ Route::prefix('v1')->name('api.v1.')->middleware(['api.request-log', 'api.key'])
         Route::post('billing/orders/{billingOrder}/resume', [BillingCheckoutController::class, 'resume'])->whereUuid('billingOrder')->name('billing.orders.resume');
         Route::post('billing/orders/{billingOrder}/cancel', [BillingCheckoutController::class, 'cancel'])->whereUuid('billingOrder')->name('billing.orders.cancel');
         Route::post('billing/orders/{billingOrder}/sync', [BillingCheckoutController::class, 'sync'])->whereUuid('billingOrder')->name('billing.orders.sync');
+        Route::post('billing/orders/{billingOrder}/manual-crypto-claims', [ManualCryptoClaimController::class, 'store'])->whereUuid('billingOrder')->name('billing.manual-crypto.claims.store');
+        Route::get('billing/manual-crypto-claims/{claim}', [ManualCryptoClaimController::class, 'show'])->whereUuid('claim')->name('billing.manual-crypto.claims.show');
+        Route::get('admin/billing/manual-crypto-claims', [ManualCryptoReviewController::class, 'index'])->name('admin.billing.manual-crypto.index');
+        Route::get('admin/billing/manual-crypto-claims/{claim}', [ManualCryptoReviewController::class, 'show'])->whereUuid('claim')->name('admin.billing.manual-crypto.show');
+        Route::post('admin/billing/manual-crypto-claims/{claim}/start', [ManualCryptoReviewController::class, 'start'])->whereUuid('claim')->name('admin.billing.manual-crypto.start');
+        Route::post('admin/billing/manual-crypto-claims/{claim}/approve', [ManualCryptoReviewController::class, 'approve'])->whereUuid('claim')->name('admin.billing.manual-crypto.approve');
+        Route::post('admin/billing/manual-crypto-claims/{claim}/reject', [ManualCryptoReviewController::class, 'reject'])->whereUuid('claim')->name('admin.billing.manual-crypto.reject');
+        Route::post('admin/billing/manual-crypto-claims/{claim}/reopen', [ManualCryptoReviewController::class, 'reopen'])->whereUuid('claim')->name('admin.billing.manual-crypto.reopen');
     });
     Route::middleware(['api.scope:mail_servers:read', 'api.entitlement:api.read', 'api.rate-limit'])->group(function (): void {
         Route::get('mail-servers', [MailServerController::class, 'index'])->name('mail-servers.index');
