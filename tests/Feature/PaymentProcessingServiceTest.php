@@ -1,13 +1,10 @@
 <?php
 
-use App\DTOs\Billing\VerifiedProviderEvent;
 use App\Enums\BillingOrderStatus;
 use App\Enums\PaymentTransactionStatus;
-use App\Enums\PaymentTransactionType;
 use App\Exceptions\Billing\PaymentVerificationException;
 use App\Jobs\Billing\ActivatePaidSubscriptionJob;
 use App\Models\AuditLog;
-use App\Models\BillingOrder;
 use App\Models\PaymentTransaction;
 use App\Models\Subscription;
 use App\Services\Billing\BillingOrderService;
@@ -80,18 +77,3 @@ it('creates checkout sessions without activating subscriptions', function (): vo
         ->and(Subscription::query()->where('user_id', $user->getKey())->count())->toBe(0)
         ->and(PaymentTransaction::query()->where('status', PaymentTransactionStatus::Pending)->count())->toBe(1);
 });
-
-function verifiedFromOrder(BillingOrder $order, bool $succeeded = true, ?int $amountMinor = null, ?string $currency = null, string $eventId = 'evt'): VerifiedProviderEvent
-{
-    return new VerifiedProviderEvent(
-        provider: 'fake',
-        providerEventId: $eventId,
-        eventType: 'payment.updated',
-        providerTransactionId: 'fake_tx_'.$eventId,
-        billingOrderId: (string) $order->getKey(),
-        amountMinor: $amountMinor ?? $order->total_minor,
-        currency: $currency ?? $order->currency,
-        transactionType: PaymentTransactionType::Sale,
-        succeeded: $succeeded,
-    );
-}

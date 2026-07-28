@@ -1,9 +1,12 @@
 <?php
 
 use App\DTOs\Billing\CreateBillingOrderData;
+use App\DTOs\Billing\VerifiedProviderEvent;
 use App\DTOs\Billing\WebhookRequestData;
 use App\Enums\BillingCycle;
 use App\Enums\BillingOrderType;
+use App\Enums\PaymentTransactionType;
+use App\Models\BillingOrder;
 use App\Models\Plan;
 use App\Models\User;
 use Database\Seeders\CommercialPlanFeatureSeeder;
@@ -45,5 +48,25 @@ function billingSuccessWebhook(string $billingOrderId, int $amountMinor, string 
         headers: [],
         payload: $payload,
         rawBody: json_encode($payload, JSON_THROW_ON_ERROR),
+    );
+}
+
+function verifiedFromOrder(
+    BillingOrder $order,
+    bool $succeeded = true,
+    ?int $amountMinor = null,
+    ?string $currency = null,
+    string $eventId = 'evt',
+): VerifiedProviderEvent {
+    return new VerifiedProviderEvent(
+        provider: 'fake',
+        providerEventId: $eventId,
+        eventType: 'payment.updated',
+        providerTransactionId: 'fake_tx_'.$eventId,
+        billingOrderId: (string) $order->getKey(),
+        amountMinor: $amountMinor ?? $order->total_minor,
+        currency: $currency ?? $order->currency,
+        transactionType: PaymentTransactionType::Sale,
+        succeeded: $succeeded,
     );
 }
