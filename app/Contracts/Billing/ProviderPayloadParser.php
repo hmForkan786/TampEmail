@@ -10,6 +10,6 @@ interface ProviderPayloadParser
 
     public function supports(string $contentType): bool;
 
-    /** @return array<string, string> */
+    /** @return array<string, mixed> */
     public function parse(string $rawBody, string $contentType): array;
 }

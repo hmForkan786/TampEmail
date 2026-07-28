@@ -19,6 +19,7 @@ final class FormUrlEncodedProviderPayloadParser implements ProviderPayloadParser
         return $contentType === 'application/x-www-form-urlencoded';
     }
 
+    /** @return array<string, string> */
     public function parse(string $rawBody, string $contentType): array
     {
         if ($rawBody === '') {

@@ -19,6 +19,7 @@ final class JsonProviderPayloadParser implements ProviderPayloadParser
         return $contentType === 'application/json';
     }
 
+    /** @return array<string, string> */
     public function parse(string $rawBody, string $contentType): array
     {
         $decoded = json_decode($rawBody, true);

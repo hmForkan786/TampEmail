@@ -24,14 +24,17 @@ use App\Repositories\Eloquent\EloquentSubscriptionRepository;
 use App\Services\Billing\Callback\JsonCallbackResponseFormatter;
 use App\Services\Billing\Callback\ProviderCallbackResponseFormatterRegistry;
 use App\Services\Billing\Callback\SslCommerzCallbackResponseFormatter;
+use App\Services\Billing\Callback\StripeCallbackResponseFormatter;
 use App\Services\Billing\Payload\FormUrlEncodedProviderPayloadParser;
 use App\Services\Billing\Payload\JsonProviderPayloadParser;
 use App\Services\Billing\Payload\ProviderPayloadParserRegistry;
+use App\Services\Billing\Payload\StripeProviderPayloadParser;
 use App\Services\Billing\PaymentGatewayRegistry;
 use App\Services\Billing\SslCommerz\SslCommerzValidationClient;
 use App\Services\Billing\Webhook\FakeProviderWebhookVerifier;
 use App\Services\Billing\Webhook\ProviderWebhookVerifierRegistry;
 use App\Services\Billing\Webhook\SslCommerzProviderWebhookVerifier;
+use App\Services\Billing\Webhook\StripeProviderWebhookVerifier;
 use App\Services\Billing\Webhook\UnconfiguredProviderWebhookVerifier;
 use App\Services\Dns\PhpDnsResolver;
 use App\Services\Ops\ProcessHeartbeatWriter;
@@ -136,15 +139,17 @@ class AppServiceProvider extends ServiceProvider
         $this->app->singleton(SslCommerzValidationClient::class);
         $this->app->singleton(ProviderPayloadParserRegistry::class, fn ($app): ProviderPayloadParserRegistry => new ProviderPayloadParserRegistry([
             $app->make(FormUrlEncodedProviderPayloadParser::class),
+            $app->make(StripeProviderPayloadParser::class),
             $app->make(JsonProviderPayloadParser::class),
         ]));
         $this->app->singleton(ProviderCallbackResponseFormatterRegistry::class, fn ($app): ProviderCallbackResponseFormatterRegistry => new ProviderCallbackResponseFormatterRegistry([
             $app->make(SslCommerzCallbackResponseFormatter::class),
+            $app->make(StripeCallbackResponseFormatter::class),
             $app->make(JsonCallbackResponseFormatter::class),
         ]));
         $this->app->singleton(ProviderWebhookVerifierRegistry::class, fn ($app): ProviderWebhookVerifierRegistry => new ProviderWebhookVerifierRegistry([
             $app->make(FakeProviderWebhookVerifier::class),
-            new UnconfiguredProviderWebhookVerifier('stripe'),
+            $app->make(StripeProviderWebhookVerifier::class),
             $app->make(SslCommerzProviderWebhookVerifier::class),
             new UnconfiguredProviderWebhookVerifier('bkash'),
             new UnconfiguredProviderWebhookVerifier('nagad'),
