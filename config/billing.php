@@ -25,6 +25,12 @@ return [
     'order_expiry_minutes' => (int) env('BILLING_ORDER_EXPIRY_MINUTES', 30),
     'processing_timeout_minutes' => (int) env('BILLING_PROCESSING_TIMEOUT_MINUTES', 15),
     'webhook_retention_days' => (int) env('BILLING_WEBHOOK_RETENTION_DAYS', 90),
+    'lifecycle' => [
+        'grace_days' => (int) env('BILLING_GRACE_DAYS', 7),
+        'renewal_lead_days' => (int) env('BILLING_RENEWAL_LEAD_DAYS', 3),
+        'trial_days' => (int) env('BILLING_TRIAL_DAYS', 14),
+        'batch_size' => (int) env('BILLING_LIFECYCLE_BATCH_SIZE', 100),
+    ],
 
     'checkout' => [
         'allowed_redirect_hosts' => array_values(array_unique(array_filter([

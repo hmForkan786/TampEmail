@@ -41,15 +41,23 @@ final class PaidSubscriptionActivationService
                 }
 
                 $billingCycle = BillingCycle::from((string) ($metadata['billing_cycle'] ?? BillingCycle::Monthly->value));
+                $subscription = $this->resolveSubscription($order);
                 $startsAt = now();
+                $termStartsAt = $order->type === BillingOrderType::Renewal
+                    && $subscription->ends_at?->isFuture()
+                        ? $subscription->ends_at->copy()
+                        : $startsAt;
                 $endsAt = match ($billingCycle) {
-                    BillingCycle::Yearly => $startsAt->copy()->addYear(),
-                    BillingCycle::Lifetime => $startsAt->copy()->addYears(100),
-                    default => $startsAt->copy()->addMonth(),
+                    BillingCycle::Yearly => $termStartsAt->copy()->addYear(),
+                    BillingCycle::Lifetime => $termStartsAt->copy()->addYears(100),
+                    default => $termStartsAt->copy()->addMonth(),
                 };
 
-                $subscription = $this->resolveSubscription($order);
-                $this->lifecycle->activate($subscription, $startsAt, $endsAt, $order->user_id, 'billing');
+                if ($order->type === BillingOrderType::Renewal) {
+                    $this->lifecycle->renew($subscription, $endsAt, $order->user_id, 'billing');
+                } else {
+                    $this->lifecycle->activate($subscription, $startsAt, $endsAt, $order->user_id, 'billing');
+                }
 
                 $metadata['activation_status'] = BillingActivationStatus::Succeeded->value;
                 $order->forceFill([

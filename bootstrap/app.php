@@ -1,6 +1,8 @@
 <?php
 
+use App\Console\Commands\CreateRenewalOrdersCommand;
 use App\Console\Commands\ExpireBillingCheckoutsCommand;
+use App\Console\Commands\ExpireLifecycleSubscriptionsCommand;
 use App\Console\Commands\ProcessRuntimeSmoke;
 use App\Console\Commands\PruneBillingWebhookSecurityCommand;
 use App\Console\Commands\SslCommerzHealthCommand;
@@ -39,6 +41,9 @@ return Application::configure(basePath: dirname(__DIR__))
     )
     ->withCommands([
         ExpireBillingCheckoutsCommand::class,
+        CreateRenewalOrdersCommand::class,
+        StartGracePeriodsCommand::class,
+        ExpireLifecycleSubscriptionsCommand::class,
         SyncBillingPaymentStatusCommand::class,
         PruneBillingWebhookSecurityCommand::class,
         VerifyBillingWebhookCommand::class,
@@ -81,6 +86,9 @@ return Application::configure(basePath: dirname(__DIR__))
         $schedule->command('outbound:reconcile-events')->withoutOverlapping()->everyFifteenMinutes();
         $schedule->command('outbound:reconcile-usage')->withoutOverlapping()->everyFifteenMinutes();
         $schedule->command('outbound:dispatch-scheduled')->everyMinute()->withoutOverlapping();
+        $schedule->command('billing:create-renewal-orders')->everyFiveMinutes()->withoutOverlapping();
+        $schedule->command('billing:start-grace-periods')->everyFiveMinutes()->withoutOverlapping();
+        $schedule->command('billing:expire-lifecycle-subscriptions')->everyFiveMinutes()->withoutOverlapping();
         $schedule->command('subscriptions:expire --batch=100')->everyFiveMinutes()->withoutOverlapping();
         $schedule->command('billing:expire-checkouts')->everyFiveMinutes()->withoutOverlapping();
         if (config('billing.payment_sync.enabled', true)) {
@@ -131,3 +139,4 @@ return Application::configure(basePath: dirname(__DIR__))
             );
         });
     })->create();
+use App\Console\Commands\StartGracePeriodsCommand;

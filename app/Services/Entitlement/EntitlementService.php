@@ -20,7 +20,7 @@ final class EntitlementService
 
     public function __construct(private readonly FeatureService $featureService) {}
 
-    /** Returns the valid paid/trial subscription only; Free fallback is not a subscription. */
+    /** Returns the current lifecycle subscription, including grace for limited-policy resolution. */
     public function currentSubscription(User $user): ?Subscription
     {
         $now = now();
@@ -28,16 +28,23 @@ final class EntitlementService
         return Subscription::query()
             ->with('plan')
             ->where('user_id', $user->getKey())
-            ->whereIn('status', [SubscriptionStatus::Active, SubscriptionStatus::Trial])
+            ->whereIn('status', [
+                SubscriptionStatus::Active->value,
+                SubscriptionStatus::Trial->value,
+                SubscriptionStatus::RenewalDue->value,
+                SubscriptionStatus::Grace->value,
+            ])
             ->where('starts_at', '<=', $now)
-            ->where(fn ($query) => $query->whereNull('ends_at')->orWhere('ends_at', '>', $now))
             ->where(fn ($query) => $query
-                ->where('status', SubscriptionStatus::Active)
+                ->where(fn ($access) => $access
+                    ->whereIn('status', [SubscriptionStatus::Active->value, SubscriptionStatus::RenewalDue->value])
+                    ->where(fn ($boundary) => $boundary->whereNull('ends_at')->orWhere('ends_at', '>', $now)))
                 ->orWhere(fn ($trial) => $trial
-                    ->where('status', SubscriptionStatus::Trial)
-                    ->where(fn ($boundary) => $boundary->whereNull('trial_ends_at')->orWhere('trial_ends_at', '>', $now))))
+                    ->where('status', SubscriptionStatus::Trial->value)
+                    ->where(fn ($boundary) => $boundary->whereNull('trial_ends_at')->orWhere('trial_ends_at', '>', $now)))
+                ->orWhere('status', SubscriptionStatus::Grace->value))
             ->whereHas('plan', fn ($query) => $query->where('is_active', true))
-            ->orderByRaw('case when status = ? then 0 else 1 end', [SubscriptionStatus::Active->value])
+            ->orderByRaw('case when status = ? then 0 when status = ? then 1 when status = ? then 2 else 3 end', [SubscriptionStatus::Active->value, SubscriptionStatus::RenewalDue->value, SubscriptionStatus::Trial->value])
             ->orderByDesc('starts_at')
             ->orderByDesc('created_at')
             ->orderByDesc('id')
@@ -48,7 +55,7 @@ final class EntitlementService
     public function effectivePlan(User $user): ?Plan
     {
         $subscription = $this->currentSubscription($user);
-        if ($subscription !== null) {
+        if ($subscription !== null && $subscription->status !== SubscriptionStatus::Grace) {
             return $subscription->plan;
         }
 

@@ -11,6 +11,8 @@ enum SubscriptionStatus: string
 {
     case Trial = 'trial';
     case Active = 'active';
+    case RenewalDue = 'renewal_due';
+    case Grace = 'grace';
     case Cancelled = 'cancelled';
     case Expired = 'expired';
 
@@ -22,6 +24,8 @@ enum SubscriptionStatus: string
         return [
             self::Trial->value => 'Trial',
             self::Active->value => 'Active',
+            self::RenewalDue->value => 'Renewal Due',
+            self::Grace->value => 'Grace Period',
             self::Cancelled->value => 'Cancelled',
             self::Expired->value => 'Expired',
         ];

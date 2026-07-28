@@ -6,6 +6,7 @@ namespace App\Services\Subscription;
 
 use App\Enums\SubscriptionStatus;
 use App\Enums\UserStatus;
+use App\Events\SubscriptionLifecycleEvent;
 use App\Exceptions\SubscriptionLifecycleConflictException;
 use App\Models\Subscription;
 use App\Services\Audit\AuditLogWriter;
@@ -33,7 +34,7 @@ final class SubscriptionLifecycleService
             if ($locked->status === SubscriptionStatus::Cancelled && ! $locked->cancel_at_period_end) {
                 return $locked;
             }
-            $this->assertStatus($locked, [SubscriptionStatus::Active, SubscriptionStatus::Trial]);
+            $this->assertStatus($locked, [SubscriptionStatus::Active, SubscriptionStatus::Trial, SubscriptionStatus::RenewalDue, SubscriptionStatus::Grace]);
             $at = now();
             $old = $locked->status;
             $locked->forceFill(['status' => SubscriptionStatus::Cancelled, 'cancelled_at' => $at, 'cancel_at_period_end' => false, 'auto_renew' => false, 'ends_at' => $at])->save();
@@ -69,14 +70,46 @@ final class SubscriptionLifecycleService
             if ($locked->status === SubscriptionStatus::Expired) {
                 return $locked;
             }
-            $this->assertStatus($locked, [SubscriptionStatus::Active, SubscriptionStatus::Trial]);
+            $this->assertStatus($locked, [SubscriptionStatus::Active, SubscriptionStatus::Trial, SubscriptionStatus::RenewalDue, SubscriptionStatus::Grace]);
             $old = $locked->status;
             $at = now();
             $locked->forceFill(['status' => SubscriptionStatus::Expired, 'auto_renew' => false, 'cancel_at_period_end' => false, 'ends_at' => $at])->save();
             $this->auditTransition('subscription.expired', $locked, $old, SubscriptionStatus::Expired, $actorId, $source, $at);
+            SubscriptionLifecycleEvent::dispatch('expired', $locked->fresh(), ['previous_status' => $old->value]);
 
             return $locked->fresh();
         });
+    }
+
+    public function markRenewalDue(Subscription $subscription, ?string $actorId = null, string $source = 'scheduler'): Subscription
+    {
+        return $this->transition(
+            $subscription,
+            SubscriptionStatus::RenewalDue,
+            [SubscriptionStatus::Active],
+            'subscription.renewal_due',
+            'renewal_due',
+            $actorId,
+            $source,
+        );
+    }
+
+    public function startGrace(Subscription $subscription, CarbonInterface $graceEndsAt, ?string $actorId = null, string $source = 'scheduler'): Subscription
+    {
+        if ($graceEndsAt->lessThanOrEqualTo(now())) {
+            throw new SubscriptionLifecycleConflictException('Grace period must end in the future.');
+        }
+
+        return $this->transition(
+            $subscription,
+            SubscriptionStatus::Grace,
+            [SubscriptionStatus::RenewalDue],
+            'subscription.grace_started',
+            'grace_started',
+            $actorId,
+            $source,
+            ['grace_started_at' => now()->toIso8601String(), 'grace_ends_at' => $graceEndsAt->toIso8601String()],
+        );
     }
 
     public function renew(Subscription $subscription, CarbonInterface $newEndsAt, ?string $actorId = null, string $source = 'domain'): Subscription
@@ -94,8 +127,44 @@ final class SubscriptionLifecycleService
             }
             $old = $locked->status;
             $at = now();
-            $locked->forceFill(['status' => SubscriptionStatus::Active, 'starts_at' => $at, 'ends_at' => $newEndsAt, 'trial_ends_at' => null, 'cancelled_at' => null, 'cancel_at_period_end' => false])->save();
-            $this->auditTransition($old === SubscriptionStatus::Active ? 'subscription.renewed' : 'subscription.reactivated', $locked, $old, SubscriptionStatus::Active, $actorId, $source, $at);
+            $metadata = $locked->metadata ?? [];
+            unset($metadata['grace_started_at'], $metadata['grace_ends_at']);
+            $locked->forceFill(['status' => SubscriptionStatus::Active, 'starts_at' => $at, 'ends_at' => $newEndsAt, 'trial_ends_at' => null, 'cancelled_at' => null, 'cancel_at_period_end' => false, 'metadata' => $metadata])->save();
+            $action = $old === SubscriptionStatus::Active ? 'subscription.renewed' : 'subscription.reactivated';
+            $this->auditTransition($action, $locked, $old, SubscriptionStatus::Active, $actorId, $source, $at);
+            SubscriptionLifecycleEvent::dispatch('subscription_recovered', $locked->fresh(), ['previous_status' => $old->value]);
+
+            return $locked->fresh();
+        });
+    }
+
+    /** @param list<SubscriptionStatus> $allowed
+     * @param  array<string, mixed>  $metadata
+     */
+    private function transition(
+        Subscription $subscription,
+        SubscriptionStatus $to,
+        array $allowed,
+        string $auditAction,
+        string $eventName,
+        ?string $actorId,
+        string $source,
+        array $metadata = [],
+    ): Subscription {
+        return DB::transaction(function () use ($subscription, $to, $allowed, $auditAction, $eventName, $actorId, $source, $metadata): Subscription {
+            $locked = Subscription::query()->whereKey($subscription->getKey())->lockForUpdate()->firstOrFail();
+            if ($locked->status === $to) {
+                return $locked;
+            }
+            $this->assertStatus($locked, $allowed);
+            $old = $locked->status;
+            $at = now();
+            $locked->forceFill([
+                'status' => $to,
+                'metadata' => array_merge($locked->metadata ?? [], $metadata),
+            ])->save();
+            $this->auditTransition($auditAction, $locked, $old, $to, $actorId, $source, $at);
+            SubscriptionLifecycleEvent::dispatch($eventName, $locked->fresh(), ['previous_status' => $old->value]);
 
             return $locked->fresh();
         });
