@@ -11,7 +11,10 @@ use Illuminate\Support\Facades\Http;
 
 final class SslCommerzApiClient
 {
-    /** @param array<string, scalar> $fields @return array<string, mixed> */
+    /**
+     * @param  array<string, scalar>  $fields
+     * @return array<string, mixed>
+     */
     public function createSession(SslCommerzStore $store, array $fields): array
     {
         return $this->request('post', $store->baseUrl.'/gwprocess/v4/api.php', [
@@ -19,7 +22,10 @@ final class SslCommerzApiClient
         ]);
     }
 
-    /** @param array<string, scalar> $query @return array<string, mixed> */
+    /**
+     * @param  array<string, scalar>  $query
+     * @return array<string, mixed>
+     */
     public function get(SslCommerzStore $store, string $path, array $query): array
     {
         return $this->request('get', $store->baseUrl.$path, [
@@ -27,7 +33,10 @@ final class SslCommerzApiClient
         ]);
     }
 
-    /** @param array<string, scalar> $data @return array<string, mixed> */
+    /**
+     * @param  array<string, scalar>  $data
+     * @return array<string, mixed>
+     */
     private function request(string $method, string $url, array $data): array
     {
         try {

@@ -18,7 +18,10 @@ final class SslCommerzValidationClient
         private readonly SslCommerzStoreResolver $stores,
     ) {}
 
-    /** @param array<string, string> $payload @return array<string, mixed> */
+    /**
+     * @param  array<string, string>  $payload
+     * @return array<string, mixed>
+     */
     public function validateIpn(array $payload): array
     {
         $valId = trim($payload['val_id'] ?? '');
@@ -45,7 +48,10 @@ final class SslCommerzValidationClient
         return $this->normalizeAndAssert($response, $order, $store->key);
     }
 
-    /** @param array<string, mixed> $response @return array<string, mixed> */
+    /**
+     * @param  array<string, mixed>  $response
+     * @return array<string, mixed>
+     */
     private function normalizeAndAssert(array $response, BillingOrder $order, string $storeKey, ?string $expectedTransaction = null): array
     {
         $statusText = strtoupper((string) ($response['status'] ?? ''));

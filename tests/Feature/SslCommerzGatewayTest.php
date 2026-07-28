@@ -4,12 +4,16 @@ declare(strict_types=1);
 
 use App\DTOs\Billing\CreateCheckoutData;
 use App\DTOs\Billing\RefundPaymentData;
+use App\DTOs\Billing\WebhookRequestData;
+use App\Enums\BillingOrderStatus;
 use App\Enums\PaymentCapability;
 use App\Exceptions\Billing\PaymentVerificationException;
+use App\Jobs\Billing\ActivatePaidSubscriptionJob;
 use App\Models\PaymentProviderEvent;
 use App\Services\Billing\BillingOrderService;
 use App\Services\Billing\Gateways\SslCommerzPaymentGateway;
 use App\Services\Billing\PaymentGatewayResolver;
+use App\Services\Billing\PaymentProcessingService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Queue;
@@ -95,7 +99,15 @@ it('accepts a validated form IPN through Prompt 639 and persists it through Prom
         'CONTENT_TYPE' => 'application/x-www-form-urlencoded',
     ], $raw)->assertOk()->assertSeeText('OK');
 
-    expect(PaymentProviderEvent::query()->where('provider', 'sslcommerz')->count())->toBe(1);
+    $event = PaymentProviderEvent::query()->where('provider', 'sslcommerz')->firstOrFail();
+    $parsed = [];
+    parse_str($raw, $parsed);
+    $verified = app(SslCommerzPaymentGateway::class)->verifyWebhook(new WebhookRequestData('sslcommerz', [], $parsed, $raw));
+    app(PaymentProcessingService::class)->processStoredEvent($event, $verified);
+
+    expect(PaymentProviderEvent::query()->where('provider', 'sslcommerz')->count())->toBe(1)
+        ->and($order->fresh()->status)->toBe(BillingOrderStatus::Paid);
+    Queue::assertPushed(ActivatePaidSubscriptionJob::class, 1);
     Http::assertSentCount(1);
 });
 
