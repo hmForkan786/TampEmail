@@ -3,6 +3,11 @@
 Prompt 637 details: [Provider-Neutral Billing Checkout](BILLING_CHECKOUT.md) and
 [Billing Checkout Security](BILLING_CHECKOUT_SECURITY.md).
 
+Prompt 638 details: [Payment Processing](BILLING_PAYMENT_PROCESSING.md),
+[Provider Callbacks](BILLING_CALLBACKS.md),
+[Settlements](BILLING_SETTLEMENTS.md), and
+[Status Synchronization](BILLING_STATUS_SYNCHRONIZATION.md).
+
 Prompt 636 establishes a provider-agnostic billing and payment foundation on top of the commercial subsystem (Prompts 626–635).
 
 ## Principles

@@ -1,5 +1,8 @@
 # Billing Security
 
+See [Billing Provider Callbacks](BILLING_CALLBACKS.md) and
+[Billing Settlements](BILLING_SETTLEMENTS.md) for Prompt 638 trust boundaries.
+
 ## Idempotency
 
 | Key | Scope |

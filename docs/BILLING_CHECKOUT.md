@@ -23,6 +23,9 @@ activate subscriptions.
 A browser return never marks an order paid. Only the verified provider-event
 pipeline may record payment and activate a subscription.
 
+See [Billing Provider Callbacks](BILLING_CALLBACKS.md) and
+[Status Synchronization](BILLING_STATUS_SYNCHRONIZATION.md).
+
 ## Idempotency
 
 The fingerprint covers plan, normalized gateway, billing cycle, resolved order

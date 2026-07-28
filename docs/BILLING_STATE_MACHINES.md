@@ -1,5 +1,8 @@
 # Billing State Machines
 
+Settlement transitions are documented in
+[Billing Settlements](BILLING_SETTLEMENTS.md).
+
 Internal billing state is enforced by dedicated state machine services. Invalid transitions throw `InvalidBillingStateTransitionException`.
 
 ## BillingOrderStatus
