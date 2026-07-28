@@ -19,6 +19,18 @@ uses(RefreshDatabase::class);
 
 require_once __DIR__.'/../Support/billing_helpers.php';
 
+function signedFakeCallbackHeaders(string $raw, string $nonce = 'fixture-nonce-00000001', ?string $timestamp = null): array
+{
+    $timestamp ??= (string) now()->timestamp;
+    $secret = 'obvious-test-only-webhook-secret';
+    config()->set('billing.webhook_security.environment', 'testing');
+    config()->set('billing.webhook_security.providers.fake.enabled', true);
+    config()->set('billing.webhook_security.providers.fake.secret', $secret);
+    $signature = hash_hmac('sha256', "{$timestamp}.{$nonce}.{$raw}", $secret);
+
+    return ['Content-Type' => 'application/json', 'X-Fake-Signature' => 'v1='.$signature, 'X-Fake-Timestamp' => $timestamp, 'X-Fake-Nonce' => $nonce];
+}
+
 it('durably accepts a callback and dispatches processing after commit', function (): void {
     Queue::fake();
     [$user, $plan] = billingPremiumContext();
@@ -30,7 +42,11 @@ it('durably accepts a callback and dispatches processing after commit', function
         'payment_status' => 'succeeded', 'succeeded' => true, 'card_number' => '4111111111111111',
     ];
 
-    $this->postJson('/api/v1/billing/providers/fake/callback', $payload)
+    $raw = json_encode($payload, JSON_THROW_ON_ERROR);
+    $this->call('POST', '/api/v1/billing/providers/fake/callback', [], [], [], array_merge(
+        ['CONTENT_TYPE' => 'application/json'],
+        collect(signedFakeCallbackHeaders($raw))->except('Content-Type')->mapWithKeys(fn ($value, $key) => ['HTTP_'.strtoupper(str_replace('-', '_', $key)) => $value])->all(),
+    ), $raw)
         ->assertAccepted()->assertJsonPath('accepted', true);
 
     expect(PaymentProviderEvent::query()->count())->toBe(1)
@@ -61,12 +77,13 @@ it('acknowledges exact replays and rejects payload conflicts', function (): void
 });
 
 it('rejects invalid fake callback signatures when verification is required', function (): void {
-    config()->set('billing.fake.require_signature', true);
+    config()->set('billing.webhook_security.providers.fake.enabled', true);
+    config()->set('billing.webhook_security.providers.fake.secret', 'obvious-test-only-webhook-secret');
     $payload = ['event_id' => 'bad-signature'];
 
-    $this->withHeader('X-Fake-Signature', 'invalid')
+    $this->withHeaders(['X-Fake-Signature' => 'v1='.str_repeat('0', 64), 'X-Fake-Timestamp' => (string) now()->timestamp, 'X-Fake-Nonce' => 'fixture-nonce-00000002'])
         ->postJson('/api/v1/billing/providers/fake/callback', $payload)
-        ->assertBadRequest()->assertJsonPath('accepted', false);
+        ->assertUnauthorized()->assertJsonPath('accepted', false);
 });
 
 it('keeps signed browser returns non-authoritative and only queues synchronization', function (): void {
