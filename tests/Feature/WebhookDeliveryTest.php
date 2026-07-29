@@ -30,6 +30,7 @@ beforeEach(function (): void {
     config([
         'api.key_hash_secret' => 'webhook-delivery-secret',
         'queue.default' => 'sync',
+        'queue.workloads.webhooks' => 'webhooks',
         'webhooks.max_delivery_attempts' => 3,
     ]);
 });
@@ -45,6 +46,15 @@ function runWebhookDeliveryJob(string $deliveryId): void
         app(AuditLogWriter::class),
     );
 }
+
+it('assigns delivery jobs to the configured webhooks queue', function (): void {
+    $job = new DeliverWebhookJob('delivery-1');
+
+    expect($job->queue)->toBe('webhooks');
+
+    config(['queue.workloads.webhooks' => 'user-webhooks']);
+    expect((new DeliverWebhookJob('delivery-2'))->queue)->toBe('user-webhooks');
+});
 
 it('creates one delivery per event and remains idempotent', function (): void {
     ['user' => $user] = premiumWebhookFixture();

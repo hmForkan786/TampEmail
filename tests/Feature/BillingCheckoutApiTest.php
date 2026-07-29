@@ -59,6 +59,23 @@ it('does not disclose another users order', function (): void {
     $this->withToken($otherToken)->getJson("/api/v1/billing/orders/{$orderId}")->assertNotFound();
 });
 
+it('rejects checkout for suspended banned and pending api key owners', function (string $status): void {
+    app(CommercialPlanFeatureSeeder::class)->run();
+    $user = User::factory()->create();
+    ensureFreeCommercialUser($user);
+    $token = issueCommercialApiKey($user, ['outbound_messages:read']);
+    $user->forceFill(['status' => $status])->save();
+    $plan = Plan::query()->where('slug', 'premium')->sole();
+
+    $this->withToken($token)->postJson('/api/v1/billing/checkout', [
+        'plan_id' => $plan->getKey(),
+        'gateway' => 'fake',
+        'idempotency_key' => 'inactive-checkout-001',
+        'success_url' => '/billing/success',
+        'cancel_url' => '/billing/cancel',
+    ])->assertForbidden()->assertJsonPath('error.code', 'forbidden');
+})->with(['suspended', 'banned', 'pending']);
+
 it('synchronizes an owned processing order and exposes only safe payment projection', function (): void {
     app(CommercialPlanFeatureSeeder::class)->run();
     $user = User::factory()->create();
