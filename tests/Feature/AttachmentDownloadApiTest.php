@@ -116,3 +116,38 @@ it('hides expired or deleted inboxes and rejects unsafe filenames and paths', fu
         '/api/v1/inboxes/'.$fixture['inbox']->id.'/emails/'.$fixture['email']->id.'/attachments/'.$fixture['attachment']->id,
     )->assertNotFound();
 });
+
+it('requires both clean status and is_safe true before streaming', function (): void {
+    $owner = User::factory()->create();
+    $fixture = attachmentDownloadFixture($owner);
+    $token = attachmentDownloadKey($owner);
+    $url = '/api/v1/inboxes/'.$fixture['inbox']->id.'/emails/'.$fixture['email']->id.'/attachments/'.$fixture['attachment']->id;
+
+    $fixture['attachment']->update(['scan_status' => AttachmentScanStatus::Clean, 'is_safe' => null]);
+    $this->withToken($token)->get($url)->assertNotFound();
+
+    $fixture['attachment']->update(['scan_status' => AttachmentScanStatus::Clean, 'is_safe' => false]);
+    $this->withToken($token)->get($url)->assertNotFound();
+
+    $fixture['attachment']->update(['scan_status' => AttachmentScanStatus::Clean, 'is_safe' => true]);
+    $this->withToken($token)->get($url)->assertOk()->assertStreamedContent('safe-content');
+});
+
+it('sanitizes dangerous filenames and rejects storage disk mismatches', function (): void {
+    $owner = User::factory()->create();
+    $fixture = attachmentDownloadFixture($owner);
+    $token = attachmentDownloadKey($owner);
+    $url = '/api/v1/inboxes/'.$fixture['inbox']->id.'/emails/'.$fixture['email']->id.'/attachments/'.$fixture['attachment']->id;
+
+    $fixture['attachment']->update(['original_filename' => "report\"\r\nX-Injected: 1.txt"]);
+    $response = $this->withToken($token)->get($url);
+    $response->assertOk();
+    expect($response->headers->get('Content-Disposition'))
+        ->toBe('attachment; filename="report_X-Injected: 1.txt"')
+        ->and($response->headers->get('Content-Disposition'))->not->toContain("\r")
+        ->and($response->headers->get('Content-Disposition'))->not->toContain("\n")
+        ->and($response->headers->get('Content-Disposition'))->not->toContain('"report"');
+
+    $fixture['attachment']->update(['storage_disk' => 'local']);
+    $this->withToken($token)->get($url)->assertNotFound();
+});
