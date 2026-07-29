@@ -29,7 +29,7 @@ final class DeliverWebhookJob implements ShouldQueue
 
     public function __construct(public readonly string $deliveryId)
     {
-        $this->onQueue('webhooks');
+        $this->onQueue((string) config('queue.workloads.webhooks', 'webhooks'));
     }
 
     public function handle(
