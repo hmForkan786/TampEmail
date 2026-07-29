@@ -8,6 +8,10 @@ Prompt 638 details: [Payment Processing](BILLING_PAYMENT_PROCESSING.md),
 [Settlements](BILLING_SETTLEMENTS.md), and
 [Status Synchronization](BILLING_STATUS_SYNCHRONIZATION.md).
 
+Prompt 646: [Production Audit](BILLING_PRODUCTION_AUDIT.md),
+[Operations Runbook](BILLING_OPERATIONS_RUNBOOK.md), and
+[Deployment Checklist](BILLING_DEPLOYMENT_CHECKLIST.md).
+
 Prompt 636 establishes a provider-agnostic billing and payment foundation on top of the commercial subsystem (Prompts 626–635).
 
 ## Principles
