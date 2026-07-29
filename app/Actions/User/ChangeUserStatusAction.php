@@ -9,6 +9,7 @@ use App\DTOs\User\ChangeUserStatusResult;
 use App\Enums\UserStatus;
 use App\Exceptions\UserStatusChangeNotAllowedException;
 use App\Exceptions\UserStatusTargetUnavailableException;
+use App\Http\Middleware\EnsureActiveWebUser;
 use App\Models\User;
 use App\Repositories\Contracts\ApiKeyRepositoryInterface;
 use App\Services\Audit\AuditLogWriter;
@@ -23,8 +24,12 @@ use Illuminate\Support\Facades\DB;
  * 2. re-check the actor is an active platform admin
  * 3. reject self-changes and missing/deleted targets
  * 4. revoke all non-revoked API keys when transitioning to a non-active status
- * 5. assign status via explicit attribute + save()
- * 6. append an immutable AuditLog for successful mutations
+ * 5. clear remember_token when leaving active (stops remember-me reuse)
+ * 6. assign status via explicit attribute + save()
+ * 7. append an immutable AuditLog for successful mutations
+ *
+ * Existing web sessions are terminated on the next authenticated request by
+ * {@see EnsureActiveWebUser}.
  */
 final class ChangeUserStatusAction
 {
@@ -87,6 +92,9 @@ final class ChangeUserStatusAction
             );
 
             $target->status = $newStatus;
+            if ($newStatus !== UserStatus::Active) {
+                $target->setAttribute('remember_token', null);
+            }
             $target->save();
 
             $this->auditLogWriter->write(
