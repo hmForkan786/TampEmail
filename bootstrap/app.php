@@ -96,6 +96,7 @@ return Application::configure(basePath: dirname(__DIR__))
             $schedule->command('billing:sync-payment-status')->everyFiveMinutes()->withoutOverlapping();
         }
         $schedule->command('billing:prune-webhook-security')->daily()->withoutOverlapping();
+        $schedule->command('mail-servers:refresh-ha')->withoutOverlapping()->everyFiveMinutes();
     })
     ->withMiddleware(function (Middleware $middleware): void {
         $middleware->append(ApplySecurityHeaders::class);

@@ -13,18 +13,18 @@ use Carbon\CarbonInterface;
 final readonly class CreateMailServerData
 {
     /**
-     * @param string $name Human-readable mail server label.
-     * @param string $hostname Server hostname for the ingestion endpoint.
-     * @param string $provider Inbound provider identifier (validated via MailProvider enum).
-     * @param string $protocol Ingestion transport protocol (validated via MailProtocol enum).
-     * @param bool $isActive Whether the mail server is active.
-     * @param int $priority Sorting priority for server selection.
-     * @param int $maxConnections Maximum simultaneous connections allowed.
-     * @param int $timeoutSeconds Connection timeout in seconds.
-     * @param CarbonInterface|null $lastHealthCheckAt Optional last health check timestamp.
-     * @param array<string, mixed>|null $metadata Optional additional mail server metadata.
-     * @param string|null $poolKey Optional entitlement pool key for server selection.
-     * @param int|null $maxInboxes Optional inbox capacity limit; null means unlimited.
+     * @param  string  $name  Human-readable mail server label.
+     * @param  string  $hostname  Server hostname for the ingestion endpoint.
+     * @param  string  $provider  Inbound provider identifier (validated via MailProvider enum).
+     * @param  string  $protocol  Ingestion transport protocol (validated via MailProtocol enum).
+     * @param  bool  $isActive  Whether the mail server is active.
+     * @param  int  $priority  Sorting priority for server selection.
+     * @param  int  $maxConnections  Maximum simultaneous connections allowed.
+     * @param  int  $timeoutSeconds  Connection timeout in seconds.
+     * @param  CarbonInterface|null  $lastHealthCheckAt  Optional last health check timestamp.
+     * @param  array<string, mixed>|null  $metadata  Optional additional mail server metadata.
+     * @param  string|null  $poolKey  Optional entitlement pool key for server selection.
+     * @param  int|null  $maxInboxes  Optional inbox capacity limit; null means unlimited.
      */
     public function __construct(
         public string $name,
@@ -39,12 +39,14 @@ final readonly class CreateMailServerData
         public ?array $metadata,
         public ?string $poolKey = null,
         public ?int $maxInboxes = null,
+        public ?string $operationalStatus = null,
+        public ?int $maxThroughput = null,
     ) {}
 
     /**
      * Create a DTO instance from an array payload.
      *
-     * @param array<string, mixed> $data
+     * @param  array<string, mixed>  $data
      */
     public static function fromArray(array $data): self
     {
@@ -81,6 +83,12 @@ final readonly class CreateMailServerData
             maxInboxes: array_key_exists('max_inboxes', $data)
                 ? ($data['max_inboxes'] !== null ? (int) $data['max_inboxes'] : null)
                 : null,
+            operationalStatus: array_key_exists('operational_status', $data)
+                ? ($data['operational_status'] !== null ? (string) $data['operational_status'] : null)
+                : null,
+            maxThroughput: array_key_exists('max_throughput', $data)
+                ? ($data['max_throughput'] !== null ? (int) $data['max_throughput'] : null)
+                : null,
         );
     }
 
@@ -91,7 +99,7 @@ final readonly class CreateMailServerData
      */
     public function toArray(): array
     {
-        return [
+        $attributes = [
             'name' => $this->name,
             'hostname' => $this->hostname,
             'provider' => $this->provider,
@@ -104,7 +112,19 @@ final readonly class CreateMailServerData
             'metadata' => $this->metadata,
             'pool_key' => $this->poolKey,
             'max_inboxes' => $this->maxInboxes,
+            'max_throughput' => $this->maxThroughput,
         ];
+
+        if ($this->operationalStatus !== null) {
+            $attributes['operational_status'] = $this->operationalStatus;
+            $attributes['is_active'] = $this->operationalStatus === 'active';
+        } elseif (! $this->isActive) {
+            $attributes['operational_status'] = 'disabled';
+        } else {
+            $attributes['operational_status'] = 'active';
+        }
+
+        return $attributes;
     }
 
     public function withProvisioningFields(?string $poolKey, ?int $maxInboxes): self
@@ -122,6 +142,8 @@ final readonly class CreateMailServerData
             metadata: $this->metadata,
             poolKey: $poolKey,
             maxInboxes: $maxInboxes,
+            operationalStatus: $this->operationalStatus,
+            maxThroughput: $this->maxThroughput,
         );
     }
 }
