@@ -39,6 +39,11 @@ contracts.
 - [`IDENTITY_SECURITY_POLICY.md`](IDENTITY_SECURITY_POLICY.md) — password, enumeration, recovery, privacy
 - [`IDENTITY_OPERATIONS_RUNBOOK.md`](IDENTITY_OPERATIONS_RUNBOOK.md) — identity health, pruning, recovery ops
 - [`IDENTITY_DEPLOYMENT_CHECKLIST.md`](IDENTITY_DEPLOYMENT_CHECKLIST.md) — identity production cutover
+- [`USER_SETTINGS_ARCHITECTURE.md`](USER_SETTINGS_ARCHITECTURE.md) — unified settings center sections and reuse map
+- [`USER_SETTINGS_SECURITY_POLICY.md`](USER_SETTINGS_SECURITY_POLICY.md) — password confirmation, secrets, notification rules
+- [`USER_SETTINGS_OPERATIONS_RUNBOOK.md`](USER_SETTINGS_OPERATIONS_RUNBOOK.md) — settings health and export prune ops
+- [`USER_SETTINGS_DEPLOYMENT_CHECKLIST.md`](USER_SETTINGS_DEPLOYMENT_CHECKLIST.md) — settings production cutover
+- [`PRIVACY_EXPORT_POLICY.md`](PRIVACY_EXPORT_POLICY.md) — bounded personal data export foundation
 - [`ACCOUNT_RECOVERY_POLICY.md`](ACCOUNT_RECOVERY_POLICY.md) — admin-assisted account recovery
 
 ## 4. Inbound and attachment processing
