@@ -4,29 +4,34 @@ declare(strict_types=1);
 
 namespace App\Http\Controllers\Api\V1;
 
-use App\Http\Controllers\Controller;
-use App\Http\Requests\Inbox\ListOwnedInboxesRequest;
-use App\Http\Requests\Inbox\StoreOwnedInboxRequest;
-use App\Http\Requests\Inbox\RenewOwnedInboxRequest;
 use App\Actions\Inbox\CreateInboxAction;
 use App\Actions\Inbox\DeleteInboxAction;
 use App\Actions\Inbox\RenewInboxAction;
 use App\DTOs\Inbox\CreateInboxData;
 use App\DTOs\Inbox\InboxMutationContext;
+use App\Enums\InboxType;
+use App\Exceptions\CommercialEntitlementDeniedException;
 use App\Exceptions\EligibleMailServerUnavailableException;
-use App\Exceptions\InboxQuotaExceededException;
 use App\Exceptions\InboxRenewalException;
-use App\Models\Domain;
-use App\Http\Resources\InboxCollection;
+use App\Http\Controllers\Controller;
+use App\Http\Requests\Inbox\ListOwnedInboxesRequest;
+use App\Http\Requests\Inbox\RenewOwnedInboxRequest;
+use App\Http\Requests\Inbox\StoreOwnedInboxRequest;
 use App\Http\Resources\InboxResource;
+use App\Http\Responses\ApiErrorResponse;
+use App\Models\Domain;
 use App\Models\Inbox;
 use App\Models\User;
+use App\Services\Commercial\CommercialResponseFactory;
+use App\Services\Entitlement\EntitlementService;
 use App\Services\Inbox\OwnedInboxVisibilityService;
-use Illuminate\Http\Request;
-use Illuminate\Http\JsonResponse;
+use Carbon\Carbon;
 use Illuminate\Database\QueryException;
-use App\Enums\InboxType;
-use App\Http\Responses\ApiErrorResponse;
+use Illuminate\Http\JsonResponse;
+use Illuminate\Http\Request;
+use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
+use Illuminate\Http\Response;
+use Illuminate\Support\Str;
 
 final class InboxController extends Controller
 {
@@ -35,13 +40,29 @@ final class InboxController extends Controller
         private readonly CreateInboxAction $createInbox,
         private readonly DeleteInboxAction $deleteInbox,
         private readonly RenewInboxAction $renewInbox,
+        private readonly EntitlementService $entitlements,
+        private readonly CommercialResponseFactory $commercialResponses,
     ) {}
 
-    public function store(StoreOwnedInboxRequest $request): InboxResource|JsonResponse
+    public function store(StoreOwnedInboxRequest $request): JsonResponse
     {
         $owner = $this->owner($request);
         $domain = Domain::query()->active()->registrationAllowed()->whereKey($request->validated('domain_id'))->firstOrFail();
-        $localPart = (string) $request->validated('local_part');
+        $submittedLocalPart = $request->validated('local_part');
+        if (is_string($submittedLocalPart) && $submittedLocalPart !== '' && ! $this->entitlements->allows($owner, 'inbox.custom_alias')) {
+            return $this->commercialDenial(new CommercialEntitlementDeniedException('inbox.custom_alias'), $owner);
+        }
+        $localPart = is_string($submittedLocalPart) && $submittedLocalPart !== ''
+            ? $submittedLocalPart
+            : $this->generatedLocalPart((string) $domain->domain);
+        $retentionHours = $this->entitlements->limit($owner, 'inbox.retention_hours');
+        if ($retentionHours < 1) {
+            return $this->commercialDenial(new CommercialEntitlementDeniedException('inbox.retention_hours'), $owner);
+        }
+        $retentionExpiresAt = now()->addHours($retentionHours);
+        $requestedExpiresAt = $request->validated('expires_at')
+            ? Carbon::parse($request->validated('expires_at'))
+            : null;
         $data = new CreateInboxData(
             domainId: (string) $domain->getKey(),
             userId: (string) $owner->getKey(),
@@ -49,9 +70,9 @@ final class InboxController extends Controller
             fullAddress: strtolower($localPart).'@'.strtolower((string) $domain->domain),
             displayName: null,
             inboxType: InboxType::Temporary,
-            expiresAt: $request->validated('expires_at')
-                ? \Carbon\Carbon::parse($request->validated('expires_at'))
-                : now()->addHours((int) config('inbox_lifetime.default_lifetime_hours', 0)),
+            expiresAt: $requestedExpiresAt !== null && $requestedExpiresAt->lt($retentionExpiresAt)
+                ? $requestedExpiresAt
+                : $retentionExpiresAt,
             metadata: null,
         );
         try {
@@ -59,9 +80,10 @@ final class InboxController extends Controller
                 (string) $owner->getKey(),
                 (string) $request->attributes->get('apiKey')->getKey(),
             );
+
             return (new InboxResource($this->createInbox->execute($data, $owner, $context)))->response()->setStatusCode(201);
-        } catch (InboxQuotaExceededException) {
-            return ApiErrorResponse::make('inbox_quota_exceeded', 'Inbox quota exceeded.', 409);
+        } catch (CommercialEntitlementDeniedException $exception) {
+            return $this->commercialDenial($exception, $owner);
         } catch (EligibleMailServerUnavailableException) {
             return ApiErrorResponse::make('mail_server_unavailable', 'No eligible mail server is available.', 503);
         } catch (QueryException $exception) {
@@ -72,7 +94,7 @@ final class InboxController extends Controller
         }
     }
 
-    public function index(ListOwnedInboxesRequest $request): InboxCollection
+    public function index(ListOwnedInboxesRequest $request): AnonymousResourceCollection
     {
         return InboxResource::collection($this->visibility->paginateForOwner($this->owner($request), $request->validated()));
     }
@@ -80,10 +102,11 @@ final class InboxController extends Controller
     public function show(Request $request, string $inbox): InboxResource
     {
         $record = $this->visibility->queryForOwner($this->owner($request))->whereKey($inbox)->firstOrFail();
+
         return new InboxResource($record);
     }
 
-    public function destroy(Request $request, string $inbox): \Illuminate\Http\Response
+    public function destroy(Request $request, string $inbox): Response
     {
         $owner = $this->owner($request);
         $record = Inbox::query()->ownedBy((string) $owner->getKey())
@@ -98,16 +121,19 @@ final class InboxController extends Controller
 
     public function renew(RenewOwnedInboxRequest $request, string $inbox): InboxResource|JsonResponse
     {
-        if (! config('inbox_lifetime.renewal_enabled', false)) return ApiErrorResponse::make('renewal_disabled', 'Inbox renewal is disabled.', 403);
+        if (! config('inbox_lifetime.renewal_enabled', false)) {
+            return ApiErrorResponse::make('renewal_disabled', 'Inbox renewal is disabled.', 403);
+        }
         $owner = $this->owner($request);
         $record = Inbox::query()->ownedBy((string) $owner->getKey())->whereKey($inbox)->firstOrFail();
         try {
             $updated = $this->renewInbox->execute(
                 $record,
-                \Carbon\Carbon::parse($request->validated('expires_at')),
+                Carbon::parse($request->validated('expires_at')),
                 $owner,
                 InboxMutationContext::forApi((string) $owner->id, (string) $request->attributes->get('apiKey')->getKey()),
             );
+
             return new InboxResource($updated);
         } catch (InboxRenewalException $exception) {
             return ApiErrorResponse::make($exception->errorCode, $exception->getMessage(), $exception->errorCode === 'not_found' ? 404 : 422);
@@ -117,5 +143,19 @@ final class InboxController extends Controller
     private function owner(Request $request): User
     {
         return $request->attributes->get('apiKeyOwner');
+    }
+
+    private function commercialDenial(CommercialEntitlementDeniedException $exception, User $owner): JsonResponse
+    {
+        return $this->commercialResponses->fromCommercialEntitlementDenied($exception, $owner);
+    }
+
+    private function generatedLocalPart(string $domain): string
+    {
+        do {
+            $localPart = 'inbox-'.Str::lower(Str::random(12));
+        } while (Inbox::withTrashed()->where('full_address', $localPart.'@'.strtolower($domain))->exists());
+
+        return $localPart;
     }
 }

@@ -1,6 +1,13 @@
 <?php
 
+use App\Http\Controllers\Api\V1\AffiliateCommissionController;
+use App\Http\Controllers\Api\V1\AffiliateConversionController;
+use App\Http\Controllers\Api\V1\AffiliateProfileController;
+use App\Http\Controllers\Api\V1\AffiliateWithdrawalController;
 use App\Http\Controllers\Api\V1\AttachmentDownloadController;
+use App\Http\Controllers\Api\V1\BillingCheckoutController;
+use App\Http\Controllers\Api\V1\BillingInvoiceController;
+use App\Http\Controllers\Api\V1\CommercialUsageController;
 use App\Http\Controllers\Api\V1\EmailForwardController;
 use App\Http\Controllers\Api\V1\EmailReadStateController;
 use App\Http\Controllers\Api\V1\EmailReplyController;
@@ -8,6 +15,8 @@ use App\Http\Controllers\Api\V1\InboundWebhookController;
 use App\Http\Controllers\Api\V1\InboxController;
 use App\Http\Controllers\Api\V1\InboxEmailController;
 use App\Http\Controllers\Api\V1\MailServerController;
+use App\Http\Controllers\Api\V1\ManualCryptoClaimController;
+use App\Http\Controllers\Api\V1\ManualCryptoReviewController;
 use App\Http\Controllers\Api\V1\OutboundAttachmentDownloadController;
 use App\Http\Controllers\Api\V1\OutboundDraftController;
 use App\Http\Controllers\Api\V1\OutboundMessageController;
@@ -16,20 +25,56 @@ use App\Http\Controllers\Api\V1\OutboundNotificationPreferenceController;
 use App\Http\Controllers\Api\V1\OutboundSenderProfileController;
 use App\Http\Controllers\Api\V1\OutboundUsageController;
 use App\Http\Controllers\Api\V1\OutboundWebhookController;
+use App\Http\Controllers\Api\V1\PaymentProviderCallbackController;
+use App\Http\Controllers\Api\V1\WebhookEndpointController;
 use Illuminate\Support\Facades\Route;
 
 Route::prefix('v1')->name('api.v1.')->middleware(['api.request-log', 'api.key'])->group(function (): void {
-    Route::middleware(['api.scope:mail_servers:read', 'api.rate-limit'])->group(function (): void {
+    Route::middleware('throttle:billing-checkout')->group(function (): void {
+        Route::post('billing/checkout', [BillingCheckoutController::class, 'store'])->name('billing.checkout.store');
+        Route::get('billing/orders/{billingOrder}', [BillingCheckoutController::class, 'show'])->whereUuid('billingOrder')->name('billing.orders.show');
+        Route::post('billing/orders/{billingOrder}/resume', [BillingCheckoutController::class, 'resume'])->whereUuid('billingOrder')->name('billing.orders.resume');
+        Route::post('billing/orders/{billingOrder}/cancel', [BillingCheckoutController::class, 'cancel'])->whereUuid('billingOrder')->name('billing.orders.cancel');
+        Route::post('billing/orders/{billingOrder}/sync', [BillingCheckoutController::class, 'sync'])->whereUuid('billingOrder')->name('billing.orders.sync');
+        Route::post('billing/orders/{billingOrder}/manual-crypto-claims', [ManualCryptoClaimController::class, 'store'])->whereUuid('billingOrder')->name('billing.manual-crypto.claims.store');
+        Route::get('billing/manual-crypto-claims/{claim}', [ManualCryptoClaimController::class, 'show'])->whereUuid('claim')->name('billing.manual-crypto.claims.show');
+        Route::get('admin/billing/manual-crypto-claims', [ManualCryptoReviewController::class, 'index'])->name('admin.billing.manual-crypto.index');
+        Route::get('admin/billing/manual-crypto-claims/{claim}', [ManualCryptoReviewController::class, 'show'])->whereUuid('claim')->name('admin.billing.manual-crypto.show');
+        Route::post('admin/billing/manual-crypto-claims/{claim}/start', [ManualCryptoReviewController::class, 'start'])->whereUuid('claim')->name('admin.billing.manual-crypto.start');
+        Route::post('admin/billing/manual-crypto-claims/{claim}/approve', [ManualCryptoReviewController::class, 'approve'])->whereUuid('claim')->name('admin.billing.manual-crypto.approve');
+        Route::post('admin/billing/manual-crypto-claims/{claim}/reject', [ManualCryptoReviewController::class, 'reject'])->whereUuid('claim')->name('admin.billing.manual-crypto.reject');
+        Route::post('admin/billing/manual-crypto-claims/{claim}/reopen', [ManualCryptoReviewController::class, 'reopen'])->whereUuid('claim')->name('admin.billing.manual-crypto.reopen');
+        Route::get('billing/invoices', [BillingInvoiceController::class, 'index'])->name('billing.invoices.index');
+        Route::get('billing/invoices/export', [BillingInvoiceController::class, 'export'])->name('billing.invoices.export');
+        Route::get('billing/invoices/{invoice}', [BillingInvoiceController::class, 'show'])->whereUuid('invoice')->name('billing.invoices.show');
+        Route::get('billing/invoices/{invoice}/download', [BillingInvoiceController::class, 'download'])->whereUuid('invoice')->name('billing.invoices.download');
+        Route::get('billing/payments', [BillingInvoiceController::class, 'payments'])->name('billing.payments.index');
+        Route::get('billing/orders', [BillingInvoiceController::class, 'orders'])->name('billing.orders.index');
+        Route::get('admin/billing/invoices', [BillingInvoiceController::class, 'adminIndex'])->name('admin.billing.invoices.index');
+        Route::get('admin/billing/invoices/{invoice}', [BillingInvoiceController::class, 'adminShow'])->whereUuid('invoice')->name('admin.billing.invoices.show');
+        Route::get('admin/billing/invoices/{invoice}/download', [BillingInvoiceController::class, 'adminDownload'])->whereUuid('invoice')->name('admin.billing.invoices.download');
+    });
+    Route::middleware('throttle:60,1')->prefix('affiliate')->name('affiliate.')->group(function (): void {
+        Route::get('profile', [AffiliateProfileController::class, 'profile'])->name('profile');
+        Route::post('apply', [AffiliateProfileController::class, 'apply'])->name('apply');
+        Route::get('dashboard', [AffiliateProfileController::class, 'dashboard'])->name('dashboard');
+        Route::get('conversions', [AffiliateConversionController::class, 'index'])->name('conversions');
+        Route::get('commissions', [AffiliateCommissionController::class, 'index'])->name('commissions');
+        Route::get('withdrawals', [AffiliateWithdrawalController::class, 'index'])->name('withdrawals');
+        Route::post('withdrawals', [AffiliateWithdrawalController::class, 'store'])->name('withdrawals.store');
+        Route::post('withdrawals/{withdrawal}/cancel', [AffiliateWithdrawalController::class, 'cancel'])->whereUuid('withdrawal')->name('withdrawals.cancel');
+    });
+    Route::middleware(['api.scope:mail_servers:read', 'api.entitlement:api.read', 'api.rate-limit'])->group(function (): void {
         Route::get('mail-servers', [MailServerController::class, 'index'])->name('mail-servers.index');
         Route::get('mail-servers/{mailServer}', [MailServerController::class, 'show'])->name('mail-servers.show');
     });
 
-    Route::middleware(['api.scope:mail_servers:write', 'api.rate-limit'])->group(function (): void {
+    Route::middleware(['api.scope:mail_servers:write', 'api.entitlement:api.write', 'api.rate-limit'])->group(function (): void {
         Route::post('mail-servers', [MailServerController::class, 'store'])->name('mail-servers.store');
         Route::match(['put', 'patch'], 'mail-servers/{mailServer}', [MailServerController::class, 'update'])->name('mail-servers.update');
     });
 
-    Route::middleware(['api.scope:inboxes:read', 'api.rate-limit'])->group(function (): void {
+    Route::middleware(['api.scope:inboxes:read', 'api.entitlement:api.read', 'api.rate-limit'])->group(function (): void {
         Route::get('inboxes', [InboxController::class, 'index'])->name('inboxes.index');
         Route::get('inboxes/{inbox}', [InboxController::class, 'show'])->whereUuid('inbox')->name('inboxes.show');
         Route::get('inboxes/{inbox}/emails', [InboxEmailController::class, 'index'])
@@ -43,13 +88,13 @@ Route::prefix('v1')->name('api.v1.')->middleware(['api.request-log', 'api.key'])
             ->name('inboxes.emails.attachments.download');
     });
 
-    Route::middleware(['api.scope:inboxes:write', 'api.rate-limit'])->group(function (): void {
+    Route::middleware(['api.scope:inboxes:write', 'api.entitlement:api.write', 'api.rate-limit'])->group(function (): void {
         Route::post('inboxes', [InboxController::class, 'store'])->name('inboxes.store');
         Route::delete('inboxes/{inbox}', [InboxController::class, 'destroy'])->whereUuid('inbox')->name('inboxes.destroy');
         Route::patch('inboxes/{inbox}/expiration', [InboxController::class, 'renew'])->whereUuid('inbox')->name('inboxes.expiration');
     });
 
-    Route::middleware(['api.scope:inboxes:write', 'api.rate-limit'])->group(function (): void {
+    Route::middleware(['api.scope:inboxes:write', 'api.entitlement:api.write', 'api.rate-limit'])->group(function (): void {
         Route::patch('inboxes/{inbox}/emails/{email}/read', [EmailReadStateController::class, 'read'])
             ->whereUuid(['inbox', 'email'])
             ->name('inboxes.emails.read');
@@ -58,7 +103,7 @@ Route::prefix('v1')->name('api.v1.')->middleware(['api.request-log', 'api.key'])
             ->name('inboxes.emails.unread');
     });
 
-    Route::middleware(['api.scope:outbound_messages:read', 'api.rate-limit'])->group(function (): void {
+    Route::middleware(['api.scope:outbound_messages:read', 'api.entitlement:api.read', 'api.rate-limit'])->group(function (): void {
         Route::get('outbound-drafts', [OutboundDraftController::class, 'index'])->name('outbound-drafts.index');
         Route::get('outbound-drafts/{draft}', [OutboundDraftController::class, 'show'])->whereUuid('draft')->name('outbound-drafts.show');
         Route::get('outbound-messages', [OutboundMessageController::class, 'index'])
@@ -74,6 +119,8 @@ Route::prefix('v1')->name('api.v1.')->middleware(['api.request-log', 'api.key'])
             ->name('outbound-messages.attachments.download');
         Route::get('outbound-usage', [OutboundUsageController::class, 'show'])
             ->name('outbound-usage.show');
+        Route::get('commercial/usage', [CommercialUsageController::class, 'show'])
+            ->name('commercial.usage.show');
         Route::get('outbound-notification-preferences', [OutboundNotificationPreferenceController::class, 'show']);
         Route::get('outbound-notifications', [OutboundNotificationController::class, 'index']);
         Route::get('outbound-notifications/unread-count', [OutboundNotificationController::class, 'count']);
@@ -85,7 +132,7 @@ Route::prefix('v1')->name('api.v1.')->middleware(['api.request-log', 'api.key'])
             ->name('outbound-sender-profiles.show');
     });
 
-    Route::middleware(['api.scope:outbound_messages:write', 'api.rate-limit'])->group(function (): void {
+    Route::middleware(['api.scope:outbound_messages:write', 'api.entitlement:api.write', 'api.rate-limit'])->group(function (): void {
         Route::patch('outbound-notification-preferences', [OutboundNotificationPreferenceController::class, 'update']);
         Route::post('outbound-notifications/read-all', [OutboundNotificationController::class, 'readAll']);
         Route::post('outbound-notifications/{notification}/read', [OutboundNotificationController::class, 'read'])->whereUuid('notification');
@@ -136,8 +183,37 @@ Route::prefix('v1')->name('api.v1.')->middleware(['api.request-log', 'api.key'])
             ->whereUuid('email')
             ->name('emails.forward');
     });
+
+    Route::middleware(['api.scope:outbound_messages:read', 'api.entitlement:api.read', 'api.rate-limit'])->group(function (): void {
+        Route::get('webhooks', [WebhookEndpointController::class, 'index'])->name('webhooks.index');
+        Route::get('webhooks/{webhook}', [WebhookEndpointController::class, 'show'])->whereUuid('webhook')->name('webhooks.show');
+    });
+    Route::middleware(['api.scope:outbound_messages:read', 'api.entitlement:api.read', 'api.entitlement:webhook.access', 'api.rate-limit'])->group(function (): void {
+        Route::get('webhooks/{webhook}/deliveries', [WebhookEndpointController::class, 'deliveries'])->whereUuid('webhook')->name('webhooks.deliveries.index');
+        Route::get('webhooks/{webhook}/deliveries/{delivery}', [WebhookEndpointController::class, 'showDelivery'])->whereUuid(['webhook', 'delivery'])->name('webhooks.deliveries.show');
+    });
+    Route::middleware(['api.scope:outbound_messages:write', 'api.entitlement:api.read', 'api.entitlement:api.write', 'api.entitlement:webhook.access', 'api.rate-limit'])->group(function (): void {
+        Route::post('webhooks', [WebhookEndpointController::class, 'store'])->name('webhooks.store');
+        Route::patch('webhooks/{webhook}', [WebhookEndpointController::class, 'update'])->whereUuid('webhook')->name('webhooks.update');
+        Route::delete('webhooks/{webhook}', [WebhookEndpointController::class, 'destroy'])->whereUuid('webhook')->name('webhooks.destroy');
+        Route::post('webhooks/{webhook}/enable', [WebhookEndpointController::class, 'enable'])->whereUuid('webhook')->name('webhooks.enable');
+        Route::post('webhooks/{webhook}/disable', [WebhookEndpointController::class, 'disable'])->whereUuid('webhook')->name('webhooks.disable');
+        Route::post('webhooks/{webhook}/rotate-secret', [WebhookEndpointController::class, 'rotateSecret'])->whereUuid('webhook')->name('webhooks.rotate-secret');
+    });
 });
 
 Route::post('v1/inbound/webhook', InboundWebhookController::class)->name('api.v1.inbound.webhook');
+Route::post('v1/billing/providers/{provider}/callback', PaymentProviderCallbackController::class)
+    ->middleware('throttle:billing-callback')
+    ->where('provider', 'fake|stripe|sslcommerz|bkash|nagad')
+    ->name('api.v1.billing.providers.callback');
 Route::post('v1/webhooks/outbound/{provider}', OutboundWebhookController::class)
     ->name('api.v1.webhooks.outbound');
+
+Route::prefix('v1')->name('api.v1.')->middleware(['throttle:ads'])->group(function (): void {
+    Route::get('ad/{placement}', [\App\Http\Controllers\Api\V1\AdDecisionController::class, 'show'])
+        ->where('placement', '[A-Za-z0-9_\-]+')
+        ->name('ad.show');
+    Route::post('ad/click', [\App\Http\Controllers\Api\V1\AdDecisionController::class, 'click'])
+        ->name('ad.click');
+});

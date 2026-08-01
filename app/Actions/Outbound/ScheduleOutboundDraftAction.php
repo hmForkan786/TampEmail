@@ -9,9 +9,11 @@ use App\Exceptions\OutboundSendException;
 use App\Models\OutboundMessage;
 use App\Models\User;
 use App\Services\Audit\AuditLogWriter;
+use App\Services\Outbound\OutboundAuthorizationService;
 use App\Services\Outbound\OutboundDraftService;
 use App\Services\Outbound\OutboundNotificationService;
 use App\Services\Outbound\OutboundScheduleTimezone;
+use App\Services\Outbound\OutboundUsageService;
 use Illuminate\Support\Facades\DB;
 
 final class ScheduleOutboundDraftAction
@@ -20,6 +22,8 @@ final class ScheduleOutboundDraftAction
         private readonly OutboundDraftService $drafts,
         private readonly OutboundScheduleTimezone $timezones,
         private readonly AuditLogWriter $auditLogWriter,
+        private readonly OutboundAuthorizationService $authorization,
+        private readonly OutboundUsageService $usage,
     ) {}
 
     public function execute(
@@ -61,6 +65,10 @@ final class ScheduleOutboundDraftAction
             }
 
             $prepared = $this->drafts->prepareSendableContent($draft, $user, $apiKeyId);
+            $this->authorization->assertCanSchedule($user, $draft->operation);
+            // Reserve while accepting the schedule so users cannot bypass a
+            // finite quota by accumulating future messages.
+            $this->usage->reserve($user, $draft, $draft->idempotency_key, $prepared['attachment_bytes']);
             $scheduleVersion = (int) $draft->schedule_version + 1;
 
             $draft->forceFill([

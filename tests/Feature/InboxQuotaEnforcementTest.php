@@ -7,8 +7,8 @@ use App\Enums\BillingCycle;
 use App\Enums\InboxType;
 use App\Enums\SubscriptionStatus;
 use App\Enums\ValueType;
+use App\Exceptions\CommercialEntitlementDeniedException;
 use App\Exceptions\EligibleMailServerUnavailableException;
-use App\Exceptions\InboxQuotaExceededException;
 use App\Models\Domain;
 use App\Models\Feature;
 use App\Models\Inbox;
@@ -41,7 +41,7 @@ function entitledInboxContext(int $inboxLimit = 2, ?int $serverCapacity = null):
     ]);
 
     $maxInboxesFeature = Feature::query()->firstOrCreate(
-        ['key' => 'max_inboxes'],
+        ['key' => 'inbox.max_active'],
         [
             'name' => 'Max Inboxes',
             'value_type' => ValueType::Json,
@@ -60,12 +60,25 @@ function entitledInboxContext(int $inboxLimit = 2, ?int $serverCapacity = null):
         ],
     );
 
+    $createFeature = Feature::query()->firstOrCreate(
+        ['key' => 'inbox.create'],
+        [
+            'name' => 'Create inbox',
+            'value_type' => ValueType::Boolean,
+            'is_active' => true,
+            'display_order' => 3,
+        ],
+    );
+
     $plan->features()->attach($maxInboxesFeature->id, [
         'feature_value' => ['limit' => $inboxLimit],
     ]);
 
     $plan->features()->attach($poolsFeature->id, [
         'feature_value' => ['pools' => ['standard']],
+    ]);
+    $plan->features()->attach($createFeature->id, [
+        'feature_value' => ['enabled' => true],
     ]);
 
     Subscription::create([
@@ -143,7 +156,7 @@ it('rejects inbox creation when the user quota is full', function (): void {
     createEntitledInbox($domain, $user);
 
     expect(fn () => createEntitledInbox($domain, $user))
-        ->toThrow(InboxQuotaExceededException::class);
+        ->toThrow(CommercialEntitlementDeniedException::class);
 });
 
 it('creates an inbox when the user is within quota', function (): void {
@@ -163,7 +176,7 @@ it('allows only the entitled number of inboxes at the quota boundary', function 
     createEntitledInbox($domain, $user);
 
     expect(fn () => createEntitledInbox($domain, $user))
-        ->toThrow(InboxQuotaExceededException::class);
+        ->toThrow(CommercialEntitlementDeniedException::class);
 
     expect(Inbox::query()->where('user_id', $user->id)->count())->toBe(2);
 });
@@ -175,7 +188,7 @@ it('does not persist an inbox when quota enforcement fails', function (): void {
 
     try {
         createEntitledInbox($domain, $user);
-    } catch (InboxQuotaExceededException) {
+    } catch (CommercialEntitlementDeniedException) {
         // expected
     }
 
@@ -188,7 +201,7 @@ it('fails on user quota before mail-server capacity when the user quota is exhau
     createEntitledInbox($domain, $user);
 
     expect(fn () => createEntitledInbox($domain, $user))
-        ->toThrow(InboxQuotaExceededException::class);
+        ->toThrow(CommercialEntitlementDeniedException::class);
 });
 
 it('enforces mail-server capacity even when user quota remains', function (): void {
@@ -211,20 +224,17 @@ it('does not count soft-deleted inboxes toward quota', function (): void {
     expect($replacement->id)->not->toBe($existing->id);
 });
 
-it('allows unlimited inbox creation when the entitlement limit is null', function (): void {
+it('fails closed when the entitlement limit is null', function (): void {
     ['user' => $user, 'domain' => $domain] = entitledInboxContext(inboxLimit: 2);
 
     $plan = Subscription::query()->where('user_id', $user->id)->firstOrFail()->plan;
-    $maxInboxesFeature = Feature::query()->where('key', 'max_inboxes')->firstOrFail();
+    $maxInboxesFeature = Feature::query()->where('key', 'inbox.max_active')->firstOrFail();
     $plan->features()->updateExistingPivot($maxInboxesFeature->id, [
         'feature_value' => ['limit' => null],
     ]);
 
-    createEntitledInbox($domain, $user);
-    createEntitledInbox($domain, $user);
-    $third = createEntitledInbox($domain, $user);
-
-    expect($third)->toBeInstanceOf(Inbox::class);
+    expect(fn () => createEntitledInbox($domain, $user))
+        ->toThrow(CommercialEntitlementDeniedException::class);
 });
 
 it('does not affect another user quota enforcement', function (): void {
@@ -234,7 +244,7 @@ it('does not affect another user quota enforcement', function (): void {
     createEntitledInbox($domainA, $userA);
 
     expect(fn () => createEntitledInbox($domainA, $userA))
-        ->toThrow(InboxQuotaExceededException::class);
+        ->toThrow(CommercialEntitlementDeniedException::class);
 
     $userBInbox = createEntitledInbox($domainB, $userB);
 

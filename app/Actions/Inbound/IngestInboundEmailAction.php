@@ -17,9 +17,11 @@ use App\Models\Email;
 use App\Models\EmailBody;
 use App\Models\EmailEvent;
 use App\Models\EmailProcessingLog;
+use App\Models\User;
 use App\Services\Inbound\AttachmentScanService;
 use App\Services\Inbound\InboundHtmlSanitizer;
 use App\Services\Inbound\InboundMetricsRecorder;
+use App\Services\Webhook\WebhookDispatchService;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
 
@@ -37,14 +39,16 @@ final class IngestInboundEmailAction
         $started = microtime(true);
         $scanAttachmentIds = [];
         $skipAttachmentIds = [];
+        $isNew = false;
         try {
-            $email = DB::transaction(function () use ($parsed, $resolution, &$storedPaths, $started, &$scanAttachmentIds, &$skipAttachmentIds): Email {
+            $email = DB::transaction(function () use ($parsed, $resolution, &$storedPaths, $started, &$scanAttachmentIds, &$skipAttachmentIds, &$isNew): Email {
                 $existing = Email::query()->where('message_id', $parsed->messageId)->first();
                 if ($existing !== null) {
                     $this->metrics->record((string) $existing->id, 'duplicate');
 
                     return $existing;
                 }
+                $isNew = true;
                 if ($resolution->inboxId === null) {
                     throw new \InvalidArgumentException('Recipient was not resolved.');
                 }
@@ -91,6 +95,26 @@ final class IngestInboundEmailAction
 
         foreach ($scanAttachmentIds as $attachmentId) {
             ScanInboundAttachmentJob::dispatch($attachmentId);
+        }
+
+        if ($isNew && $resolution->userId !== null) {
+            $user = User::query()->find($resolution->userId);
+            if ($user !== null) {
+                app(WebhookDispatchService::class)->dispatch(
+                    $user,
+                    'inbox.email.received',
+                    (string) $email->getKey(),
+                    [
+                        'email_id' => (string) $email->getKey(),
+                        'inbox_id' => (string) $email->inbox_id,
+                        'sender_email' => $email->sender_email,
+                        'recipient_email' => $email->recipient_email,
+                        'subject' => $email->subject,
+                        'has_attachments' => $email->has_attachments,
+                        'attachment_count' => $email->attachment_count,
+                    ],
+                );
+            }
         }
 
         return $email;

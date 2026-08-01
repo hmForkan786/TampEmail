@@ -96,6 +96,8 @@ function outboundUsageContext(array $overrides = []): array
         ]);
     }
 
+    attachApiCommercialFeatures($plan);
+
     $subscription = Subscription::query()->create([
         'user_id' => $user->id,
         'plan_id' => $plan->id,
@@ -197,18 +199,17 @@ function outboundUsagePlatformAdmin(): User
 // Feature entitlement / unlimited-by-default behaviour
 // -----------------------------------------------------------------------
 
-it('treats a missing metered feature as unlimited for that dimension', function (): void {
+it('fails closed when the required outbound message quota mapping is missing', function (): void {
     Queue::fake();
     $ctx = outboundUsageContext();
 
-    for ($i = 0; $i < 5; $i++) {
-        $this->withToken($ctx['token'])
-            ->postJson('/api/v1/outbound-messages', outboundUsagePayload($ctx))
-            ->assertCreated();
-    }
+    $this->withToken($ctx['token'])
+        ->postJson('/api/v1/outbound-messages', outboundUsagePayload($ctx))
+        ->assertStatus(429)
+        ->assertJsonPath('error.code', 'plan_limit_reached');
 
-    expect(OutboundMessage::query()->count())->toBe(5)
-        ->and(OutboundUsageReservation::query()->count())->toBe(5)
+    expect(OutboundMessage::query()->count())->toBe(0)
+        ->and(OutboundUsageReservation::query()->count())->toBe(0)
         ->and(SubscriptionUsage::query()->count())->toBe(0);
 });
 
@@ -249,6 +250,7 @@ it('enforces the per-period message allowance and rolls back the message on exce
 it('enforces the per-period recipient allowance', function (): void {
     Queue::fake();
     $ctx = outboundUsageContext();
+    attachMeteredFeature($ctx['plan'], 'outbound_messages_per_period', 10);
     attachMeteredFeature($ctx['plan'], 'outbound_recipients_per_period', 2);
 
     $this->withToken($ctx['token'])
@@ -266,6 +268,7 @@ it('enforces the per-period recipient allowance', function (): void {
 it('enforces the per-period attachment byte allowance on forwards', function (): void {
     Queue::fake();
     $ctx = outboundUsageContext();
+    attachMeteredFeature($ctx['plan'], 'outbound_messages_per_period', 10);
     attachMeteredFeature($ctx['plan'], 'outbound_attachment_bytes_per_period', 10);
 
     ['email' => $email, 'attachment' => $attachment] = createOutboundUsageForwardableEmail($ctx, 50);
@@ -281,18 +284,17 @@ it('enforces the per-period attachment byte allowance on forwards', function ():
     expect(OutboundMessage::query()->count())->toBe(0);
 });
 
-it('allows unlimited usage when limit_value is null', function (): void {
+it('fails closed when the required outbound message quota limit is null', function (): void {
     Queue::fake();
     $ctx = outboundUsageContext();
     attachMeteredFeature($ctx['plan'], 'outbound_messages_per_period', null);
 
-    for ($i = 0; $i < 3; $i++) {
-        $this->withToken($ctx['token'])
-            ->postJson('/api/v1/outbound-messages', outboundUsagePayload($ctx))
-            ->assertCreated();
-    }
+    $this->withToken($ctx['token'])
+        ->postJson('/api/v1/outbound-messages', outboundUsagePayload($ctx))
+        ->assertStatus(429)
+        ->assertJsonPath('error.code', 'plan_limit_reached');
 
-    expect(OutboundMessage::query()->count())->toBe(3);
+    expect(OutboundMessage::query()->count())->toBe(0);
 });
 
 // -----------------------------------------------------------------------
@@ -306,7 +308,7 @@ it('denies outbound send with no active subscription before usage is ever reserv
     $this->withToken($ctx['token'])
         ->postJson('/api/v1/outbound-messages', outboundUsagePayload($ctx))
         ->assertForbidden()
-        ->assertJsonPath('error.code', 'entitlement_denied');
+        ->assertJsonPath('error.code', 'feature_not_available');
 
     expect(OutboundUsageReservation::query()->count())->toBe(0);
 });
@@ -318,7 +320,7 @@ it('denies outbound send once the subscription has expired', function (): void {
     $this->withToken($ctx['token'])
         ->postJson('/api/v1/outbound-messages', outboundUsagePayload($ctx))
         ->assertForbidden()
-        ->assertJsonPath('error.code', 'entitlement_denied');
+        ->assertJsonPath('error.code', 'feature_not_available');
 });
 
 // -----------------------------------------------------------------------

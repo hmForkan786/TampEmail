@@ -70,6 +70,7 @@ function outboundMessagePageContext(array $overrides = []): array
     $plan->features()->syncWithoutDetaching([
         $feature->id => ['feature_value' => ['enabled' => true]],
     ]);
+    attachApiCommercialFeatures($plan);
 
     Subscription::query()->create([
         'user_id' => $user->id,

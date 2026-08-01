@@ -9,13 +9,18 @@ use Illuminate\Support\Facades\RateLimiter;
 
 uses(RefreshDatabase::class);
 
-beforeEach(function (): void { config(['api.key_hash_secret' => 'contract-matrix-secret']); });
+beforeEach(function (): void {
+    config(['api.key_hash_secret' => 'contract-matrix-secret']);
+});
 
 function lifecycleContractToken(array $scopes = ['inboxes:read', 'inboxes:write'], ?User $user = null): array
 {
     $user ??= User::factory()->create(['platform_role' => PlatformRole::User]);
+    ensureFreeCommercialUser($user);
+    ensureCommercialApiAccess($user, $scopes);
     $issued = app(CreateApiKeyAction::class)->issue(userId: $user->id, name: 'contract-key', permissions: $scopes, user: $user);
     RateLimiter::clear('api-key:'.$issued->apiKey->id);
+
     return [$user, $issued->plainToken, $issued->apiKey];
 }
 
@@ -24,6 +29,7 @@ function lifecycleContractEndpoints(): array
     $id = '00000000-0000-4000-8000-000000000001';
     $email = '00000000-0000-4000-8000-000000000002';
     $attachment = '00000000-0000-4000-8000-000000000003';
+
     return [
         'GET /api/v1/inboxes', ['GET', '/api/v1/inboxes'],
         'GET /api/v1/inboxes/{inbox}', ['GET', "/api/v1/inboxes/$id"],

@@ -22,6 +22,7 @@ use App\Http\Resources\OutboundMessageResource;
 use App\Http\Responses\ApiErrorResponse;
 use App\Models\OutboundMessage;
 use App\Models\User;
+use App\Services\Commercial\CommercialResponseFactory;
 use App\Services\Outbound\OutboundMessageAccessService;
 use App\Services\Outbound\OutboundMessageListingService;
 use App\Services\Outbound\OutboundMessageTimelineBuilder;
@@ -41,6 +42,7 @@ final class OutboundMessageController
         private readonly OutboundMessageTimelineBuilder $timelineBuilder,
         private readonly OutboundMessageListingService $listingService,
         private readonly OutboundMessageAccessService $accessService,
+        private readonly CommercialResponseFactory $commercialResponses,
     ) {}
 
     public function index(Request $request): OutboundMessageCollection
@@ -75,7 +77,7 @@ final class OutboundMessageController
                 $apiKey !== null ? (string) $apiKey->getKey() : null,
             );
         } catch (OutboundSendException $exception) {
-            return ApiErrorResponse::make($exception->errorCode, $exception->getMessage(), $exception->status);
+            return $this->mapOutboundException($exception, $owner);
         }
 
         return (new OutboundMessageResource($message))->response()->setStatusCode(201);
@@ -147,7 +149,7 @@ final class OutboundMessageController
                 ? ['schedule_version' => OutboundMessage::query()->whereKey($message)->where('user_id', $owner->getKey())->value('schedule_version')]
                 : [];
 
-            return ApiErrorResponse::make($exception->errorCode, $exception->getMessage(), $exception->status, $details);
+            return $this->mapOutboundException($exception, $owner, $details);
         }
 
         return new OutboundMessageResource($outbound);
@@ -173,7 +175,7 @@ final class OutboundMessageController
                 ? ['schedule_version' => OutboundMessage::query()->whereKey($message)->where('user_id', $owner->getKey())->value('schedule_version')]
                 : [];
 
-            return ApiErrorResponse::make($exception->errorCode, $exception->getMessage(), $exception->status, $details);
+            return $this->mapOutboundException($exception, $owner, $details);
         }
 
         return new OutboundMessageResource($outbound);
@@ -201,7 +203,7 @@ final class OutboundMessageController
                 ? ['schedule_version' => OutboundMessage::query()->whereKey($message)->where('user_id', $owner->getKey())->value('schedule_version')]
                 : [];
 
-            return ApiErrorResponse::make($exception->errorCode, $exception->getMessage(), $exception->status, $details);
+            return $this->mapOutboundException($exception, $owner, $details);
         }
 
         return new OutboundMessageResource($outbound);
@@ -215,7 +217,7 @@ final class OutboundMessageController
         try {
             $outbound = $this->cancelOutboundMessage->execute($message, $owner);
         } catch (OutboundSendException $exception) {
-            return ApiErrorResponse::make($exception->errorCode, $exception->getMessage(), $exception->status);
+            return $this->mapOutboundException($exception, $owner);
         }
 
         return new OutboundMessageResource($outbound);
@@ -234,7 +236,7 @@ final class OutboundMessageController
                 $apiKey !== null ? (string) $apiKey->getKey() : null,
             );
         } catch (OutboundSendException $exception) {
-            return ApiErrorResponse::make($exception->errorCode, $exception->getMessage(), $exception->status);
+            return $this->mapOutboundException($exception, $owner);
         }
 
         return new OutboundMessageResource($outbound);
@@ -254,9 +256,19 @@ final class OutboundMessageController
         try {
             $this->deleteOutboundMessage->execute($message, $owner);
         } catch (OutboundSendException $exception) {
-            return ApiErrorResponse::make($exception->errorCode, $exception->getMessage(), $exception->status);
+            return $this->mapOutboundException($exception, $owner);
         }
 
         return response()->json(['data' => ['deleted' => true]]);
+    }
+
+    /** @param  array<string, mixed>  $details */
+    private function mapOutboundException(OutboundSendException $exception, User $owner, array $details = []): JsonResponse
+    {
+        if (in_array($exception->errorCode, ['plan_limit_reached', 'feature_not_available'], true)) {
+            return $this->commercialResponses->fromOutboundSendException($exception, $owner);
+        }
+
+        return ApiErrorResponse::make($exception->errorCode, $exception->getMessage(), $exception->status, $details);
     }
 }

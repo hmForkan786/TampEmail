@@ -24,6 +24,14 @@ contracts.
 - [`ANONYMOUS_MAIL_SERVER_POOL.md`](ANONYMOUS_MAIL_SERVER_POOL.md) — anonymous provisioning pool policy
 - [`RELATIONAL_CONCURRENCY_PROTOCOL.md`](RELATIONAL_CONCURRENCY_PROTOCOL.md) — relational concurrency test protocol
 - [`RELATIONAL_TEST_MATRIX.md`](RELATIONAL_TEST_MATRIX.md) — supported concurrency verification matrix
+- [`ADS_ARCHITECTURE.md`](ADS_ARCHITECTURE.md) — provider-neutral ads + internal promotion engine
+- [`ADS_OPERATIONS_RUNBOOK.md`](ADS_OPERATIONS_RUNBOOK.md) — ads health, emergency stop, scheduler
+- [`ADS_DEPLOYMENT_CHECKLIST.md`](ADS_DEPLOYMENT_CHECKLIST.md) — ads production cutover checklist
+- [`AFFILIATE_ARCHITECTURE.md`](AFFILIATE_ARCHITECTURE.md) — provider-neutral affiliate attribution + ledger
+- [`AFFILIATE_COMMISSION_POLICY.md`](AFFILIATE_COMMISSION_POLICY.md) — commission base, rounding, hold, reversals
+- [`AFFILIATE_OPERATIONS_RUNBOOK.md`](AFFILIATE_OPERATIONS_RUNBOOK.md) — approvals, payouts, scheduler, recovery
+- [`AFFILIATE_DEPLOYMENT_CHECKLIST.md`](AFFILIATE_DEPLOYMENT_CHECKLIST.md) — affiliate production cutover
+- [`AFFILIATE_PRIVACY_AND_FRAUD.md`](AFFILIATE_PRIVACY_AND_FRAUD.md) — hashing, retention, fraud rules
 
 ## 4. Inbound and attachment processing
 
@@ -33,6 +41,10 @@ contracts.
 
 ## 5. Operations and production
 
+- [`OPERATIONS_RUNBOOK.md`](OPERATIONS_RUNBOOK.md) — master operations index
+- [`MONITORING_OPERATIONS_AUDIT.md`](MONITORING_OPERATIONS_AUDIT.md) — Prompt 659 monitoring/ops certification
+- [`OPERATIONS_MONITORING_RUNBOOK.md`](OPERATIONS_MONITORING_RUNBOOK.md) — health exit codes, capacity, incidents
+- [`PRODUCTION_OPERATIONS_CHECKLIST.md`](PRODUCTION_OPERATIONS_CHECKLIST.md) — day-2 operations checklist
 - [`PRODUCTION_RUNBOOK.md`](PRODUCTION_RUNBOOK.md) — deployment, health, incident, and enablement guidance
 - [`PROCESS_OPERATIONS.md`](PROCESS_OPERATIONS.md) — queue worker and scheduler operations
 - [`PROCESS_RUNTIME_VERIFICATION.md`](PROCESS_RUNTIME_VERIFICATION.md) — isolated process readiness verification

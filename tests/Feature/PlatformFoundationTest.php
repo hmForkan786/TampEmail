@@ -46,6 +46,7 @@ class PlatformFoundationTest extends TestCase
     public function test_named_rate_limiters_are_registered(): void
     {
         $this->assertNotNull(RateLimiter::limiter('web'));
+        $this->assertNotNull(RateLimiter::limiter('login'));
         $this->assertNotNull(RateLimiter::limiter('api'));
         $this->assertNotNull(RateLimiter::limiter('inbox-creation'));
         $this->assertNotNull(RateLimiter::limiter('ingestion'));

@@ -26,6 +26,7 @@ use Illuminate\Support\Carbon;
  * @property Carbon|null $trial_ends_at
  * @property Carbon|null $ends_at
  * @property Carbon|null $cancelled_at
+ * @property bool $cancel_at_period_end
  * @property bool $auto_renew
  * @property string $price
  * @property string $currency
@@ -62,6 +63,7 @@ class Subscription extends BaseModel
         'trial_ends_at',
         'ends_at',
         'cancelled_at',
+        'cancel_at_period_end',
         'auto_renew',
         'price',
         'currency',
@@ -82,6 +84,7 @@ class Subscription extends BaseModel
             'trial_ends_at' => 'datetime',
             'ends_at' => 'datetime',
             'cancelled_at' => 'datetime',
+            'cancel_at_period_end' => 'boolean',
             'auto_renew' => 'boolean',
             'price' => 'decimal:2',
             'metadata' => 'array',

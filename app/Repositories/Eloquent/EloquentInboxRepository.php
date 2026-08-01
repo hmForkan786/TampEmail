@@ -20,9 +20,6 @@ use Illuminate\Contracts\Pagination\LengthAwarePaginator;
  */
 final class EloquentInboxRepository extends BaseEloquentRepository implements InboxRepositoryInterface
 {
-    /**
-     * @return Inbox
-     */
     protected function model(): Inbox
     {
         return new Inbox;
@@ -44,14 +41,22 @@ final class EloquentInboxRepository extends BaseEloquentRepository implements In
      * Soft-deleted rows are excluded by Eloquent's SoftDeletes global scope.
      * Active and expiration state are intentionally ignored.
      *
-     * @param string $userId Owning user UUID.
-     *
+     * @param  string  $userId  Owning user UUID.
      * @return int Number of inboxes owned by the user.
      */
     public function countForUser(string $userId): int
     {
         return $this->model()->newQuery()
             ->where('user_id', $userId)
+            ->count();
+    }
+
+    public function countActiveForUser(string $userId): int
+    {
+        return $this->model()->newQuery()
+            ->where('user_id', $userId)
+            ->where('is_active', true)
+            ->where(fn ($query) => $query->whereNull('expires_at')->orWhere('expires_at', '>', now()))
             ->count();
     }
 

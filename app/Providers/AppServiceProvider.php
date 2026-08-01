@@ -21,6 +21,22 @@ use App\Repositories\Eloquent\EloquentInboxRepository;
 use App\Repositories\Eloquent\EloquentMailServerRepository;
 use App\Repositories\Eloquent\EloquentPlanRepository;
 use App\Repositories\Eloquent\EloquentSubscriptionRepository;
+use App\Services\Billing\Callback\JsonCallbackResponseFormatter;
+use App\Services\Billing\Callback\ProviderCallbackResponseFormatterRegistry;
+use App\Services\Billing\Callback\SslCommerzCallbackResponseFormatter;
+use App\Services\Billing\Callback\StripeCallbackResponseFormatter;
+use App\Services\Billing\Payload\FormUrlEncodedProviderPayloadParser;
+use App\Services\Billing\Payload\JsonProviderPayloadParser;
+use App\Services\Billing\Payload\ProviderPayloadParserRegistry;
+use App\Services\Billing\Payload\StripeProviderPayloadParser;
+use App\Services\Ads\AdProviderRegistry;
+use App\Services\Billing\PaymentGatewayRegistry;
+use App\Services\Billing\SslCommerz\SslCommerzValidationClient;
+use App\Services\Billing\Webhook\FakeProviderWebhookVerifier;
+use App\Services\Billing\Webhook\ProviderWebhookVerifierRegistry;
+use App\Services\Billing\Webhook\SslCommerzProviderWebhookVerifier;
+use App\Services\Billing\Webhook\StripeProviderWebhookVerifier;
+use App\Services\Billing\Webhook\UnconfiguredProviderWebhookVerifier;
 use App\Services\Dns\PhpDnsResolver;
 use App\Services\Ops\ProcessHeartbeatWriter;
 use App\Services\Outbound\GenericOutboundProviderEventParser;
@@ -119,6 +135,27 @@ class AppServiceProvider extends ServiceProvider
                 $app->make(OutboundTransportConfigValidator::class),
             );
         });
+
+        $this->app->singleton(AdProviderRegistry::class);
+        $this->app->singleton(PaymentGatewayRegistry::class);
+        $this->app->singleton(SslCommerzValidationClient::class);
+        $this->app->singleton(ProviderPayloadParserRegistry::class, fn ($app): ProviderPayloadParserRegistry => new ProviderPayloadParserRegistry([
+            $app->make(FormUrlEncodedProviderPayloadParser::class),
+            $app->make(StripeProviderPayloadParser::class),
+            $app->make(JsonProviderPayloadParser::class),
+        ]));
+        $this->app->singleton(ProviderCallbackResponseFormatterRegistry::class, fn ($app): ProviderCallbackResponseFormatterRegistry => new ProviderCallbackResponseFormatterRegistry([
+            $app->make(SslCommerzCallbackResponseFormatter::class),
+            $app->make(StripeCallbackResponseFormatter::class),
+            $app->make(JsonCallbackResponseFormatter::class),
+        ]));
+        $this->app->singleton(ProviderWebhookVerifierRegistry::class, fn ($app): ProviderWebhookVerifierRegistry => new ProviderWebhookVerifierRegistry([
+            $app->make(FakeProviderWebhookVerifier::class),
+            $app->make(StripeProviderWebhookVerifier::class),
+            $app->make(SslCommerzProviderWebhookVerifier::class),
+            new UnconfiguredProviderWebhookVerifier('bkash'),
+            new UnconfiguredProviderWebhookVerifier('nagad'),
+        ]));
     }
 
     /**
@@ -129,6 +166,13 @@ class AppServiceProvider extends ServiceProvider
         RateLimiter::for('web', function (Request $request): Limit {
             return Limit::perMinute(config('abuse.rate_limits.web_per_minute'))
                 ->by($request->user()?->id ?: $request->ip());
+        });
+
+        RateLimiter::for('login', function (Request $request): Limit {
+            $email = strtolower(trim((string) $request->input('email', '')));
+
+            return Limit::perMinute((int) config('abuse.rate_limits.login_per_minute', 5))
+                ->by($email.'|'.$request->ip());
         });
 
         RateLimiter::for('api', function (Request $request): Limit {
@@ -144,6 +188,27 @@ class AppServiceProvider extends ServiceProvider
         RateLimiter::for('ingestion', function (Request $request): Limit {
             return Limit::perMinute(config('abuse.rate_limits.ingestion_per_minute'))
                 ->by($request->ip());
+        });
+
+        RateLimiter::for('billing-checkout', function (Request $request): array {
+            $owner = (string) ($request->user()?->getKey() ?: $request->ip());
+
+            return [
+                Limit::perMinute(10)->by('billing-user:'.$owner),
+                Limit::perMinute(30)->by('billing-ip:'.$request->ip()),
+            ];
+        });
+
+        RateLimiter::for('billing-return', fn (Request $request): Limit => Limit::perMinute(30)->by($request->ip()));
+        RateLimiter::for('ads', fn (Request $request): Limit => Limit::perMinute(60)->by($request->ip()));
+        RateLimiter::for('affiliate', fn (Request $request): Limit => Limit::perMinute(60)->by($request->ip()));
+        RateLimiter::for('billing-callback', function (Request $request): array {
+            $provider = strtolower((string) $request->route('provider'));
+
+            return [
+                Limit::perMinute((int) config('billing.webhook_security.rate_limits.per_ip_per_minute', 120))->by('billing-webhook-ip:'.$request->ip()),
+                Limit::perMinute((int) config('billing.webhook_security.rate_limits.per_provider_per_minute', 300))->by('billing-webhook-provider:'.$provider),
+            ];
         });
 
         Queue::starting(function (WorkerStarting $event): void {
