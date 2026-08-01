@@ -27,6 +27,11 @@ contracts.
 - [`ADS_ARCHITECTURE.md`](ADS_ARCHITECTURE.md) — provider-neutral ads + internal promotion engine
 - [`ADS_OPERATIONS_RUNBOOK.md`](ADS_OPERATIONS_RUNBOOK.md) — ads health, emergency stop, scheduler
 - [`ADS_DEPLOYMENT_CHECKLIST.md`](ADS_DEPLOYMENT_CHECKLIST.md) — ads production cutover checklist
+- [`AFFILIATE_ARCHITECTURE.md`](AFFILIATE_ARCHITECTURE.md) — provider-neutral affiliate attribution + ledger
+- [`AFFILIATE_COMMISSION_POLICY.md`](AFFILIATE_COMMISSION_POLICY.md) — commission base, rounding, hold, reversals
+- [`AFFILIATE_OPERATIONS_RUNBOOK.md`](AFFILIATE_OPERATIONS_RUNBOOK.md) — approvals, payouts, scheduler, recovery
+- [`AFFILIATE_DEPLOYMENT_CHECKLIST.md`](AFFILIATE_DEPLOYMENT_CHECKLIST.md) — affiliate production cutover
+- [`AFFILIATE_PRIVACY_AND_FRAUD.md`](AFFILIATE_PRIVACY_AND_FRAUD.md) — hashing, retention, fraud rules
 
 ## 4. Inbound and attachment processing
 
