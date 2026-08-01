@@ -98,6 +98,15 @@ return Application::configure(basePath: dirname(__DIR__))
         }
         $schedule->command('billing:prune-webhook-security')->daily()->withoutOverlapping();
         $schedule->command('mail-servers:refresh-ha')->withoutOverlapping()->everyFiveMinutes();
+        if (config('ads.scheduler.expire_campaigns', true) === true) {
+            $schedule->command('ads:expire-campaigns')->hourly()->withoutOverlapping();
+        }
+        if (config('ads.scheduler.refresh_budgets', true) === true) {
+            $schedule->command('ads:refresh-budgets')->daily()->withoutOverlapping();
+        }
+        if (config('ads.scheduler.prune_statistics', true) === true) {
+            $schedule->command('ads:prune-statistics --confirm')->daily()->withoutOverlapping();
+        }
     })
     ->withMiddleware(function (Middleware $middleware): void {
         $middleware->append(ApplySecurityHeaders::class);

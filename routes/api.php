@@ -195,3 +195,11 @@ Route::post('v1/billing/providers/{provider}/callback', PaymentProviderCallbackC
     ->name('api.v1.billing.providers.callback');
 Route::post('v1/webhooks/outbound/{provider}', OutboundWebhookController::class)
     ->name('api.v1.webhooks.outbound');
+
+Route::prefix('v1')->name('api.v1.')->middleware(['throttle:ads'])->group(function (): void {
+    Route::get('ad/{placement}', [\App\Http\Controllers\Api\V1\AdDecisionController::class, 'show'])
+        ->where('placement', '[A-Za-z0-9_\-]+')
+        ->name('ad.show');
+    Route::post('ad/click', [\App\Http\Controllers\Api\V1\AdDecisionController::class, 'click'])
+        ->name('ad.click');
+});

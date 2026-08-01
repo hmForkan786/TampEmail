@@ -29,6 +29,7 @@ use App\Services\Billing\Payload\FormUrlEncodedProviderPayloadParser;
 use App\Services\Billing\Payload\JsonProviderPayloadParser;
 use App\Services\Billing\Payload\ProviderPayloadParserRegistry;
 use App\Services\Billing\Payload\StripeProviderPayloadParser;
+use App\Services\Ads\AdProviderRegistry;
 use App\Services\Billing\PaymentGatewayRegistry;
 use App\Services\Billing\SslCommerz\SslCommerzValidationClient;
 use App\Services\Billing\Webhook\FakeProviderWebhookVerifier;
@@ -135,6 +136,7 @@ class AppServiceProvider extends ServiceProvider
             );
         });
 
+        $this->app->singleton(AdProviderRegistry::class);
         $this->app->singleton(PaymentGatewayRegistry::class);
         $this->app->singleton(SslCommerzValidationClient::class);
         $this->app->singleton(ProviderPayloadParserRegistry::class, fn ($app): ProviderPayloadParserRegistry => new ProviderPayloadParserRegistry([
@@ -198,6 +200,7 @@ class AppServiceProvider extends ServiceProvider
         });
 
         RateLimiter::for('billing-return', fn (Request $request): Limit => Limit::perMinute(30)->by($request->ip()));
+        RateLimiter::for('ads', fn (Request $request): Limit => Limit::perMinute(60)->by($request->ip()));
         RateLimiter::for('billing-callback', function (Request $request): array {
             $provider = strtolower((string) $request->route('provider'));
 
