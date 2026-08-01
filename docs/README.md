@@ -32,6 +32,14 @@ contracts.
 - [`AFFILIATE_OPERATIONS_RUNBOOK.md`](AFFILIATE_OPERATIONS_RUNBOOK.md) — approvals, payouts, scheduler, recovery
 - [`AFFILIATE_DEPLOYMENT_CHECKLIST.md`](AFFILIATE_DEPLOYMENT_CHECKLIST.md) — affiliate production cutover
 - [`AFFILIATE_PRIVACY_AND_FRAUD.md`](AFFILIATE_PRIVACY_AND_FRAUD.md) — hashing, retention, fraud rules
+- [`ANALYTICS_ARCHITECTURE.md`](ANALYTICS_ARCHITECTURE.md) — provider-neutral analytics read model + aggregation
+- [`ANALYTICS_OPERATIONS_RUNBOOK.md`](ANALYTICS_OPERATIONS_RUNBOOK.md) — analytics health, rollup, CSV export
+- [`ANALYTICS_DEPLOYMENT_CHECKLIST.md`](ANALYTICS_DEPLOYMENT_CHECKLIST.md) — analytics production cutover
+- [`IDENTITY_ARCHITECTURE.md`](IDENTITY_ARCHITECTURE.md) — self-service registration, verification, sessions
+- [`IDENTITY_SECURITY_POLICY.md`](IDENTITY_SECURITY_POLICY.md) — password, enumeration, recovery, privacy
+- [`IDENTITY_OPERATIONS_RUNBOOK.md`](IDENTITY_OPERATIONS_RUNBOOK.md) — identity health, pruning, recovery ops
+- [`IDENTITY_DEPLOYMENT_CHECKLIST.md`](IDENTITY_DEPLOYMENT_CHECKLIST.md) — identity production cutover
+- [`ACCOUNT_RECOVERY_POLICY.md`](ACCOUNT_RECOVERY_POLICY.md) — admin-assisted account recovery
 
 ## 4. Inbound and attachment processing
 
