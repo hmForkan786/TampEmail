@@ -7,9 +7,11 @@ namespace App\Models;
 use App\Enums\PlatformRole;
 use App\Enums\UserStatus;
 use App\Models\Concerns\HasUuid;
+use App\Notifications\Identity\VerifyEmailNotification;
 use Database\Factories\UserFactory;
 use Filament\Models\Contracts\FilamentUser;
 use Filament\Panel;
+use Illuminate\Contracts\Auth\MustVerifyEmail;
 use Illuminate\Database\Eloquent\Attributes\Scope;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Collection;
@@ -27,27 +29,36 @@ use Illuminate\Support\Carbon;
  * @property string $id
  * @property string $name
  * @property string $email
+ * @property string|null $pending_email
+ * @property Carbon|null $pending_email_verified_at
  * @property Carbon|null $email_verified_at
  * @property string $password
  * @property string|null $avatar
  * @property string $timezone
  * @property string $locale
+ * @property Carbon|null $terms_accepted_at
+ * @property Carbon|null $marketing_consent_at
  * @property UserStatus $status
  * @property PlatformRole $platform_role
  * @property Carbon|null $last_login_at
  * @property string|null $last_login_ip
+ * @property Carbon|null $closed_at
+ * @property Carbon|null $closure_scheduled_for
  * @property string|null $remember_token
  * @property Carbon|null $created_at
  * @property Carbon|null $updated_at
  * @property Carbon|null $deleted_at
  * @property-read UserPreference|null $preference
+ * @property-read IdentityPreference|null $identityPreference
  * @property-read Subscription|null $subscription
  * @property-read Collection<int, Inbox> $inboxes
  * @property-read Collection<int, ApiKey> $apiKeys
  * @property-read Collection<int, AuditLog> $auditLogs
  * @property-read Collection<int, ApiRequestLog> $apiRequestLogs
+ * @property-read Collection<int, LoginAttempt> $loginAttempts
+ * @property-read Collection<int, AccountRecoveryRequest> $recoveryRequests
  */
-class User extends Authenticatable implements FilamentUser
+class User extends Authenticatable implements FilamentUser, MustVerifyEmail
 {
     /** @use HasFactory<UserFactory> */
     use HasFactory;
@@ -72,6 +83,9 @@ class User extends Authenticatable implements FilamentUser
 
     /**
      * The attributes that are mass assignable.
+     *
+     * Privileged attributes (status, platform_role, email_verified_at, pending_email)
+     * are intentionally omitted and must be set via forceFill in trusted services.
      *
      * @var list<string>
      */
@@ -105,7 +119,12 @@ class User extends Authenticatable implements FilamentUser
     {
         return [
             'email_verified_at' => 'datetime',
+            'pending_email_verified_at' => 'datetime',
+            'terms_accepted_at' => 'datetime',
+            'marketing_consent_at' => 'datetime',
             'last_login_at' => 'datetime',
+            'closed_at' => 'datetime',
+            'closure_scheduled_for' => 'datetime',
             'deleted_at' => 'datetime',
             'password' => 'hashed',
             'status' => UserStatus::class,
@@ -114,8 +133,6 @@ class User extends Authenticatable implements FilamentUser
     }
 
     /**
-     * Get the user's application preferences.
-     *
      * @return HasOne<UserPreference, $this>
      */
     public function preference(): HasOne
@@ -124,8 +141,14 @@ class User extends Authenticatable implements FilamentUser
     }
 
     /**
-     * Get the user's current subscription.
-     *
+     * @return HasOne<IdentityPreference, $this>
+     */
+    public function identityPreference(): HasOne
+    {
+        return $this->hasOne(IdentityPreference::class);
+    }
+
+    /**
      * @return HasOne<Subscription, $this>
      */
     public function subscription(): HasOne
@@ -133,71 +156,94 @@ class User extends Authenticatable implements FilamentUser
         return $this->hasOne(Subscription::class);
     }
 
-    /**
-     * Get the inboxes owned by the user.
-     */
     public function inboxes(): HasMany
     {
         return $this->hasMany(Inbox::class);
     }
 
-    /**
-     * Get the API keys owned by the user.
-     */
     public function apiKeys(): HasMany
     {
         return $this->hasMany(ApiKey::class);
     }
 
-    /**
-     * Get the audit logs attributed to the user.
-     */
     public function auditLogs(): HasMany
     {
         return $this->hasMany(AuditLog::class);
     }
 
-    /**
-     * Get the API request logs attributed to the user.
-     */
     public function apiRequestLogs(): HasMany
     {
         return $this->hasMany(ApiRequestLog::class);
     }
 
-    /**
-     * Scope a query to only include active users.
-     */
+    public function loginAttempts(): HasMany
+    {
+        return $this->hasMany(LoginAttempt::class);
+    }
+
+    public function recoveryRequests(): HasMany
+    {
+        return $this->hasMany(AccountRecoveryRequest::class);
+    }
+
     #[Scope]
     protected function active(Builder $query): void
     {
         $query->where('status', UserStatus::Active);
     }
 
-    /**
-     * Scope a query to only include verified users.
-     */
     #[Scope]
     protected function verified(Builder $query): void
     {
         $query->whereNotNull('email_verified_at');
     }
 
-    /**
-     * Determine whether the user account is active.
-     */
     public function isActive(): bool
     {
         return $this->status === UserStatus::Active;
     }
 
-    /**
-     * Determine whether the user may access the given Filament panel.
-     *
-     * Restricted to the admin panel and active platform operators/admins.
-     * Ordinary users, inactive lifecycle states, soft-deleted accounts,
-     * unknown roles, and pool entitlements fail closed.
-     */
+    public function isPending(): bool
+    {
+        return $this->status === UserStatus::Pending;
+    }
+
+    public function isClosed(): bool
+    {
+        return $this->status === UserStatus::Closed;
+    }
+
+    public function mayAuthenticate(): bool
+    {
+        if ($this->trashed()) {
+            return false;
+        }
+
+        return $this->status->mayAuthenticate();
+    }
+
+    public function hasVerifiedEmail(): bool
+    {
+        return $this->email_verified_at !== null;
+    }
+
+    public function markEmailAsVerified(): bool
+    {
+        return $this->forceFill([
+            'email_verified_at' => $this->email_verified_at ?? now(),
+        ])->save();
+    }
+
+    public function sendEmailVerificationNotification(): void
+    {
+        $this->notify(new VerifyEmailNotification);
+    }
+
+    public function getEmailForVerification(): string
+    {
+        return (string) $this->email;
+    }
+
     public function canAccessPanel(Panel $panel): bool
     {
         if ($panel->getId() !== 'admin') {
@@ -207,12 +253,6 @@ class User extends Authenticatable implements FilamentUser
         return $this->hasActivePlatformCapability();
     }
 
-    /**
-     * Determine whether the user currently holds an active privileged platform role.
-     *
-     * True for verified operators and admins only. Ordinary users, inactive
-     * lifecycle states, soft-deleted accounts, and unknown roles fail closed.
-     */
     public function hasActivePlatformCapability(): bool
     {
         if ($this->trashed()) {
@@ -228,30 +268,17 @@ class User extends Authenticatable implements FilamentUser
         return $role instanceof PlatformRole && $role->isPrivileged();
     }
 
-    /**
-     * Determine whether the user is a verified platform operator.
-     *
-     * Admins also satisfy operator capability. Unknown or missing roles fail closed.
-     */
     public function isPlatformOperator(): bool
     {
         return $this->hasActivePlatformCapability();
     }
 
-    /**
-     * Determine whether the user is a verified platform administrator.
-     *
-     * Unknown or missing roles fail closed.
-     */
     public function isPlatformAdmin(): bool
     {
         return $this->hasActivePlatformCapability()
             && $this->resolvePlatformRole() === PlatformRole::Admin;
     }
 
-    /**
-     * Resolve the platform role from stored attributes without throwing on unknown values.
-     */
     private function resolvePlatformRole(): ?PlatformRole
     {
         $raw = $this->attributes['platform_role'] ?? null;
@@ -267,9 +294,6 @@ class User extends Authenticatable implements FilamentUser
         return PlatformRole::tryFrom($raw);
     }
 
-    /**
-     * Get the user's preferred language code.
-     */
     public function preferredLanguage(): string
     {
         $preference = $this->preference()->first();
@@ -281,9 +305,6 @@ class User extends Authenticatable implements FilamentUser
         return $this->locale;
     }
 
-    /**
-     * Get the user's preferred timezone identifier.
-     */
     public function preferredTimezone(): string
     {
         $preference = $this->preference()->first();

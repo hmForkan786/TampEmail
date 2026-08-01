@@ -19,6 +19,7 @@ use App\Http\Middleware\AuthenticateApiKey;
 use App\Http\Middleware\CaptureAffiliateReferral;
 use App\Http\Middleware\EnsureActiveWebUser;
 use App\Http\Middleware\EnsureCommercialApiEntitlement;
+use App\Http\Middleware\EnsureVerifiedActiveUser;
 use App\Http\Middleware\RequireApiKeyScope;
 use App\Http\Middleware\ThrottleApiKey;
 use App\Http\Responses\ApiErrorResponse;
@@ -117,6 +118,24 @@ return Application::configure(basePath: dirname(__DIR__))
         if (config('affiliates.scheduler.attribution_prune_enabled') === true) {
             $schedule->command('affiliates:prune-attributions --confirm')->daily()->withoutOverlapping();
         }
+        if (config('analytics.scheduler.rollup_enabled', true) === true) {
+            $schedule->command('analytics:rollup --backfill')->dailyAt('01:15')->withoutOverlapping();
+        }
+        if (config('analytics.scheduler.prune_enabled', true) === true) {
+            $schedule->command('analytics:prune --confirm')->dailyAt('02:15')->withoutOverlapping();
+        }
+        if (config('identity.scheduler.prune_login_history', true) === true) {
+            $schedule->command('identity:prune-login-history')->dailyAt('03:10')->withoutOverlapping();
+        }
+        if (config('identity.scheduler.expire_invites', true) === true) {
+            $schedule->command('identity:expire-invites')->hourly()->withoutOverlapping();
+        }
+        if (config('identity.scheduler.expire_recovery', true) === true) {
+            $schedule->command('identity:expire-recovery-requests')->hourly()->withoutOverlapping();
+        }
+        if (config('identity.scheduler.prune_unverified', true) === true) {
+            $schedule->command('identity:prune-unverified-users')->dailyAt('03:25')->withoutOverlapping();
+        }
     })
     ->withMiddleware(function (Middleware $middleware): void {
         $middleware->append(ApplySecurityHeaders::class);
@@ -127,6 +146,7 @@ return Application::configure(basePath: dirname(__DIR__))
             'api.rate-limit' => ThrottleApiKey::class,
             'api.entitlement' => EnsureCommercialApiEntitlement::class,
             'web.active' => EnsureActiveWebUser::class,
+            'identity.verified' => EnsureVerifiedActiveUser::class,
             'affiliate.capture' => CaptureAffiliateReferral::class,
         ]);
         $middleware->web(append: [

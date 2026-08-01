@@ -11,10 +11,12 @@ use Illuminate\Support\Facades\Auth;
 use Symfony\Component\HttpFoundation\Response;
 
 /**
- * Fail closed for authenticated web requests when the principal is inactive.
+ * Fail closed for authenticated web requests when the principal is blocked.
  *
- * Complements login-time checks and API-key lifecycle gates: a suspended,
- * banned, pending, or soft-deleted user cannot keep using an existing session.
+ * Allows Active and Pending (email verification / limited account surfaces).
+ * Suspended, banned, closed, and soft-deleted users are logged out.
+ * Product features that require a fully verified active account should also
+ * apply Laravel's `verified` middleware and/or status checks.
  */
 final class EnsureActiveWebUser
 {
@@ -22,7 +24,7 @@ final class EnsureActiveWebUser
     {
         $user = $request->user();
 
-        if ($user instanceof User && (! $user->isActive() || $user->trashed())) {
+        if ($user instanceof User && (! $user->mayAuthenticate() || $user->trashed())) {
             Auth::guard('web')->logout();
 
             if ($request->hasSession()) {

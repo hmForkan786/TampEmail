@@ -88,4 +88,12 @@ class UserFactory extends Factory
             'status' => UserStatus::Banned,
         ]);
     }
+
+    public function closed(): static
+    {
+        return $this->state(fn (array $attributes) => [
+            'status' => UserStatus::Closed,
+            'closed_at' => now(),
+        ]);
+    }
 }

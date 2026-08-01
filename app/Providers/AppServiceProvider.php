@@ -3,6 +3,13 @@
 namespace App\Providers;
 
 use App\Contracts\DnsResolverInterface;
+use App\Contracts\Identity\RegistrationChallengeVerifier;
+use App\Events\Ads\AdClicked;
+use App\Events\Ads\AdRendered;
+use App\Events\SubscriptionLifecycleEvent;
+use App\Listeners\Analytics\RecordAdClickAnalytics;
+use App\Listeners\Analytics\RecordAdImpressionAnalytics;
+use App\Listeners\Analytics\RecordSubscriptionLifecycleAnalytics;
 use App\Repositories\Contracts\ApiKeyRepositoryInterface;
 use App\Repositories\Contracts\AttachmentRepositoryInterface;
 use App\Repositories\Contracts\DomainRepositoryInterface;
@@ -21,6 +28,7 @@ use App\Repositories\Eloquent\EloquentInboxRepository;
 use App\Repositories\Eloquent\EloquentMailServerRepository;
 use App\Repositories\Eloquent\EloquentPlanRepository;
 use App\Repositories\Eloquent\EloquentSubscriptionRepository;
+use App\Services\Ads\AdProviderRegistry;
 use App\Services\Billing\Callback\JsonCallbackResponseFormatter;
 use App\Services\Billing\Callback\ProviderCallbackResponseFormatterRegistry;
 use App\Services\Billing\Callback\SslCommerzCallbackResponseFormatter;
@@ -29,7 +37,6 @@ use App\Services\Billing\Payload\FormUrlEncodedProviderPayloadParser;
 use App\Services\Billing\Payload\JsonProviderPayloadParser;
 use App\Services\Billing\Payload\ProviderPayloadParserRegistry;
 use App\Services\Billing\Payload\StripeProviderPayloadParser;
-use App\Services\Ads\AdProviderRegistry;
 use App\Services\Billing\PaymentGatewayRegistry;
 use App\Services\Billing\SslCommerz\SslCommerzValidationClient;
 use App\Services\Billing\Webhook\FakeProviderWebhookVerifier;
@@ -38,6 +45,8 @@ use App\Services\Billing\Webhook\SslCommerzProviderWebhookVerifier;
 use App\Services\Billing\Webhook\StripeProviderWebhookVerifier;
 use App\Services\Billing\Webhook\UnconfiguredProviderWebhookVerifier;
 use App\Services\Dns\PhpDnsResolver;
+use App\Services\Identity\DisabledRegistrationChallengeVerifier;
+use App\Services\Identity\PasswordPolicy;
 use App\Services\Ops\ProcessHeartbeatWriter;
 use App\Services\Outbound\GenericOutboundProviderEventParser;
 use App\Services\Outbound\OutboundProviderEventParserRegistry;
@@ -60,6 +69,7 @@ use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\ServiceProvider;
+use Illuminate\Validation\Rules\Password;
 
 class AppServiceProvider extends ServiceProvider
 {
@@ -156,6 +166,8 @@ class AppServiceProvider extends ServiceProvider
             new UnconfiguredProviderWebhookVerifier('bkash'),
             new UnconfiguredProviderWebhookVerifier('nagad'),
         ]));
+
+        $this->app->bind(RegistrationChallengeVerifier::class, DisabledRegistrationChallengeVerifier::class);
     }
 
     /**
@@ -163,6 +175,8 @@ class AppServiceProvider extends ServiceProvider
      */
     public function boot(): void
     {
+        Password::defaults(static fn (): Password => PasswordPolicy::rules());
+
         RateLimiter::for('web', function (Request $request): Limit {
             return Limit::perMinute(config('abuse.rate_limits.web_per_minute'))
                 ->by($request->user()?->id ?: $request->ip());
@@ -172,6 +186,32 @@ class AppServiceProvider extends ServiceProvider
             $email = strtolower(trim((string) $request->input('email', '')));
 
             return Limit::perMinute((int) config('abuse.rate_limits.login_per_minute', 5))
+                ->by($email.'|'.$request->ip());
+        });
+
+        RateLimiter::for('registration', function (Request $request): Limit {
+            $email = strtolower(trim((string) $request->input('email', '')));
+
+            return Limit::perMinute((int) config('identity.rate_limits.registration_per_minute', 5))
+                ->by($email.'|'.$request->ip());
+        });
+
+        RateLimiter::for('password-reset', function (Request $request): Limit {
+            $email = strtolower(trim((string) $request->input('email', '')));
+
+            return Limit::perMinute((int) config('identity.rate_limits.password_reset_per_minute', 5))
+                ->by($email.'|'.$request->ip());
+        });
+
+        RateLimiter::for('verification-resend', function (Request $request): Limit {
+            return Limit::perMinute((int) config('identity.rate_limits.verification_resend_per_minute', 3))
+                ->by($request->user()?->id ?: $request->ip());
+        });
+
+        RateLimiter::for('recovery', function (Request $request): Limit {
+            $email = strtolower(trim((string) $request->input('claimed_email', $request->input('email', ''))));
+
+            return Limit::perMinute((int) config('identity.rate_limits.recovery_per_minute', 3))
                 ->by($email.'|'.$request->ip());
         });
 
@@ -246,5 +286,11 @@ class AppServiceProvider extends ServiceProvider
         Event::listen(ScheduledTaskFailed::class, function (ScheduledTaskFailed $event): void {
             app(ProcessHeartbeatWriter::class)->recordSchedulerFailed($event->exception);
         });
+
+        // Analytics collectors — fail-open relative to Ads/Billing (queued listeners would be ideal;
+        // sync recording is isolated and never mutates source modules).
+        Event::listen(AdRendered::class, RecordAdImpressionAnalytics::class);
+        Event::listen(AdClicked::class, RecordAdClickAnalytics::class);
+        Event::listen(SubscriptionLifecycleEvent::class, RecordSubscriptionLifecycleAnalytics::class);
     }
 }

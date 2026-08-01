@@ -1,15 +1,24 @@
 <?php
 
+use App\Http\Controllers\Web\AccountClosureController;
+use App\Http\Controllers\Web\AccountRecoveryController;
+use App\Http\Controllers\Web\AccountSecurityController;
+use App\Http\Controllers\Web\AccountSessionController;
 use App\Http\Controllers\Web\AffiliateReferralController;
 use App\Http\Controllers\Web\AuthenticatedSessionController;
 use App\Http\Controllers\Web\BillingReturnController;
+use App\Http\Controllers\Web\EmailVerificationController;
 use App\Http\Controllers\Web\MailboxController;
 use App\Http\Controllers\Web\ManualCryptoInstructionController;
+use App\Http\Controllers\Web\NewPasswordController;
 use App\Http\Controllers\Web\OutboundAttachmentDownloadController;
 use App\Http\Controllers\Web\OutboundDraftController;
 use App\Http\Controllers\Web\OutboundMessageController;
 use App\Http\Controllers\Web\OutboundNotificationController;
 use App\Http\Controllers\Web\OutboundSenderProfileController;
+use App\Http\Controllers\Web\PasswordResetLinkController;
+use App\Http\Controllers\Web\PendingEmailVerificationController;
+use App\Http\Controllers\Web\RegisteredUserController;
 use Illuminate\Support\Facades\Route;
 
 Route::get('/', function () {
@@ -34,10 +43,51 @@ Route::middleware('guest')->group(function (): void {
     Route::post('login', [AuthenticatedSessionController::class, 'store'])
         ->middleware('throttle:login')
         ->name('login.store');
+
+    Route::get('register', [RegisteredUserController::class, 'create'])->name('register');
+    Route::post('register', [RegisteredUserController::class, 'store'])
+        ->middleware('throttle:registration')
+        ->name('register.store');
+
+    Route::get('forgot-password', [PasswordResetLinkController::class, 'create'])->name('password.request');
+    Route::post('forgot-password', [PasswordResetLinkController::class, 'store'])
+        ->middleware('throttle:password-reset')
+        ->name('password.email');
+    Route::get('reset-password/{token}', [NewPasswordController::class, 'create'])->name('password.reset');
+    Route::post('reset-password', [NewPasswordController::class, 'store'])
+        ->middleware('throttle:password-reset')
+        ->name('password.store');
+
+    Route::get('account/recovery', [AccountRecoveryController::class, 'create'])->name('account.recovery');
+    Route::post('account/recovery', [AccountRecoveryController::class, 'store'])
+        ->middleware('throttle:recovery')
+        ->name('account.recovery.store');
 });
+
+Route::get('account/pending-email/verify/{id}/{hash}', PendingEmailVerificationController::class)
+    ->middleware(['signed', 'throttle:6,1'])
+    ->name('account.pending-email.verify');
 
 Route::middleware(['auth', 'web.active'])->group(function (): void {
     Route::post('logout', [AuthenticatedSessionController::class, 'destroy'])->name('logout');
+
+    Route::get('email/verify', [EmailVerificationController::class, 'notice'])->name('verification.notice');
+    Route::get('email/verify/{id}/{hash}', [EmailVerificationController::class, 'verify'])
+        ->middleware(['signed', 'throttle:6,1'])
+        ->name('verification.verify');
+    Route::post('email/verification-notification', [EmailVerificationController::class, 'resend'])
+        ->middleware('throttle:verification-resend')
+        ->name('verification.send');
+
+    Route::get('account/security', [AccountSecurityController::class, 'show'])->name('account.security');
+    Route::get('account/sessions', [AccountSessionController::class, 'index'])->name('account.sessions');
+    Route::delete('account/sessions/{sessionId}', [AccountSessionController::class, 'destroy'])->name('account.sessions.destroy');
+    Route::delete('account/sessions', [AccountSessionController::class, 'destroyOthers'])->name('account.sessions.destroy-others');
+    Route::get('account/close', [AccountClosureController::class, 'create'])->name('account.close');
+    Route::post('account/close', [AccountClosureController::class, 'store'])->name('account.close.store');
+});
+
+Route::middleware(['auth', 'web.active', 'identity.verified'])->group(function (): void {
     Route::get('inbox', [MailboxController::class, 'index'])->name('mailbox.index');
 
     Route::get('outbound-messages', [OutboundMessageController::class, 'index'])

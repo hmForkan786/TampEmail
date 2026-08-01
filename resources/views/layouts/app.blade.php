@@ -91,6 +91,8 @@
                                 @endif
                             </a>
                             <a href="{{ route('outbound-notification-preferences.index') }}">Notification Preferences</a>
+                            <a href="{{ route('account.security') }}">Security</a>
+                            <a href="{{ route('account.sessions') }}">Sessions</a>
                             <span class="app-nav__user">{{ auth()->user()->email }}</span>
                             <form method="POST" action="{{ route('logout') }}">
                                 @csrf
@@ -105,6 +107,10 @@
                 <div class="app-container">
                     @if (session('outboundStatus'))
                         <div class="alert alert--success">{{ session('outboundStatus') }}</div>
+                    @endif
+
+                    @if (session('identityStatus'))
+                        <div class="alert alert--success">{{ session('identityStatus') }}</div>
                     @endif
 
                     @if (session('outboundError'))
