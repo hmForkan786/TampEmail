@@ -14,6 +14,7 @@ use App\Enums\PaymentTransactionStatus;
 use App\Enums\PaymentTransactionType;
 use App\Enums\ProviderPaymentStatus;
 use App\Exceptions\Billing\PaymentVerificationException;
+use App\Jobs\Affiliates\RecordAffiliateConversionJob;
 use App\Jobs\Billing\ActivatePaidSubscriptionJob;
 use App\Jobs\Billing\ProcessPaymentProviderEventJob;
 use App\Models\BillingCheckoutSession;
@@ -270,6 +271,12 @@ final class PaymentProcessingService
                 ->afterCommit()
                 ->onQueue((string) config('billing.queues.activation', 'default'));
 
+            if (config('affiliates.enabled') === true) {
+                RecordAffiliateConversionJob::dispatch((string) $locked->getKey())
+                    ->afterCommit()
+                    ->onQueue((string) config('billing.queues.activation', 'default'));
+            }
+
             return $locked->fresh();
         });
     }
@@ -460,6 +467,12 @@ final class PaymentProcessingService
         ActivatePaidSubscriptionJob::dispatch((string) $order->getKey())->afterCommit()
             ->onQueue((string) config('billing.queues.activation', 'default'));
         $this->audit->write('billing.subscription.activation_dispatched', $order->user_id, $order);
+
+        if (config('affiliates.enabled') === true) {
+            RecordAffiliateConversionJob::dispatch((string) $order->getKey())
+                ->afterCommit()
+                ->onQueue((string) config('billing.queues.activation', 'default'));
+        }
 
         return $order->fresh();
     }

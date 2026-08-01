@@ -8,9 +8,12 @@ use App\DTOs\Billing\StartCheckoutData;
 use App\Enums\BillingCycle;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Billing\StartCheckoutRequest;
+use App\Models\AffiliateAttribution;
 use App\Models\BillingCheckoutSession;
 use App\Models\BillingOrder;
 use App\Models\User;
+use App\Services\Affiliates\AffiliateAttributionService;
+use App\Services\Affiliates\AffiliateConversionService;
 use App\Services\Billing\BillingOrderQueryService;
 use App\Services\Billing\BillingPaymentStatusService;
 use App\Services\Billing\BillingResponseFactory;
@@ -28,6 +31,7 @@ final class BillingCheckoutController extends Controller
         private readonly BillingResponseFactory $responses,
         private readonly BillingPaymentStatusService $paymentStatus,
         private readonly PaymentStatusSynchronizationService $synchronization,
+        private readonly AffiliateAttributionService $affiliateAttribution,
     ) {}
 
     public function store(StartCheckoutRequest $request): JsonResponse
@@ -46,10 +50,52 @@ final class BillingCheckoutController extends Controller
                 metadata: (array) $request->validated('metadata', []),
             ));
 
+            $this->stampAffiliateAttribution($request, $result['order']);
+
             return response()->json(['data' => $this->checkoutPayload($result['order'], $result['session'])], $result['reused'] ? 200 : 201);
         } catch (Throwable $exception) {
             return $this->responses->fromThrowable($exception);
         }
+    }
+
+    /**
+     * Best-effort affiliate attribution stamp: links the affiliate visitor
+     * cookie to the buyer and, if a matching attribution is found, records
+     * its id on the order's metadata so {@see AffiliateConversionService}
+     * can find it once the order is paid. Never blocks or fails checkout.
+     */
+    private function stampAffiliateAttribution(Request $request, BillingOrder $order): void
+    {
+        if (config('affiliates.enabled') !== true) {
+            return;
+        }
+
+        if (($order->metadata['affiliate_attribution_id'] ?? null) !== null) {
+            return;
+        }
+
+        $cookieName = (string) config('affiliates.cookie.name');
+        $cookieValue = $request->cookie($cookieName);
+
+        if (! is_string($cookieValue) || $cookieValue === '') {
+            return;
+        }
+
+        $buyer = $order->user;
+
+        if (! $buyer instanceof User) {
+            return;
+        }
+
+        $attribution = $this->affiliateAttribution->linkUser($buyer, $cookieValue);
+
+        if (! $attribution instanceof AffiliateAttribution) {
+            return;
+        }
+
+        $order->forceFill([
+            'metadata' => array_merge((array) $order->metadata, ['affiliate_attribution_id' => $attribution->getKey()]),
+        ])->save();
     }
 
     public function show(Request $request, string $billingOrder): JsonResponse

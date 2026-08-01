@@ -201,6 +201,7 @@ class AppServiceProvider extends ServiceProvider
 
         RateLimiter::for('billing-return', fn (Request $request): Limit => Limit::perMinute(30)->by($request->ip()));
         RateLimiter::for('ads', fn (Request $request): Limit => Limit::perMinute(60)->by($request->ip()));
+        RateLimiter::for('affiliate', fn (Request $request): Limit => Limit::perMinute(60)->by($request->ip()));
         RateLimiter::for('billing-callback', function (Request $request): array {
             $provider = strtolower((string) $request->route('provider'));
 

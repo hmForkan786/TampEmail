@@ -1,5 +1,9 @@
 <?php
 
+use App\Http\Controllers\Api\V1\AffiliateCommissionController;
+use App\Http\Controllers\Api\V1\AffiliateConversionController;
+use App\Http\Controllers\Api\V1\AffiliateProfileController;
+use App\Http\Controllers\Api\V1\AffiliateWithdrawalController;
 use App\Http\Controllers\Api\V1\AttachmentDownloadController;
 use App\Http\Controllers\Api\V1\BillingCheckoutController;
 use App\Http\Controllers\Api\V1\BillingInvoiceController;
@@ -49,6 +53,16 @@ Route::prefix('v1')->name('api.v1.')->middleware(['api.request-log', 'api.key'])
         Route::get('admin/billing/invoices', [BillingInvoiceController::class, 'adminIndex'])->name('admin.billing.invoices.index');
         Route::get('admin/billing/invoices/{invoice}', [BillingInvoiceController::class, 'adminShow'])->whereUuid('invoice')->name('admin.billing.invoices.show');
         Route::get('admin/billing/invoices/{invoice}/download', [BillingInvoiceController::class, 'adminDownload'])->whereUuid('invoice')->name('admin.billing.invoices.download');
+    });
+    Route::middleware('throttle:60,1')->prefix('affiliate')->name('affiliate.')->group(function (): void {
+        Route::get('profile', [AffiliateProfileController::class, 'profile'])->name('profile');
+        Route::post('apply', [AffiliateProfileController::class, 'apply'])->name('apply');
+        Route::get('dashboard', [AffiliateProfileController::class, 'dashboard'])->name('dashboard');
+        Route::get('conversions', [AffiliateConversionController::class, 'index'])->name('conversions');
+        Route::get('commissions', [AffiliateCommissionController::class, 'index'])->name('commissions');
+        Route::get('withdrawals', [AffiliateWithdrawalController::class, 'index'])->name('withdrawals');
+        Route::post('withdrawals', [AffiliateWithdrawalController::class, 'store'])->name('withdrawals.store');
+        Route::post('withdrawals/{withdrawal}/cancel', [AffiliateWithdrawalController::class, 'cancel'])->whereUuid('withdrawal')->name('withdrawals.cancel');
     });
     Route::middleware(['api.scope:mail_servers:read', 'api.entitlement:api.read', 'api.rate-limit'])->group(function (): void {
         Route::get('mail-servers', [MailServerController::class, 'index'])->name('mail-servers.index');

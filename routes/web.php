@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Controllers\Web\AffiliateReferralController;
 use App\Http\Controllers\Web\AuthenticatedSessionController;
 use App\Http\Controllers\Web\BillingReturnController;
 use App\Http\Controllers\Web\MailboxController;
@@ -22,6 +23,11 @@ Route::get('billing/manual-crypto/{snapshot}', ManualCryptoInstructionController
     ->middleware(['signed', 'throttle:billing-return'])
     ->whereUuid('snapshot')
     ->name('billing.manual-crypto.instructions');
+
+Route::get('r/{affiliateCode}', AffiliateReferralController::class)
+    ->middleware('throttle:60,1')
+    ->where('affiliateCode', '[A-Za-z0-9]{4,32}')
+    ->name('affiliate.referral');
 
 Route::middleware('guest')->group(function (): void {
     Route::get('login', [AuthenticatedSessionController::class, 'create'])->name('login');
