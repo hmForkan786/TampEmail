@@ -117,6 +117,32 @@ final class EmailChangeService
         });
     }
 
+    public function cancelPendingEmail(User $user, ?User $actor = null): User
+    {
+        return DB::transaction(function () use ($user, $actor): User {
+            /** @var User $locked */
+            $locked = User::query()->whereKey($user->getKey())->lockForUpdate()->firstOrFail();
+
+            if (! is_string($locked->pending_email) || $locked->pending_email === '') {
+                return $locked;
+            }
+
+            $locked->forceFill([
+                'pending_email' => null,
+                'pending_email_verified_at' => null,
+            ])->save();
+
+            $this->audit->write(
+                'identity.email_change_cancelled',
+                $actor?->getKey() ? (string) $actor->getKey() : (string) $locked->getKey(),
+                $locked,
+                metadata: ['pending_email_cleared' => true],
+            );
+
+            return $locked->fresh() ?? $locked;
+        });
+    }
+
     public function signedPendingEmailUrl(User $user): string
     {
         $minutes = (int) config('identity.email_verification.expire_minutes', 60);

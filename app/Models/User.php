@@ -50,6 +50,7 @@ use Illuminate\Support\Carbon;
  * @property Carbon|null $deleted_at
  * @property-read UserPreference|null $preference
  * @property-read IdentityPreference|null $identityPreference
+ * @property-read UserBillingPreference|null $billingPreference
  * @property-read Subscription|null $subscription
  * @property-read Collection<int, Inbox> $inboxes
  * @property-read Collection<int, ApiKey> $apiKeys
@@ -57,6 +58,8 @@ use Illuminate\Support\Carbon;
  * @property-read Collection<int, ApiRequestLog> $apiRequestLogs
  * @property-read Collection<int, LoginAttempt> $loginAttempts
  * @property-read Collection<int, AccountRecoveryRequest> $recoveryRequests
+ * @property-read Collection<int, UserNotificationPreference> $notificationPreferences
+ * @property-read Collection<int, UserPrivacyExport> $privacyExports
  */
 class User extends Authenticatable implements FilamentUser, MustVerifyEmail
 {
@@ -149,11 +152,35 @@ class User extends Authenticatable implements FilamentUser, MustVerifyEmail
     }
 
     /**
+     * @return HasOne<UserBillingPreference, $this>
+     */
+    public function billingPreference(): HasOne
+    {
+        return $this->hasOne(UserBillingPreference::class);
+    }
+
+    /**
      * @return HasOne<Subscription, $this>
      */
     public function subscription(): HasOne
     {
         return $this->hasOne(Subscription::class);
+    }
+
+    /**
+     * @return HasMany<UserNotificationPreference, $this>
+     */
+    public function notificationPreferences(): HasMany
+    {
+        return $this->hasMany(UserNotificationPreference::class);
+    }
+
+    /**
+     * @return HasMany<UserPrivacyExport, $this>
+     */
+    public function privacyExports(): HasMany
+    {
+        return $this->hasMany(UserPrivacyExport::class);
     }
 
     public function inboxes(): HasMany

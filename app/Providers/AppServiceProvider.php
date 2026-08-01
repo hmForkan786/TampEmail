@@ -251,6 +251,39 @@ class AppServiceProvider extends ServiceProvider
             ];
         });
 
+        RateLimiter::for('settings-profile', function (Request $request): Limit {
+            return Limit::perMinute((int) config('settings.rate_limits.profile_per_minute', 10))
+                ->by(($request->user()?->getKey() ?: 'guest').'|'.$request->ip());
+        });
+        RateLimiter::for('settings-password', function (Request $request): Limit {
+            return Limit::perMinute((int) config('settings.rate_limits.password_per_minute', 5))
+                ->by(($request->user()?->getKey() ?: 'guest').'|'.$request->ip());
+        });
+        RateLimiter::for('settings-email-change', function (Request $request): Limit {
+            return Limit::perMinute((int) config('settings.rate_limits.email_change_per_minute', 3))
+                ->by(($request->user()?->getKey() ?: 'guest').'|'.$request->ip());
+        });
+        RateLimiter::for('settings-verification-resend', function (Request $request): Limit {
+            return Limit::perMinute((int) config('settings.rate_limits.verification_resend_per_minute', 3))
+                ->by(($request->user()?->getKey() ?: 'guest').'|'.$request->ip());
+        });
+        RateLimiter::for('settings-session-revoke', function (Request $request): Limit {
+            return Limit::perMinute((int) config('settings.rate_limits.session_revoke_per_minute', 10))
+                ->by(($request->user()?->getKey() ?: 'guest').'|'.$request->ip());
+        });
+        RateLimiter::for('settings-api-key', function (Request $request): Limit {
+            return Limit::perMinute((int) config('settings.rate_limits.api_key_per_minute', 10))
+                ->by(($request->user()?->getKey() ?: 'guest').'|'.$request->ip());
+        });
+        RateLimiter::for('settings-export', function (Request $request): Limit {
+            return Limit::perHour((int) config('settings.rate_limits.export_per_hour', 3))
+                ->by(($request->user()?->getKey() ?: 'guest').'|'.$request->ip());
+        });
+        RateLimiter::for('settings-account-close', function (Request $request): Limit {
+            return Limit::perHour((int) config('settings.rate_limits.account_close_per_hour', 3))
+                ->by(($request->user()?->getKey() ?: 'guest').'|'.$request->ip());
+        });
+
         Queue::starting(function (WorkerStarting $event): void {
             app(ProcessHeartbeatWriter::class)->recordWorkerStarting($event->connectionName, (string) $event->queue);
         });

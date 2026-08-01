@@ -136,6 +136,12 @@ return Application::configure(basePath: dirname(__DIR__))
         if (config('identity.scheduler.prune_unverified', true) === true) {
             $schedule->command('identity:prune-unverified-users')->dailyAt('03:25')->withoutOverlapping();
         }
+        if (config('settings.scheduler.prune_expired_exports', true) === true) {
+            $schedule->command('settings:prune-expired-exports --confirm')->dailyAt('03:40')->withoutOverlapping();
+        }
+        if (config('settings.scheduler.expire_stale_email_changes', true) === true) {
+            $schedule->command('settings:expire-stale-email-changes --confirm')->dailyAt('03:50')->withoutOverlapping();
+        }
     })
     ->withMiddleware(function (Middleware $middleware): void {
         $middleware->append(ApplySecurityHeaders::class);

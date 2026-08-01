@@ -10,22 +10,23 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Support\Carbon;
 
 /**
- * Registration consent preferences (terms vs marketing kept separate).
+ * Billing metadata preferences (snapshot into new invoices only).
  *
  * @property string $id
  * @property string $user_id
- * @property bool $marketing_consent
- * @property Carbon|null $marketing_consent_at
- * @property string|null $marketing_consent_source
- * @property string|null $marketing_policy_version
- * @property bool $terms_accepted
- * @property Carbon|null $terms_accepted_at
+ * @property string|null $billing_email
+ * @property string|null $invoice_name
+ * @property string|null $invoice_address
+ * @property string|null $invoice_locale
+ * @property string|null $tax_identifier_encrypted
  * @property Carbon|null $created_at
  * @property Carbon|null $updated_at
  */
-class IdentityPreference extends Model
+class UserBillingPreference extends Model
 {
     use HasUuid;
+
+    protected $table = 'user_billing_preferences';
 
     protected $keyType = 'string';
 
@@ -36,12 +37,18 @@ class IdentityPreference extends Model
      */
     protected $fillable = [
         'user_id',
-        'marketing_consent',
-        'marketing_consent_at',
-        'marketing_consent_source',
-        'marketing_policy_version',
-        'terms_accepted',
-        'terms_accepted_at',
+        'billing_email',
+        'invoice_name',
+        'invoice_address',
+        'invoice_locale',
+        'tax_identifier_encrypted',
+    ];
+
+    /**
+     * @var list<string>
+     */
+    protected $hidden = [
+        'tax_identifier_encrypted',
     ];
 
     /**
@@ -50,10 +57,7 @@ class IdentityPreference extends Model
     protected function casts(): array
     {
         return [
-            'marketing_consent' => 'boolean',
-            'terms_accepted' => 'boolean',
-            'marketing_consent_at' => 'datetime',
-            'terms_accepted_at' => 'datetime',
+            'tax_identifier_encrypted' => 'encrypted',
         ];
     }
 

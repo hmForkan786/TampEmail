@@ -91,6 +91,7 @@
                                 @endif
                             </a>
                             <a href="{{ route('outbound-notification-preferences.index') }}">Notification Preferences</a>
+                            <a href="{{ route('settings.index') }}">Settings</a>
                             <a href="{{ route('account.security') }}">Security</a>
                             <a href="{{ route('account.sessions') }}">Sessions</a>
                             <span class="app-nav__user">{{ auth()->user()->email }}</span>

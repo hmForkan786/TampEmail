@@ -4,28 +4,29 @@ declare(strict_types=1);
 
 namespace App\Models;
 
+use App\Enums\NotificationPreferenceCategory;
+use App\Enums\NotificationPreferenceChannel;
 use App\Models\Concerns\HasUuid;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Support\Carbon;
 
 /**
- * Registration consent preferences (terms vs marketing kept separate).
+ * Typed per-user notification preference (category × channel).
  *
  * @property string $id
  * @property string $user_id
- * @property bool $marketing_consent
- * @property Carbon|null $marketing_consent_at
- * @property string|null $marketing_consent_source
- * @property string|null $marketing_policy_version
- * @property bool $terms_accepted
- * @property Carbon|null $terms_accepted_at
+ * @property NotificationPreferenceCategory $category
+ * @property NotificationPreferenceChannel $channel
+ * @property bool $enabled
  * @property Carbon|null $created_at
  * @property Carbon|null $updated_at
  */
-class IdentityPreference extends Model
+class UserNotificationPreference extends Model
 {
     use HasUuid;
+
+    protected $table = 'user_notification_preferences';
 
     protected $keyType = 'string';
 
@@ -36,12 +37,9 @@ class IdentityPreference extends Model
      */
     protected $fillable = [
         'user_id',
-        'marketing_consent',
-        'marketing_consent_at',
-        'marketing_consent_source',
-        'marketing_policy_version',
-        'terms_accepted',
-        'terms_accepted_at',
+        'category',
+        'channel',
+        'enabled',
     ];
 
     /**
@@ -50,10 +48,9 @@ class IdentityPreference extends Model
     protected function casts(): array
     {
         return [
-            'marketing_consent' => 'boolean',
-            'terms_accepted' => 'boolean',
-            'marketing_consent_at' => 'datetime',
-            'terms_accepted_at' => 'datetime',
+            'category' => NotificationPreferenceCategory::class,
+            'channel' => NotificationPreferenceChannel::class,
+            'enabled' => 'boolean',
         ];
     }
 
