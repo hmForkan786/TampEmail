@@ -73,7 +73,7 @@ return new class extends Migration
             $table->string('failure_reason_code', 64)->nullable();
             $table->string('ip_hash', 64)->nullable()->index();
             $table->string('user_agent_hash', 64)->nullable();
-            $table->timestamp('occurred_at')->index();
+            $table->timestamp('occurred_at')->useCurrent()->index();
             $table->timestamps();
         });
 

@@ -7,7 +7,7 @@ use Illuminate\Support\Str;
 
 class CheckPlatformFoundation extends Command
 {
-    protected $signature = 'platform:check';
+    protected $signature = 'platform:check {--json : Emit machine-readable JSON}';
 
     protected $description = 'Check production foundation configuration for the temporary email platform.';
 
@@ -33,13 +33,28 @@ class CheckPlatformFoundation extends Command
 
         $failed = collect($checks)
             ->filter(fn (bool $passed): bool => ! $passed)
-            ->keys();
+            ->keys()
+            ->values()
+            ->all();
+
+        $healthy = $failed === [];
+
+        if ($this->option('json')) {
+            $this->line(json_encode([
+                'status' => $healthy ? 'healthy' : 'failed',
+                'checks' => $checks,
+                'failed' => $failed,
+                'evaluated_at' => now()->toIso8601String(),
+            ], JSON_THROW_ON_ERROR | JSON_UNESCAPED_SLASHES));
+
+            return $healthy ? self::SUCCESS : self::FAILURE;
+        }
 
         foreach ($checks as $label => $passed) {
             $this->line(($passed ? '<info>PASS</info>' : '<error>FAIL</error>')." {$label}");
         }
 
-        if ($failed->isNotEmpty()) {
+        if (! $healthy) {
             $this->newLine();
             $this->error('Platform foundation checks failed.');
 

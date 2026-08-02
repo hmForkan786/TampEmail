@@ -69,9 +69,9 @@ return new class extends Migration
             $table->string('utm_campaign', 100)->nullable();
             $table->string('ip_hash', 64)->nullable();
             $table->string('user_agent_hash', 64)->nullable();
-            $table->timestamp('first_seen_at');
-            $table->timestamp('last_seen_at');
-            $table->timestamp('expires_at');
+            $table->timestamp('first_seen_at')->useCurrent();
+            $table->timestamp('last_seen_at')->useCurrent();
+            $table->timestamp('expires_at')->useCurrent();
             $table->foreignUuid('converted_user_id')->nullable()->constrained('users')->nullOnDelete();
             $table->timestamp('converted_at')->nullable();
             $table->string('status', 20)->default('active');
@@ -79,7 +79,7 @@ return new class extends Migration
             $table->timestamps();
 
             $table->index('visitor_token_hash');
-            $table->index(['affiliate_profile_id', 'status', 'expires_at']);
+            $table->index(['affiliate_profile_id', 'status', 'expires_at'], 'aff_attr_profile_status_expires_idx');
         });
 
         Schema::create('affiliate_conversions', function (Blueprint $table): void {
@@ -95,14 +95,14 @@ return new class extends Migration
             $table->char('currency', 3);
             $table->unsignedBigInteger('commission_amount_minor');
             $table->json('commission_plan_snapshot');
-            $table->timestamp('qualified_at');
+            $table->timestamp('qualified_at')->useCurrent();
             $table->timestamp('approved_at')->nullable();
             $table->timestamp('rejected_at')->nullable();
             $table->timestamp('reversed_at')->nullable();
             $table->string('reason_code', 64)->nullable();
             $table->timestamps();
 
-            $table->index(['affiliate_profile_id', 'status', 'qualified_at']);
+            $table->index(['affiliate_profile_id', 'status', 'qualified_at'], 'aff_conv_profile_status_qualified_idx');
         });
 
         Schema::create('affiliate_commission_entries', function (Blueprint $table): void {
@@ -123,7 +123,7 @@ return new class extends Migration
             $table->foreignUuid('created_by')->nullable()->constrained('users')->nullOnDelete();
             $table->timestamp('created_at')->nullable();
 
-            $table->index(['affiliate_profile_id', 'currency', 'status']);
+            $table->index(['affiliate_profile_id', 'currency', 'status'], 'aff_ce_profile_currency_status_idx');
         });
 
         Schema::create('affiliate_withdrawals', function (Blueprint $table): void {
@@ -135,7 +135,7 @@ return new class extends Migration
             $table->string('payout_method', 30);
             $table->text('payout_details_snapshot_encrypted');
             $table->string('idempotency_key', 120);
-            $table->timestamp('requested_at');
+            $table->timestamp('requested_at')->useCurrent();
             $table->foreignUuid('reviewed_by')->nullable()->constrained('users')->nullOnDelete();
             $table->timestamp('reviewed_at')->nullable();
             $table->foreignUuid('approved_by')->nullable()->constrained('users')->nullOnDelete();
@@ -146,8 +146,8 @@ return new class extends Migration
             $table->text('rejection_reason')->nullable();
             $table->timestamps();
 
-            $table->unique(['affiliate_profile_id', 'idempotency_key']);
-            $table->index(['affiliate_profile_id', 'status', 'created_at']);
+            $table->unique(['affiliate_profile_id', 'idempotency_key'], 'aff_wd_profile_idempotency_uq');
+            $table->index(['affiliate_profile_id', 'status', 'created_at'], 'aff_wd_profile_status_created_idx');
         });
 
         Schema::table('affiliate_commission_entries', function (Blueprint $table): void {
@@ -166,7 +166,7 @@ return new class extends Migration
             $table->timestamp('reviewed_at')->nullable();
             $table->timestamp('created_at')->nullable();
 
-            $table->index(['affiliate_profile_id', 'created_at']);
+            $table->index(['affiliate_profile_id', 'created_at'], 'aff_fraud_profile_created_idx');
         });
     }
 

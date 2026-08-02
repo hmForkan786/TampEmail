@@ -2,6 +2,7 @@
 
 namespace Tests\Feature;
 
+use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\RateLimiter;
 use Tests\TestCase;
 
@@ -63,5 +64,23 @@ class PlatformFoundationTest extends TestCase
         $this->artisan('platform:check')
             ->expectsOutputToContain('Platform foundation checks passed.')
             ->assertSuccessful();
+    }
+
+    public function test_platform_check_command_emits_json_summary(): void
+    {
+        config([
+            'cache.default' => 'redis',
+            'queue.default' => 'redis',
+            'session.encrypt' => true,
+        ]);
+
+        $exit = Artisan::call('platform:check', ['--json' => true]);
+        $payload = json_decode(Artisan::output(), true, 512, JSON_THROW_ON_ERROR);
+
+        $this->assertSame(0, $exit);
+        $this->assertSame('healthy', $payload['status']);
+        $this->assertIsArray($payload['checks']);
+        $this->assertSame([], $payload['failed']);
+        $this->assertArrayHasKey('evaluated_at', $payload);
     }
 }

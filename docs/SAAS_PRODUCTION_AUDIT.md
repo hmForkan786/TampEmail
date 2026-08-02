@@ -73,7 +73,9 @@ All entries in `bootstrap/app.php` use `withoutOverlapping`. Feature-flagged: in
 
 ## 9. Monitoring — PASS
 
-`platform:check`, `inbound:health`, `outbound:status` / launch readiness, `attachments:scanner-health`, billing provider health, `processes:health`, Filament ops pages, audit/API logs. No new SIEM.
+Evidence: `MONITORING_OPERATIONS_AUDIT.md` (Prompt 659), `OPERATIONS_MONITORING_RUNBOOK.md`.
+
+`platform:check`, `inbound:health`, `outbound:status` / launch readiness, `attachments:scanner-health`, billing provider health, `processes:health`, Filament ops pages, audit/API logs. Exit-code contract and capacity signal index documented. No new SIEM / Horizon / metrics warehouse.
 
 ## 10. Operations — PASS
 

@@ -65,9 +65,12 @@ Before serving production traffic:
 ## References
 
 - `docs/SAAS_PRODUCTION_AUDIT.md`  
+- `docs/MONITORING_OPERATIONS_AUDIT.md` (Prompt 659)  
+- `docs/OPERATIONS_MONITORING_RUNBOOK.md`  
+- `docs/PRODUCTION_OPERATIONS_CHECKLIST.md`  
 - `docs/PRODUCTION_DEPLOYMENT_CHECKLIST.md`  
 - `docs/OPERATIONS_RUNBOOK.md`  
-- Domain audits 626–658  
+- Domain audits 626–658; monitoring/ops platform Prompt 659; certification Prompt 660  
 
 ## Validity
 
