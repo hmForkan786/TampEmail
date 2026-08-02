@@ -1,15 +1,28 @@
 <x-filament-panels::page>
-    <div class="space-y-6">
-        <div class="rounded-xl bg-white p-6 shadow-sm ring-1 ring-gray-950/5 dark:bg-gray-900 dark:ring-white/10">
-            <div class="flex items-center justify-between">
-                <h2 class="text-lg font-semibold">Overall status</h2>
-                <span class="rounded-full px-3 py-1 text-sm font-medium">{{ $status }}</span>
+    @php
+        $statusKey = strtolower((string) ($status ?? 'unknown'));
+        $chip = match (true) {
+            in_array($statusKey, ['ready', 'healthy', 'ok', 'pass'], true) => 'ops-chip--ready',
+            in_array($statusKey, ['degraded', 'warning', 'warn'], true) => 'ops-chip--warn',
+            in_array($statusKey, ['failed', 'error', 'blocked', 'critical'], true) => 'ops-chip--critical',
+            default => 'ops-chip--info',
+        };
+    @endphp
+
+    <div class="temail-ops space-y-6">
+        <div class="ops-card ops-card--hero">
+            <div class="flex items-center justify-between gap-3">
+                <div>
+                    <p class="ops-kicker">Attachment scanning</p>
+                    <h2 class="text-lg font-semibold">Overall status</h2>
+                </div>
+                <span class="ops-chip {{ $chip }}">{{ $status }}</span>
             </div>
-            <p class="mt-2 text-sm text-gray-500">Last evaluated: {{ $evaluated_at }}</p>
+            <p class="ops-muted mt-2 text-sm">Last evaluated: {{ $evaluated_at }}</p>
         </div>
 
         <div class="grid gap-6 md:grid-cols-2">
-            <div class="rounded-xl bg-white p-6 shadow-sm ring-1 ring-gray-950/5 dark:bg-gray-900 dark:ring-white/10">
+            <div class="ops-card">
                 <h3 class="font-semibold">Scanner readiness</h3>
                 <dl class="mt-3 space-y-2 text-sm">
                     <div>State: {{ $readiness['state'] }}</div>
@@ -23,7 +36,7 @@
                 </dl>
             </div>
 
-            <div class="rounded-xl bg-white p-6 shadow-sm ring-1 ring-gray-950/5 dark:bg-gray-900 dark:ring-white/10">
+            <div class="ops-card ops-card--info">
                 <h3 class="font-semibold">Queue health</h3>
                 <dl class="mt-3 space-y-2 text-sm">
                     <div>Queue: {{ $queue['queue_name'] }}</div>
@@ -36,25 +49,25 @@
                 </dl>
             </div>
 
-            <div class="rounded-xl bg-white p-6 shadow-sm ring-1 ring-gray-950/5 dark:bg-gray-900 dark:ring-white/10">
+            <div class="ops-card">
                 <h3 class="font-semibold">Counts (24 hours)</h3>
                 <dl class="mt-3 space-y-2 text-sm">
-                    @foreach($counts['last_24_hours'] as $label => $value)
+                    @foreach ($counts['last_24_hours'] as $label => $value)
                         <div>{{ str_replace('_', ' ', $label) }}: {{ $value }}</div>
                     @endforeach
                 </dl>
             </div>
 
-            <div class="rounded-xl bg-white p-6 shadow-sm ring-1 ring-gray-950/5 dark:bg-gray-900 dark:ring-white/10">
+            <div class="ops-card">
                 <h3 class="font-semibold">Counts (7 days)</h3>
                 <dl class="mt-3 space-y-2 text-sm">
-                    @foreach($counts['last_7_days'] as $label => $value)
+                    @foreach ($counts['last_7_days'] as $label => $value)
                         <div>{{ str_replace('_', ' ', $label) }}: {{ $value }}</div>
                     @endforeach
                 </dl>
             </div>
 
-            <div class="rounded-xl bg-white p-6 shadow-sm ring-1 ring-gray-950/5 dark:bg-gray-900 dark:ring-white/10">
+            <div class="ops-card ops-card--warn">
                 <h3 class="font-semibold">Quarantine overview</h3>
                 <dl class="mt-3 space-y-2 text-sm">
                     <div>Infected: {{ $quarantine['infected_count'] }}</div>
@@ -65,9 +78,9 @@
                 </dl>
             </div>
 
-            <div class="rounded-xl bg-white p-6 shadow-sm ring-1 ring-gray-950/5 dark:bg-gray-900 dark:ring-white/10">
+            <div class="ops-card ops-card--accent">
                 <h3 class="font-semibold">Live check</h3>
-                @if($live_check)
+                @if ($live_check)
                     <dl class="mt-3 space-y-2 text-sm">
                         <div>Status: {{ $live_check['status'] }}</div>
                         <div>Backend: {{ $live_check['backend'] }}</div>
@@ -76,15 +89,15 @@
                         <div>Issues: {{ $live_check['issues'] === [] ? 'none' : implode(', ', $live_check['issues']) }}</div>
                     </dl>
                 @else
-                    <p class="mt-3 text-sm text-gray-500">Not run on page load. Use “Run live check” for an explicit infected-content probe.</p>
+                    <p class="ops-muted mt-3 text-sm">Not run on page load. Use “Run live check” for an explicit infected-content probe.</p>
                 @endif
             </div>
         </div>
 
-        <div class="rounded-xl bg-white p-6 shadow-sm ring-1 ring-gray-950/5 dark:bg-gray-900 dark:ring-white/10">
+        <div class="ops-card {{ ($issues ?? []) === [] ? '' : 'ops-card--warn' }}">
             <h3 class="font-semibold">Reasons</h3>
             <ul class="mt-2 list-disc pl-5 text-sm">
-                @forelse($issues as $issue)
+                @forelse ($issues as $issue)
                     <li>{{ $issue }}</li>
                 @empty
                     <li>No reported issues.</li>

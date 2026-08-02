@@ -1,58 +1,63 @@
 <x-filament-panels::page>
-    <div class="space-y-6">
-        <form wire:submit="addSuppression" class="rounded-xl border border-gray-200 p-4 dark:border-gray-700 space-y-3">
+    <div class="temail-ops space-y-6">
+        <form wire:submit="addSuppression" class="ops-card ops-card--warn space-y-3">
+            <p class="ops-kicker">Recipient controls</p>
             <h3 class="text-sm font-semibold">Add manual suppression</h3>
             <div class="grid gap-3 md:grid-cols-3">
                 <div>
-                    <label class="text-xs">Email</label>
-                    <input type="email" wire:model="email" class="fi-input block w-full rounded-lg border-gray-300" required />
+                    <label class="text-xs font-semibold">Email</label>
+                    <input type="email" wire:model="email" class="ops-input" required />
                 </div>
                 <div>
-                    <label class="text-xs">Reason</label>
-                    <select wire:model="reason" class="fi-select block w-full rounded-lg border-gray-300">
+                    <label class="text-xs font-semibold">Reason</label>
+                    <select wire:model="reason" class="ops-input">
                         <option value="manual">Manual</option>
                         <option value="policy">Policy</option>
                         <option value="invalid_recipient">Invalid recipient</option>
                     </select>
                 </div>
                 <div>
-                    <label class="text-xs">Expires at (optional)</label>
-                    <input type="datetime-local" wire:model="expires_at" class="fi-input block w-full rounded-lg border-gray-300" />
+                    <label class="text-xs font-semibold">Expires at (optional)</label>
+                    <input type="datetime-local" wire:model="expires_at" class="ops-input" />
                 </div>
             </div>
-            <button type="submit" class="fi-btn fi-btn-color-primary rounded-lg px-3 py-2 text-sm text-white bg-primary-600">
+            <button type="submit" class="ops-btn ops-btn--warm">
                 Suppress recipient
             </button>
-            <p class="text-xs text-gray-500">Ordinary users cannot browse this list. Complaint/provider removals require platform admin elevation.</p>
+            <p class="ops-muted text-xs">Ordinary users cannot browse this list. Complaint/provider removals require platform admin elevation.</p>
         </form>
 
-        <div class="overflow-x-auto rounded-xl border border-gray-200 dark:border-gray-700">
-            <table class="min-w-full text-sm">
-                <thead class="bg-gray-50 dark:bg-gray-800">
+        <div class="ops-card overflow-x-auto p-0">
+            <table class="ops-table">
+                <thead>
                     <tr>
-                        <th class="px-3 py-2 text-left">Recipient</th>
-                        <th class="px-3 py-2 text-left">Reason</th>
-                        <th class="px-3 py-2 text-left">Source</th>
-                        <th class="px-3 py-2 text-left">Active</th>
-                        <th class="px-3 py-2 text-left">Suppressed</th>
-                        <th class="px-3 py-2 text-left"></th>
+                        <th class="px-3">Recipient</th>
+                        <th class="px-3">Reason</th>
+                        <th class="px-3">Source</th>
+                        <th class="px-3">Active</th>
+                        <th class="px-3">Suppressed</th>
+                        <th class="px-3"></th>
                     </tr>
                 </thead>
                 <tbody>
                     @forelse ($suppressions as $row)
-                        <tr class="border-t border-gray-100 dark:border-gray-800">
-                            <td class="px-3 py-2 font-mono">{{ $row['masked_recipient'] }}</td>
-                            <td class="px-3 py-2">{{ $row['reason'] }}</td>
-                            <td class="px-3 py-2">{{ $row['source'] }}</td>
-                            <td class="px-3 py-2">{{ $row['active'] ? 'yes' : 'no' }}</td>
-                            <td class="px-3 py-2">{{ $row['suppressed_at'] }}</td>
-                            <td class="px-3 py-2 text-right">
+                        <tr>
+                            <td class="px-3 font-mono">{{ $row['masked_recipient'] }}</td>
+                            <td class="px-3">{{ $row['reason'] }}</td>
+                            <td class="px-3">{{ $row['source'] }}</td>
+                            <td class="px-3">
+                                <span class="ops-chip {{ $row['active'] ? 'ops-chip--caution' : 'ops-chip--ok' }}">
+                                    {{ $row['active'] ? 'yes' : 'no' }}
+                                </span>
+                            </td>
+                            <td class="px-3">{{ $row['suppressed_at'] }}</td>
+                            <td class="px-3 text-right">
                                 @if ($row['active'])
                                     <button
                                         type="button"
                                         wire:click="removeSuppression('{{ $row['id'] }}')"
                                         wire:confirm="Remove this suppression?"
-                                        class="text-danger-600 text-xs"
+                                        class="ops-link ops-link--danger text-xs"
                                     >
                                         Remove
                                     </button>
@@ -61,7 +66,7 @@
                         </tr>
                     @empty
                         <tr>
-                            <td colspan="6" class="px-3 py-6 text-center text-gray-500">No suppressions recorded.</td>
+                            <td colspan="6" class="ops-muted px-3 py-6 text-center">No suppressions recorded.</td>
                         </tr>
                     @endforelse
                 </tbody>

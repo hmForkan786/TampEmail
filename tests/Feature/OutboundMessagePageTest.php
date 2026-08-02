@@ -291,7 +291,7 @@ it('lets a user log in with valid credentials and reach the outbound message lis
     $this->post('/login', [
         'email' => $ctx['user']->email,
         'password' => 'page-test-password',
-    ])->assertRedirect(route('outbound-messages.index'));
+    ])->assertRedirect(route('mailbox.index'));
 
     $this->assertAuthenticatedAs($ctx['user']);
 });

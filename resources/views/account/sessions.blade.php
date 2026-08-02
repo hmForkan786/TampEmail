@@ -1,8 +1,11 @@
 @extends('layouts.app')
 
 @section('title', 'Sessions')
+@section('mailTitle', 'Sessions')
+@section('mailNav', 'sessions')
 
 @section('content')
+    <div class="mail-page">
     <div class="card">
         <h1 style="margin-top:0;">Active sessions</h1>
 
@@ -62,5 +65,6 @@
             </div>
             <button type="submit" class="btn btn--danger">Revoke other sessions</button>
         </form>
+    </div>
     </div>
 @endsection

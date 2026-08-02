@@ -100,7 +100,7 @@ final class AuthenticatedSessionController extends Controller
             return redirect()->route('verification.notice');
         }
 
-        return redirect()->intended(route('outbound-messages.index'));
+        return redirect()->intended(route('mailbox.index'));
     }
 
     public function destroy(Request $request): RedirectResponse

@@ -22,7 +22,7 @@ final class EmailVerificationController extends Controller
         $user = $request->user();
 
         if ($user->hasVerifiedEmail() && $user->isActive()) {
-            return redirect()->intended(route('outbound-messages.index'));
+            return redirect()->intended(route('mailbox.index'));
         }
 
         return view('auth.verify-email');
@@ -56,7 +56,7 @@ final class EmailVerificationController extends Controller
             $request->session()->regenerate();
         }
 
-        return redirect()->intended(route('outbound-messages.index'))
+        return redirect()->intended(route('mailbox.index'))
             ->with('identityStatus', __('Email verified successfully.'));
     }
 
@@ -66,7 +66,7 @@ final class EmailVerificationController extends Controller
         $user = $request->user();
 
         if ($user->hasVerifiedEmail()) {
-            return redirect()->intended(route('outbound-messages.index'));
+            return redirect()->intended(route('mailbox.index'));
         }
 
         $user->sendEmailVerificationNotification();

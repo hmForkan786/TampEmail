@@ -1,6 +1,11 @@
 @extends('layouts.app')
+
 @section('title', 'Sender profiles')
+@section('mailTitle', 'Sender Profiles')
+@section('mailNav', 'sender-profiles')
+
 @section('content')
+<div class="mail-page">
 <h1>Sender profiles</h1>
 
 <form method="POST" action="{{ route('outbound-sender-profiles.store') }}" class="card" style="margin-bottom:1.5rem;">
@@ -105,4 +110,5 @@
         @endforeach
     </div>
 @endif
+</div>
 @endsection

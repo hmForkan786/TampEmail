@@ -1,11 +1,13 @@
 @extends('layouts.app')
 
-@section('title', 'Outbound messages')
+@section('title', ($filters['state'] ?? '') === 'scheduled' ? 'Scheduled' : 'Outbound messages')
+@section('mailTitle', ($filters['state'] ?? '') === 'scheduled' ? 'Scheduled' : 'Outbound Messages')
+@section('mailNav', ($filters['state'] ?? '') === 'scheduled' ? 'scheduled' : 'outbound')
 
 @section('content')
+    <div class="mail-page">
     <div class="row" style="justify-content:space-between; margin-bottom:1.25rem;">
         <div>
-            <h1 style="margin-bottom:0.25rem;">Outbound messages</h1>
             <p class="muted" style="margin:0;">Sent, queued, delivered, failed, and cancelled messages you've sent.</p>
         </div>
     </div>
@@ -117,5 +119,6 @@
 
             <div class="pagination">{{ $messages->links() }}</div>
         @endif
+    </div>
     </div>
 @endsection

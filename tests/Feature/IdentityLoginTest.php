@@ -23,7 +23,7 @@ it('logs in active verified users and regenerates the session', function (): voi
     $this->post(route('login.store'), [
         'email' => 'active@example.test',
         'password' => 'correct-password',
-    ])->assertRedirect(route('outbound-messages.index'));
+    ])->assertRedirect(route('mailbox.index'));
 
     $this->assertAuthenticatedAs($user);
     expect($user->fresh()->last_login_at)->not->toBeNull();
