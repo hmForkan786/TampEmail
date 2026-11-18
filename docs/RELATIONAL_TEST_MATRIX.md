@@ -38,6 +38,7 @@ Wait for the service health check to report `healthy` before migrating. A failed
 |---|---|---|---|
 | `RelationalInboxConcurrencyTest.php` | User quota, MailServer capacity, anonymous public-pool capacity | MySQL/PostgreSQL-required | Skipped on SQLite; required (no skips) in MySQL/PostgreSQL CI |
 | `RelationalApiKeyConcurrencyTest.php` | API-key quota boundary | MySQL/PostgreSQL-required | Skipped on SQLite; required (no skips) in MySQL/PostgreSQL CI |
+| `RelationalWebhookConcurrencyTest.php` | Webhook endpoint quota boundary | MySQL/PostgreSQL-required | Skipped on SQLite; required (no skips) in MySQL/PostgreSQL CI |
 | `InboxCreateLockOrderEvidenceTest.php` | Authenticated/anonymous create lock-order source evidence | Always runnable | Not a concurrency VERIFIED claim |
 
 Intentional SQLite skips: harness-gate cases plus real concurrency scenarios in the two relational feature files. Same-process pre-lock assertions are deliberately not used as concurrency evidence.
@@ -70,7 +71,7 @@ php artisan test --env=testing --filter=RelationalInboxConcurrencyTest --fail-on
 The workflow defines:
 
 - `SQLite / PHP 8.4`: full suite, SQLite migration, lint, diff check, and JUnit artifact. Relational scenarios skip and that is accepted.
-- `mysql / PHP 8.4`: MySQL 8.4 service, health wait, fresh migration, `RelationalInboxConcurrencyTest` and `RelationalApiKeyConcurrencyTest` with `--fail-on-skipped`, JUnit + worker summary artifacts.
+- `mysql / PHP 8.4`: MySQL 8.4 service, health wait, fresh migration, `RelationalInboxConcurrencyTest`, `RelationalApiKeyConcurrencyTest`, and `RelationalWebhookConcurrencyTest` with `--fail-on-skipped`, JUnit + worker summary artifacts.
 - `postgres / PHP 8.4`: PostgreSQL 16 service with the same relational gate.
 
 `--fail-on-skipped` is the PHPUnit equivalent of the prompt's `--disallow-skipped` requirement: any remaining skip fails the relational job. Worker summary JSON under `storage/test-results/relational/` is uploaded even when the job fails.
@@ -85,6 +86,7 @@ Scenarios:
 - MailServer capacity: two eligible users, `MailServer.max_inboxes=1`.
 - Anonymous capacity: `PUBLIC_MAIL_SERVER_POOL=public`, server capacity 1.
 - API-key quota: concurrent `CreateApiKeyAction::issue()` at `max_api_keys=1`.
+- Webhook endpoint quota: concurrent `WebhookEndpointService::create()` at `webhook.max_endpoints=1`.
 
 Manual pre-locking, serialized calls, fake parallelism, and SQLite are not valid substitutes.
 

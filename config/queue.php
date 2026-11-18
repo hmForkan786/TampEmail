@@ -138,6 +138,7 @@ return [
         'abuse_analysis' => env('QUEUE_ABUSE_ANALYSIS', 'abuse-analysis'),
         'retention' => env('QUEUE_RETENTION', 'retention'),
         'notifications' => env('QUEUE_NOTIFICATIONS', 'notifications'),
+        'webhooks' => env('QUEUE_WEBHOOKS', 'webhooks'),
         'analytics' => env('QUEUE_ANALYTICS', 'analytics'),
         'exports' => env('QUEUE_EXPORTS', 'exports'),
     ],

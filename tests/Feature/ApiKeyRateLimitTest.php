@@ -14,10 +14,12 @@ beforeEach(function (): void {
 
 function rateLimitKey(int $limit): array
 {
+    seedCommercialCatalogue();
     $user = User::factory()->create(['platform_role' => PlatformRole::Operator]);
     $issued = app(CreateApiKeyAction::class)->issue(userId: $user->id, name: 'rate-limit', permissions: ['mail_servers:read'], user: $user);
     $issued->apiKey->update(['rate_limit_per_minute' => $limit]);
     RateLimiter::clear('api-key:'.$issued->apiKey->id);
+
     return [$issued->plainToken, $issued->apiKey];
 }
 

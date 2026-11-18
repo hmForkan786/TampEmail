@@ -12,6 +12,7 @@ use App\Services\ApiKey\ApiKeyTokenGenerator;
 use App\Services\ApiKey\ApiKeyTokenHasher;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\Request;
+use Illuminate\Http\Response;
 use Illuminate\Pipeline\Pipeline;
 
 uses(RefreshDatabase::class);
@@ -66,7 +67,7 @@ function installScopedApiKey(
     return [$user, $apiKey, $credentials['plain_token'], $requiredScope];
 }
 
-function runScopedPipeline(string $token, string $requiredScope): \Illuminate\Http\Response|\Symfony\Component\HttpFoundation\Response
+function runScopedPipeline(string $token, string $requiredScope): Response|Symfony\Component\HttpFoundation\Response
 {
     return app(Pipeline::class)
         ->send(apiKeyMiddlewareRequest('Bearer '.$token))
@@ -204,6 +205,27 @@ it('denies suspended and banned owners on scoped requests', function (UserStatus
 })->with([
     UserStatus::Suspended,
     UserStatus::Banned,
+]);
+
+it('denies inactive owners before scope middleware on api.key-only routes', function (UserStatus $status): void {
+    [, , $token] = installScopedApiKey(
+        PlatformRole::User,
+        ['outbound_messages:read'],
+        'outbound_messages:read',
+        $status,
+    );
+
+    $response = app(Pipeline::class)
+        ->send(apiKeyMiddlewareRequest('Bearer '.$token))
+        ->through([AuthenticateApiKey::class])
+        ->then(fn () => response()->json(['ok' => true]));
+
+    expect($response->getStatusCode())->toBe(403)
+        ->and($response->getData(true)['error']['code'])->toBe('forbidden');
+})->with([
+    UserStatus::Suspended,
+    UserStatus::Banned,
+    UserStatus::Pending,
 ]);
 
 it('returns 401 when the owner is missing or soft-deleted', function (): void {

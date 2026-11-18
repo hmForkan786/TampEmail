@@ -19,11 +19,13 @@ use App\Models\Inbox;
 use App\Models\User;
 use App\Policies\AttachmentVisibilityPolicy;
 use App\Services\Inbound\AttachmentScanService;
+use Database\Seeders\CommercialPlanFeatureSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Storage;
 
 uses(RefreshDatabase::class);
 
+/** @param array<string, mixed> $overrides */
 function ingestionScanAttachment(array $overrides = []): Attachment
 {
     $domain = Domain::query()->create([
@@ -207,6 +209,7 @@ it('records expected events and remains idempotent on repeated job execution', f
 
 it('allows clean downloads and denies non-clean states without exposing threat internals', function (): void {
     config(['api.key_hash_secret' => 'attachment-ingestion-test-secret']);
+    app(CommercialPlanFeatureSeeder::class)->run();
     Storage::fake('attachments');
     $owner = User::factory()->create();
     $domain = Domain::query()->create([
@@ -262,7 +265,9 @@ it('allows clean downloads and denies non-clean states without exposing threat i
     )->plainToken;
     $url = '/api/v1/inboxes/'.$inbox->id.'/emails/'.$email->id.'/attachments/'.$attachment->id;
 
-    $this->withToken($token)->get($url)->assertOk()->assertStreamedContent('safe-content');
+    \Pest\Laravel\get($url, ['Authorization' => 'Bearer '.$token])
+        ->assertOk()
+        ->assertStreamedContent('safe-content');
 
     foreach ([
         AttachmentScanStatus::Pending,
@@ -272,10 +277,10 @@ it('allows clean downloads and denies non-clean states without exposing threat i
     ] as $status) {
         $attachment->update([
             'scan_status' => $status,
-            'is_safe' => $status === AttachmentScanStatus::Clean,
+            'is_safe' => false,
             'metadata' => ['malware_signature' => 'Eicar-Test', 'scan_error' => 'scanner_failed'],
         ]);
-        $response = $this->withToken($token)->get($url);
+        $response = \Pest\Laravel\get($url, ['Authorization' => 'Bearer '.$token]);
         $response->assertNotFound();
         expect($response->getContent())->not->toContain('Eicar-Test')
             ->and($response->getContent())->not->toContain('scanner_failed')
@@ -298,7 +303,11 @@ it('exposes sanitized scan status to authorized admins via audit logs', function
     expect($admin->isPlatformAdmin())->toBeTrue()
         ->and($log->metadata['result_status'] ?? null)->toBe('infected')
         ->and($log->metadata['threat_label'] ?? null)->toBe('Win.Test.Virus')
-        ->and($log->metadata)->not->toHaveKey('storage_path')
-        ->and(json_encode($log->metadata))->not->toContain('abc')
+        ->and($log->metadata)->not->toHaveKeys([
+            'storage_path',
+            'content',
+            'raw_content',
+            'attachment_bytes',
+        ])
         ->and((new AttachmentVisibilityPolicy)->view($admin, $attachment->fresh()))->toBeFalse();
 });

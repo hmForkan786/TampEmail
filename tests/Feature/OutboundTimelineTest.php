@@ -3,12 +3,16 @@
 declare(strict_types=1);
 
 use App\Actions\ApiKey\CreateApiKeyAction;
+use App\Enums\BillingCycle;
 use App\Enums\OutboundMessageState;
 use App\Enums\OutboundOperation;
+use App\Enums\SubscriptionStatus;
 use App\Models\AuditLog;
 use App\Models\Domain;
 use App\Models\Inbox;
 use App\Models\OutboundMessage;
+use App\Models\Plan;
+use App\Models\Subscription;
 use App\Models\User;
 use App\Services\Audit\AuditLogWriter;
 use App\Services\Outbound\OutboundMessageTimelineBuilder;
@@ -22,6 +26,27 @@ uses(RefreshDatabase::class);
 function outboundTimelineContext(array $overrides = []): array
 {
     $user = User::factory()->create();
+    $plan = Plan::query()->create([
+        'slug' => 'timeline-'.uniqid(),
+        'name' => 'Timeline Plan',
+        'price_monthly' => '0.00',
+        'price_yearly' => '0.00',
+        'currency' => 'USD',
+        'is_free' => true,
+        'is_active' => true,
+        'display_order' => 1,
+    ]);
+    attachApiCommercialFeatures($plan);
+    Subscription::query()->create([
+        'user_id' => $user->id,
+        'plan_id' => $plan->id,
+        'status' => SubscriptionStatus::Active,
+        'billing_cycle' => BillingCycle::Monthly,
+        'starts_at' => now()->subDay(),
+        'auto_renew' => true,
+        'price' => '0.00',
+        'currency' => 'USD',
+    ]);
     $domain = Domain::query()->create([
         'domain' => 'timeline-'.bin2hex(random_bytes(3)).'.test',
         'display_name' => 'Timeline',

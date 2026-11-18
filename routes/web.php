@@ -1,6 +1,10 @@
 <?php
 
+use App\Http\Controllers\Web\AffiliateReferralController;
 use App\Http\Controllers\Web\AuthenticatedSessionController;
+use App\Http\Controllers\Web\BillingReturnController;
+use App\Http\Controllers\Web\MailboxController;
+use App\Http\Controllers\Web\ManualCryptoInstructionController;
 use App\Http\Controllers\Web\OutboundAttachmentDownloadController;
 use App\Http\Controllers\Web\OutboundDraftController;
 use App\Http\Controllers\Web\OutboundMessageController;
@@ -12,13 +16,29 @@ Route::get('/', function () {
     return view('welcome');
 });
 
+Route::get('billing/return/{provider}', BillingReturnController::class)
+    ->middleware(['signed', 'throttle:billing-return'])
+    ->name('billing.return');
+Route::get('billing/manual-crypto/{snapshot}', ManualCryptoInstructionController::class)
+    ->middleware(['signed', 'throttle:billing-return'])
+    ->whereUuid('snapshot')
+    ->name('billing.manual-crypto.instructions');
+
+Route::get('r/{affiliateCode}', AffiliateReferralController::class)
+    ->middleware('throttle:60,1')
+    ->where('affiliateCode', '[A-Za-z0-9]{4,32}')
+    ->name('affiliate.referral');
+
 Route::middleware('guest')->group(function (): void {
     Route::get('login', [AuthenticatedSessionController::class, 'create'])->name('login');
-    Route::post('login', [AuthenticatedSessionController::class, 'store'])->name('login.store');
+    Route::post('login', [AuthenticatedSessionController::class, 'store'])
+        ->middleware('throttle:login')
+        ->name('login.store');
 });
 
-Route::middleware('auth')->group(function (): void {
+Route::middleware(['auth', 'web.active'])->group(function (): void {
     Route::post('logout', [AuthenticatedSessionController::class, 'destroy'])->name('logout');
+    Route::get('inbox', [MailboxController::class, 'index'])->name('mailbox.index');
 
     Route::get('outbound-messages', [OutboundMessageController::class, 'index'])
         ->name('outbound-messages.index');

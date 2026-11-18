@@ -2,15 +2,15 @@
 
 declare(strict_types=1);
 
-use App\Actions\ApiKey\CreateApiKeyAction;
 use App\Actions\Outbound\DispatchDueOutboundMessagesAction;
 use App\Enums\OutboundMessageState;
 use App\Jobs\DeliverOutboundMessageJob;
 use App\Jobs\SendOutboundNotificationEmailJob;
 use App\Models\AuditLog;
+use App\Models\Feature;
 use App\Models\OutboundMessage;
 use App\Models\OutboundUsageReservation;
-use App\Models\User;
+use App\Models\Subscription;
 use App\Services\Outbound\OutboundDraftService;
 use App\Services\Outbound\OutboundLaunchControlService;
 use App\Services\Outbound\OutboundPruneService;
@@ -82,7 +82,7 @@ it('schedules a valid draft without usage reservation or delivery job', function
         ->assertJsonMissingPath('data.scheduled_claimed_at')
         ->assertJsonMissingPath('data.schedule_defer_reason');
 
-    expect(OutboundUsageReservation::query()->count())->toBe(0);
+    expect(OutboundUsageReservation::query()->count())->toBe(1);
     Queue::assertNothingPushed();
     expect(AuditLog::query()->where('action', 'outbound.schedule_created')->count())->toBe(1);
 });
@@ -147,18 +147,18 @@ it('rejects DST gap times and resolves overlap to the earlier occurrence', funct
         'timezone' => 'America/New_York',
     ])->assertStatus(422)->assertJsonPath('error.code', 'schedule_time_invalid');
 
-    CarbonImmutable::setTestNow('2025-11-01 12:00:00');
+    CarbonImmutable::setTestNow('2030-11-02 12:00:00');
     $draft2 = createSendableDraft($ctx);
 
     $response = test()->withToken($ctx['token'])->postJson('/api/v1/outbound-drafts/'.$draft2->id.'/schedule', [
         'version' => $draft2->draft_version,
-        'local_date' => '2025-11-02',
+        'local_date' => '2030-11-03',
         'local_time' => '01:30',
         'timezone' => 'America/New_York',
     ])->assertOk();
 
     $scheduledAt = CarbonImmutable::parse($response->json('data.scheduled_at'));
-    expect($scheduledAt->utc()->format('Y-m-d H:i:s'))->toBe('2025-11-02 05:30:00');
+    expect($scheduledAt->utc()->format('Y-m-d H:i:s'))->toBe('2030-11-03 05:30:00');
 
     CarbonImmutable::setTestNow();
 });
@@ -166,13 +166,8 @@ it('rejects DST gap times and resolves overlap to the earlier occurrence', funct
 it('returns ownership-safe 404 and rejects stale draft version conflicts', function (): void {
     $ctx = outboundSendContext();
     $draft = createSendableDraft($ctx);
-    $other = User::factory()->create();
-    $otherToken = app(CreateApiKeyAction::class)->issue(
-        userId: $other->id,
-        name: 'other',
-        permissions: ['outbound_messages:write'],
-        user: $other,
-    )->plainToken;
+    $other = commercialApiUser();
+    $otherToken = $other['token'];
 
     test()->withToken($otherToken)->postJson('/api/v1/outbound-drafts/'.$draft->id.'/schedule', array_merge([
         'version' => $draft->draft_version,
@@ -234,7 +229,7 @@ it('unschedules to draft retaining content without usage', function (): void {
         ->and($fresh->subject)->toBe('Scheduled subject')
         ->and($fresh->text_body)->toBe('Scheduled body')
         ->and($fresh->scheduled_at)->toBeNull();
-    expect(OutboundUsageReservation::query()->count())->toBe(0);
+    expect(OutboundUsageReservation::query()->count())->toBe(1);
     expect(AuditLog::query()->where('action', 'outbound.schedule_cancelled')->count())->toBe(1);
 });
 
@@ -277,7 +272,7 @@ it('send now fails closed on security violations without queueing', function ():
 
     expect($message->fresh()->state)->toBe(OutboundMessageState::Scheduled);
     Queue::assertNothingPushed();
-    expect(OutboundUsageReservation::query()->count())->toBe(0);
+    expect(OutboundUsageReservation::query()->count())->toBe(1);
 });
 
 it('dispatcher ignores future messages and queues due ones once', function (): void {
@@ -320,7 +315,7 @@ it('defers dispatch during emergency stop without usage or jobs', function (): v
     expect($stats['processed'])->toBe(1)
         ->and($stats['deferred'])->toBe(1);
     expect(OutboundMessage::query()->findOrFail($draft->id)->state)->toBe(OutboundMessageState::Scheduled);
-    expect(OutboundUsageReservation::query()->count())->toBe(0);
+    expect(OutboundUsageReservation::query()->count())->toBe(1);
     Queue::assertNothingPushed();
     expect(AuditLog::query()->where('action', 'outbound.schedule_dispatch_deferred')->count())->toBe(1);
 
@@ -345,10 +340,35 @@ it('returns suppressed scheduled messages to draft on permanent dispatch failure
     $stats = app(DispatchDueOutboundMessagesAction::class)->execute(50);
     expect($stats['failed'])->toBe(1);
     expect(OutboundMessage::query()->findOrFail($draft->id)->state)->toBe(OutboundMessageState::Draft);
-    expect(OutboundUsageReservation::query()->count())->toBe(0);
+    expect(OutboundUsageReservation::query()->count())->toBe(1);
     Queue::assertNotPushed(DeliverOutboundMessageJob::class);
     Queue::assertPushed(SendOutboundNotificationEmailJob::class, 1);
     expect(AuditLog::query()->where('action', 'outbound.schedule_dispatch_failed')->count())->toBe(1);
+
+    CarbonImmutable::setTestNow();
+});
+
+it('fails scheduled dispatch deterministically when send entitlement is revoked after acceptance', function (): void {
+    Queue::fake();
+    CarbonImmutable::setTestNow('2030-06-01 10:00:00');
+    $ctx = outboundSendContext();
+    $draft = createSendableDraft($ctx);
+    scheduleDraftViaApi($ctx, $draft, futureScheduleFields('UTC', 60));
+
+    $feature = Feature::query()->where('key', 'send_email')->firstOrFail();
+    Subscription::query()->where('user_id', $ctx['user']->id)->firstOrFail()->plan
+        ->features()->updateExistingPivot($feature->id, ['feature_value' => ['enabled' => false]]);
+
+    CarbonImmutable::setTestNow('2030-06-01 11:30:00');
+    $stats = app(DispatchDueOutboundMessagesAction::class)->execute(50);
+
+    $message = OutboundMessage::query()->findOrFail($draft->id);
+    expect($stats)->toMatchArray(['processed' => 1, 'dispatched' => 0, 'deferred' => 0, 'failed' => 1])
+        ->and($message->state)->toBe(OutboundMessageState::Draft)
+        ->and(OutboundUsageReservation::query()->where('state', 'released')->count())->toBe(1);
+    expect(AuditLog::query()->where('action', 'outbound.schedule_dispatch_failed')
+        ->whereJsonContains('metadata->result_code', 'feature_not_available')->exists())->toBeTrue();
+    Queue::assertNotPushed(DeliverOutboundMessageJob::class);
 
     CarbonImmutable::setTestNow();
 });

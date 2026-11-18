@@ -13,11 +13,15 @@ if (! function_exists('issueMailServerApiKey')) {
      */
     function issueMailServerApiKey(array $scopes = ['mail_servers:read']): array
     {
+        seedCommercialCatalogue();
+
         $role = in_array('mail_servers:admin', $scopes, true)
             ? PlatformRole::Admin
             : PlatformRole::Operator;
 
         $user = User::factory()->create(['platform_role' => $role]);
+        ensureCommercialApiAccess($user, $scopes);
+
         $issued = app(CreateApiKeyAction::class)->issue(
             userId: $user->id,
             name: 'mail-server-test',

@@ -5,151 +5,142 @@ declare(strict_types=1);
 namespace App\Services\Entitlement;
 
 use App\Enums\SubscriptionStatus;
+use App\Enums\ValueType;
 use App\Models\Feature;
+use App\Models\Pivots\FeaturePlan;
 use App\Models\Plan;
 use App\Models\Subscription;
 use App\Models\User;
 use App\Services\Feature\FeatureService;
 
-/**
- * Resolve feature entitlements for a user through their current subscription plan.
- *
- * Eligible subscription statuses are Active and Trial, with Active preferred.
- * All lookups are side-effect free and return soft misses instead of throwing.
- */
+/** Resolves commercial entitlements fail-closed without lifecycle caching. */
 final class EntitlementService
 {
-    /**
-     * @param FeatureService $featureService Feature catalog lookup service.
-     */
-    public function __construct(
-        private readonly FeatureService $featureService,
-    ) {}
+    public const FREE_PLAN_SLUG = 'free';
 
-    /**
-     * Resolve the user's current entitlement-granting subscription.
-     *
-     * Selection strategy: eligible statuses are Active and Trial; Active is
-     * preferred over Trial, then latest starts_at, then latest created_at,
-     * then highest id. Cancelled and Expired subscriptions are ignored.
-     *
-     * @param User $user The user to resolve the subscription for.
-     *
-     * @return Subscription|null The current subscription, if any.
-     */
+    public function __construct(private readonly FeatureService $featureService) {}
+
+    /** Returns the current lifecycle subscription, including grace for limited-policy resolution. */
     public function currentSubscription(User $user): ?Subscription
     {
-        $eligible = Subscription::query()
+        $now = now();
+
+        return Subscription::query()
+            ->with('plan')
             ->where('user_id', $user->getKey())
             ->whereIn('status', [
-                SubscriptionStatus::Active,
-                SubscriptionStatus::Trial,
+                SubscriptionStatus::Active->value,
+                SubscriptionStatus::Trial->value,
+                SubscriptionStatus::RenewalDue->value,
+                SubscriptionStatus::Grace->value,
             ])
-            ->get();
-
-        $sorted = $eligible->sort(function (Subscription $a, Subscription $b): int {
-            $rank = fn (Subscription $subscription): int => $subscription->status === SubscriptionStatus::Active ? 0 : 1;
-
-            if ($rank($a) !== $rank($b)) {
-                return $rank($a) <=> $rank($b);
-            }
-
-            if ($a->starts_at != $b->starts_at) {
-                return $b->starts_at <=> $a->starts_at;
-            }
-
-            if ($a->created_at != $b->created_at) {
-                return $b->created_at <=> $a->created_at;
-            }
-
-            return $b->id <=> $a->id;
-        });
-
-        return $sorted->first();
+            ->where('starts_at', '<=', $now)
+            ->where(fn ($query) => $query
+                ->where(fn ($access) => $access
+                    ->whereIn('status', [SubscriptionStatus::Active->value, SubscriptionStatus::RenewalDue->value])
+                    ->where(fn ($boundary) => $boundary->whereNull('ends_at')->orWhere('ends_at', '>', $now)))
+                ->orWhere(fn ($trial) => $trial
+                    ->where('status', SubscriptionStatus::Trial->value)
+                    ->where(fn ($boundary) => $boundary->whereNull('trial_ends_at')->orWhere('trial_ends_at', '>', $now)))
+                ->orWhere('status', SubscriptionStatus::Grace->value))
+            ->whereHas('plan', fn ($query) => $query->where('is_active', true))
+            ->orderByRaw('case when status = ? then 0 when status = ? then 1 when status = ? then 2 else 3 end', [SubscriptionStatus::Active->value, SubscriptionStatus::RenewalDue->value, SubscriptionStatus::Trial->value])
+            ->orderByDesc('starts_at')
+            ->orderByDesc('created_at')
+            ->orderByDesc('id')
+            ->first();
     }
 
-    /**
-     * Resolve the plan attached to the user's current subscription.
-     *
-     * @param User $user The user to resolve the plan for.
-     *
-     * @return Plan|null The current plan, if any.
-     */
+    /** Resolves the paid/trial plan or the active canonical Free plan. */
+    public function effectivePlan(User $user): ?Plan
+    {
+        $subscription = $this->currentSubscription($user);
+        if ($subscription !== null && $subscription->status !== SubscriptionStatus::Grace) {
+            return $subscription->plan;
+        }
+
+        return Plan::query()->where('slug', self::FREE_PLAN_SLUG)->where('is_active', true)->first();
+    }
+
+    /** Backwards-compatible name for the effective plan resolver. */
     public function currentPlan(User $user): ?Plan
     {
-        return $this->currentSubscription($user)?->plan;
+        return $this->effectivePlan($user);
     }
 
-    /**
-     * Determine whether the user's current plan includes the given feature.
-     *
-     * @param User   $user       The user to check.
-     * @param string $featureKey Stable machine-readable feature identifier.
-     *
-     * @return bool Whether the feature is entitled.
-     */
+    /** Boolean entitlement parser. Missing, malformed, numeric, and null values deny. */
+    public function allows(User $user, string $featureKey): bool
+    {
+        $feature = $this->getFeature($user, $featureKey);
+        if ($feature === null || $feature->value_type !== ValueType::Boolean) {
+            return false;
+        }
+
+        $value = $this->featureValue($user, $featureKey);
+        $raw = $value['enabled'] ?? null;
+
+        return $raw === true || $raw === 1 || $raw === '1';
+    }
+
+    /** Alias retained for existing callers. */
     public function hasFeature(User $user, string $featureKey): bool
     {
-        return $this->getFeature($user, $featureKey) !== null;
+        return $this->allows($user, $featureKey);
     }
 
-    /**
-     * Resolve the entitled value for the given feature key.
-     *
-     * Resolution order: pivot feature_value, then the feature's catalog
-     * default_value, then null.
-     *
-     * @param User   $user       The user to resolve the value for.
-     * @param string $featureKey Stable machine-readable feature identifier.
-     *
-     * @return array<string, mixed>|null The resolved value payload, if any.
-     */
+    /** Numeric entitlement parser. Missing, null, invalid, and negative values resolve to zero. */
+    public function limit(User $user, string $featureKey): int
+    {
+        $feature = $this->getFeature($user, $featureKey);
+        if ($feature === null || ! in_array($feature->value_type, [ValueType::Integer, ValueType::Json], true)) {
+            return 0;
+        }
+
+        $value = $this->featureValue($user, $featureKey);
+        $raw = $value['limit'] ?? null;
+
+        if (is_int($raw)) {
+            return max(0, $raw);
+        }
+        if (is_string($raw) && preg_match('/^\d+$/', $raw) === 1) {
+            return (int) $raw;
+        }
+
+        return 0;
+    }
+
+    /** @return array<string, mixed>|null Raw mapped value for legacy structured callers. */
     public function featureValue(User $user, string $featureKey): ?array
     {
         $feature = $this->getFeature($user, $featureKey);
-
-        if ($feature === null) {
+        $plan = $this->effectivePlan($user);
+        if ($feature === null || $plan === null) {
             return null;
         }
 
-        /** @var \App\Models\Pivots\FeaturePlan|null $pivot */
-        $pivot = $feature->pivot;
+        $mapping = FeaturePlan::query()
+            ->where('feature_id', $feature->getKey())
+            ->where('plan_id', $plan->getKey())
+            ->first();
 
-        if ($pivot !== null && $pivot->feature_value !== null) {
-            return $pivot->feature_value;
-        }
-
-        return $feature->default_value;
+        return $mapping?->feature_value;
     }
 
-    /**
-     * Resolve the entitled feature (with pivot data) for the given key.
-     *
-     * Only active catalog features attached to the user's current plan are
-     * returned; all other cases resolve to null.
-     *
-     * @param User   $user       The user to resolve the feature for.
-     * @param string $featureKey Stable machine-readable feature identifier.
-     *
-     * @return Feature|null The attached feature with pivot data, if entitled.
-     */
+    /** Returns only an active feature explicitly mapped to the effective plan. */
     public function getFeature(User $user, string $featureKey): ?Feature
     {
         $feature = $this->featureService->findByKey($featureKey);
+        $plan = $this->effectivePlan($user);
 
-        if ($feature === null || ! $feature->isActive()) {
+        if ($feature === null || ! $feature->isActive() || $plan === null || ! $plan->is_active) {
             return null;
         }
 
-        $plan = $this->currentPlan($user);
+        $mapped = FeaturePlan::query()
+            ->where('feature_id', $feature->getKey())
+            ->where('plan_id', $plan->getKey())
+            ->exists();
 
-        if ($plan === null) {
-            return null;
-        }
-
-        return $plan->features()
-            ->whereKey($feature->getKey())
-            ->where('features.is_active', true)
-            ->first();
+        return $mapped ? $feature : null;
     }
 }

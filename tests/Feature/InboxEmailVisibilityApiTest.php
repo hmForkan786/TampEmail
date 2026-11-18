@@ -3,6 +3,7 @@
 use App\Actions\ApiKey\CreateApiKeyAction;
 use App\Enums\AttachmentScanStatus;
 use App\Enums\PlatformRole;
+use App\Models\ApiKey;
 use App\Models\ApiRequestLog;
 use App\Models\Attachment;
 use App\Models\Domain;
@@ -22,11 +23,13 @@ beforeEach(function (): void {
 });
 
 /**
- * @return array{0: User, 1: string, 2: \App\Models\ApiKey}
+ * @return array{0: User, 1: string, 2: ApiKey}
  */
 function issueInboxReadKey(?User $user = null, array $scopes = ['inboxes:read']): array
 {
     $user ??= User::factory()->create(['platform_role' => PlatformRole::User]);
+    ensureFreeCommercialUser($user);
+    ensureCommercialApiAccess($user, $scopes);
     $issued = app(CreateApiKeyAction::class)->issue(
         userId: $user->id,
         name: 'inbox-read-test',
@@ -299,7 +302,7 @@ it('filters owned email listings by read state, fields, attachments, dates, sort
     [$owner, $token] = issueInboxReadKey();
     $fixture = ownedInboxEmailFixture($owner);
     $fixture['email']->update(['is_read' => true, 'read_at' => now()->subHour(), 'subject' => 'Invoice alpha', 'sender_email' => 'Sender@Example.test', 'received_at' => now()->subHours(2)]);
-    $other = \App\Models\Email::query()->create(['inbox_id' => $fixture['inbox']->id, 'message_id' => 'filter-other-'.bin2hex(random_bytes(3)), 'sender_email' => 'other@example.test', 'recipient_email' => $fixture['inbox']->full_address, 'subject' => 'Report beta', 'received_at' => now()->subHour(), 'size_bytes' => 1, 'processing_status' => 'stored', 'has_attachments' => false, 'is_read' => false]);
+    $other = Email::query()->create(['inbox_id' => $fixture['inbox']->id, 'message_id' => 'filter-other-'.bin2hex(random_bytes(3)), 'sender_email' => 'other@example.test', 'recipient_email' => $fixture['inbox']->full_address, 'subject' => 'Report beta', 'received_at' => now()->subHour(), 'size_bytes' => 1, 'processing_status' => 'stored', 'has_attachments' => false, 'is_read' => false]);
 
     $base = '/api/v1/inboxes/'.$fixture['inbox']->id.'/emails';
     $this->withToken($token)->getJson($base.'?is_read=true&subject=INVOICE&from=sender@example.test&received_before='.urlencode(now()->subHour()->format('Y-m-d H:i:s')).'&sort=received_at&direction=asc&per_page=1')

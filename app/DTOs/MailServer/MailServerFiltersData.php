@@ -9,14 +9,26 @@ namespace App\DTOs\MailServer;
  */
 final readonly class MailServerFiltersData
 {
+    /** @var list<string> */
+    public const ALLOWED_SORT_COLUMNS = [
+        'created_at',
+        'updated_at',
+        'name',
+        'hostname',
+        'priority',
+        'health_score',
+        'is_active',
+        'operational_status',
+    ];
+
     /**
-     * @param string|null $provider Filter by inbound provider identifier.
-     * @param string|null $protocol Filter by ingestion transport protocol.
-     * @param bool|null $isActive Filter by active status.
-     * @param string|null $search Free-text search term.
-     * @param int $perPage Number of results per page.
-     * @param string $sortBy Column to sort by.
-     * @param string $sortDirection Sort direction (asc or desc).
+     * @param  string|null  $provider  Filter by inbound provider identifier.
+     * @param  string|null  $protocol  Filter by ingestion transport protocol.
+     * @param  bool|null  $isActive  Filter by active status.
+     * @param  string|null  $search  Free-text search term.
+     * @param  int  $perPage  Number of results per page.
+     * @param  string  $sortBy  Column to sort by.
+     * @param  string  $sortDirection  Sort direction (asc or desc).
      */
     public function __construct(
         public ?string $provider,
@@ -31,10 +43,24 @@ final readonly class MailServerFiltersData
     /**
      * Create a filter DTO instance from an array payload.
      *
-     * @param array<string, mixed> $data
+     * @param  array<string, mixed>  $data
      */
     public static function fromArray(array $data): self
     {
+        $sortBy = array_key_exists('sort_by', $data)
+            ? (string) $data['sort_by']
+            : 'created_at';
+        if (! in_array($sortBy, self::ALLOWED_SORT_COLUMNS, true)) {
+            $sortBy = 'created_at';
+        }
+
+        $sortDirection = strtolower(array_key_exists('sort_direction', $data)
+            ? (string) $data['sort_direction']
+            : 'desc');
+        if (! in_array($sortDirection, ['asc', 'desc'], true)) {
+            $sortDirection = 'desc';
+        }
+
         return new self(
             provider: array_key_exists('provider', $data)
                 ? ($data['provider'] !== null ? (string) $data['provider'] : null)
@@ -51,12 +77,8 @@ final readonly class MailServerFiltersData
             perPage: array_key_exists('per_page', $data)
                 ? (int) $data['per_page']
                 : 15,
-            sortBy: array_key_exists('sort_by', $data)
-                ? (string) $data['sort_by']
-                : 'created_at',
-            sortDirection: array_key_exists('sort_direction', $data)
-                ? (string) $data['sort_direction']
-                : 'desc',
+            sortBy: $sortBy,
+            sortDirection: $sortDirection,
         );
     }
 

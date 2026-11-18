@@ -3,6 +3,7 @@
 .env
 .env.*
 !.env.example
+!.env.process-verification.example
 .env.backup
 .env.production
 .phpactor.json

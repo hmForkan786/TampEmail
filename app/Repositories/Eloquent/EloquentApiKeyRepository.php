@@ -21,9 +21,6 @@ use Illuminate\Contracts\Pagination\LengthAwarePaginator;
  */
 final class EloquentApiKeyRepository extends BaseEloquentRepository implements ApiKeyRepositoryInterface
 {
-    /**
-     * @return ApiKey
-     */
     protected function model(): ApiKey
     {
         return new ApiKey;
@@ -32,8 +29,7 @@ final class EloquentApiKeyRepository extends BaseEloquentRepository implements A
     /**
      * Find an API key by its hashed secret.
      *
-     * @param string $keyHash Hashed secret of the API key.
-     *
+     * @param  string  $keyHash  Hashed secret of the API key.
      * @return ApiKey|null The matching API key, if found.
      */
     public function findByKeyHash(string $keyHash): ?ApiKey
@@ -58,20 +54,17 @@ final class EloquentApiKeyRepository extends BaseEloquentRepository implements A
     }
 
     /**
-     * Count the non-revoked API keys owned by the given user.
+     * Count usable API keys owned by the given user. Revoked and expired
+     * credentials do not consume a commercial API-key slot.
      *
-     * Expiration state is intentionally ignored; expired but non-revoked
-     * keys still occupy quota.
-     *
-     * @param string $userId Owning user UUID.
-     *
+     * @param  string  $userId  Owning user UUID.
      * @return int Number of non-revoked API keys owned by the user.
      */
     public function countForUser(string $userId): int
     {
         return $this->model()->newQuery()
             ->where('user_id', $userId)
-            ->whereNull('revoked_at')
+            ->available()
             ->count();
     }
 
@@ -123,8 +116,7 @@ final class EloquentApiKeyRepository extends BaseEloquentRepository implements A
     /**
      * Retrieve a paginated list of API keys matching the given filters.
      *
-     * @param ApiKeyFiltersData $filters Pagination and filter criteria.
-     *
+     * @param  ApiKeyFiltersData  $filters  Pagination and filter criteria.
      * @return LengthAwarePaginator Paginated API key results.
      */
     public function paginate(ApiKeyFiltersData $filters): LengthAwarePaginator

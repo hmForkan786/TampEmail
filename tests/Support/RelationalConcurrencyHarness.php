@@ -8,7 +8,7 @@ use RuntimeException;
 
 final class RelationalConcurrencyHarness
 {
-    public const SCENARIOS = ['api-key-quota', 'inbox-user-quota', 'mail-server-capacity', 'anonymous-capacity'];
+    public const SCENARIOS = ['api-key-quota', 'inbox-user-quota', 'mail-server-capacity', 'anonymous-capacity', 'webhook-endpoint-quota'];
 
     /** @param array<string, array<string, mixed>> $workers */
     public static function run(string $scenario, array $workers, int $timeoutSeconds = 30): array
@@ -205,8 +205,8 @@ final class RelationalConcurrencyHarness
     }
 
     /**
-     * @param array<string, mixed> $summary
-     * @param list<array<string, mixed>> $results
+     * @param  array<string, mixed>  $summary
+     * @param  list<array<string, mixed>>  $results
      */
     private static function persistSummaryArtifact(array $summary, array $results): void
     {

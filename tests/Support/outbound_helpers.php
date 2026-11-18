@@ -22,6 +22,7 @@ if (! function_exists('outboundSendContext')) {
      */
     function outboundSendContext(array $overrides = []): array
     {
+        seedCommercialCatalogue();
         $user = User::factory()->create();
         $plan = Plan::query()->create([
             'slug' => 'outbound-'.uniqid(),
@@ -47,6 +48,19 @@ if (! function_exists('outboundSendContext')) {
         $plan->features()->syncWithoutDetaching([
             $feature->id => ['feature_value' => ['enabled' => true]],
         ]);
+        foreach (['outbound.schedule' => 'Schedule outbound', 'outbound.sender_profiles' => 'Sender profiles'] as $key => $name) {
+            $commercialFeature = Feature::query()->firstOrCreate(
+                ['key' => $key],
+                ['name' => $name, 'value_type' => ValueType::Boolean, 'is_active' => true, 'display_order' => 11],
+            );
+            $plan->features()->syncWithoutDetaching([$commercialFeature->id => ['feature_value' => ['enabled' => true]]]);
+        }
+        $messageLimit = Feature::query()->firstOrCreate(
+            ['key' => 'outbound_messages_per_period'],
+            ['name' => 'Outbound messages', 'value_type' => ValueType::Json, 'is_active' => true, 'display_order' => 12],
+        );
+        $plan->features()->syncWithoutDetaching([$messageLimit->id => ['feature_value' => ['limit' => 1000, 'reset_period' => 'monthly']]]);
+        attachApiCommercialFeatures($plan);
 
         Subscription::query()->create([
             'user_id' => $user->id,

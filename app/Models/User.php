@@ -5,7 +5,6 @@ declare(strict_types=1);
 namespace App\Models;
 
 use App\Enums\PlatformRole;
-use App\Enums\SubscriptionStatus;
 use App\Enums\UserStatus;
 use App\Models\Concerns\HasUuid;
 use Database\Factories\UserFactory;
@@ -266,20 +265,6 @@ class User extends Authenticatable implements FilamentUser
         }
 
         return PlatformRole::tryFrom($raw);
-    }
-
-    /**
-     * Determine whether the user has an active premium subscription.
-     */
-    public function isPremium(): bool
-    {
-        $subscription = $this->subscription;
-
-        if ($subscription === null) {
-            return false;
-        }
-
-        return $subscription->status === SubscriptionStatus::Active;
     }
 
     /**

@@ -15,6 +15,9 @@ beforeEach(function (): void {
 
 function emailReadStateToken(User $owner, array $scopes = ['inboxes:write']): string
 {
+    ensureFreeCommercialUser($owner);
+    ensureCommercialApiAccess($owner, $scopes);
+
     return app(CreateApiKeyAction::class)->issue(
         userId: $owner->id,
         name: 'email-read-state-key',

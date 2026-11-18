@@ -13,6 +13,7 @@ use App\Models\OutboundMessage;
 use App\Models\OutboundSenderProfile;
 use App\Models\User;
 use App\Services\Audit\AuditLogWriter;
+use App\Services\Entitlement\EntitlementService;
 use App\Services\Inbound\InboundHtmlSanitizer;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Collection;
@@ -34,6 +35,7 @@ final class OutboundSenderProfileService
         private readonly OutboundHeaderGuard $headers,
         private readonly InboundHtmlSanitizer $htmlSanitizer,
         private readonly AuditLogWriter $audit,
+        private readonly EntitlementService $entitlements,
     ) {}
 
     public function enabled(): bool
@@ -79,6 +81,7 @@ final class OutboundSenderProfileService
     public function create(User $user, array $input): OutboundSenderProfile
     {
         $this->assertFeatureEnabled();
+        $this->assertCommercialAccess($user);
         $this->assertUserActive($user);
         $inbox = $this->assertOwnedInbox($user, (string) $input['inbox_id']);
         $validated = $this->validateFields($user, $input, $inbox);
@@ -118,6 +121,7 @@ final class OutboundSenderProfileService
     public function update(User $user, string $profileId, array $input, ?int $version = null): OutboundSenderProfile
     {
         $this->assertFeatureEnabled();
+        $this->assertCommercialAccess($user);
         $this->assertUserActive($user);
 
         return DB::transaction(function () use ($user, $profileId, $input, $version): OutboundSenderProfile {
@@ -167,6 +171,7 @@ final class OutboundSenderProfileService
     public function delete(User $user, string $profileId, ?int $version = null): void
     {
         $this->assertFeatureEnabled();
+        $this->assertCommercialAccess($user);
 
         DB::transaction(function () use ($user, $profileId, $version): void {
             $profile = OutboundSenderProfile::query()
@@ -210,6 +215,7 @@ final class OutboundSenderProfileService
     public function makeDefault(User $user, string $profileId, ?int $version = null): OutboundSenderProfile
     {
         $this->assertFeatureEnabled();
+        $this->assertCommercialAccess($user);
 
         return DB::transaction(function () use ($user, $profileId, $version): OutboundSenderProfile {
             $profile = OutboundSenderProfile::query()
@@ -267,6 +273,7 @@ final class OutboundSenderProfileService
 
         $profile = null;
         if ($explicitProfileId !== null && $explicitProfileId !== '') {
+            $this->assertCommercialAccess($user);
             try {
                 $profile = $this->findOwned($user, $explicitProfileId);
                 $this->assertProfileUsable($profile, $inbox);
@@ -396,6 +403,7 @@ final class OutboundSenderProfileService
 
         if ($message->state === OutboundMessageState::Draft) {
             if ($message->sender_profile_id !== null) {
+                $this->assertCommercialAccess($user);
                 try {
                     $profile = $this->findOwned($user, (string) $message->sender_profile_id);
                     $this->assertProfileUsable($profile, $inbox);
@@ -722,6 +730,16 @@ final class OutboundSenderProfileService
         if (! $this->enabled()) {
             throw new OutboundSendException('feature_disabled', 'Sender profiles are disabled.', 422);
         }
+    }
+
+    private function assertCommercialAccess(User $user): void
+    {
+        if ($this->entitlements->allows($user, 'outbound.sender_profiles')) {
+            return;
+        }
+
+        $this->audit->write('commercial.sender_profile_denied', (string) $user->getKey(), $user, null, null, ['feature' => 'outbound.sender_profiles']);
+        throw new OutboundSendException('feature_not_available', 'Your current plan does not include custom sender profiles.', 403);
     }
 
     private function assertUserActive(User $user): void

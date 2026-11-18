@@ -10,6 +10,7 @@ use App\Jobs\DeliverOutboundMessageJob;
 use App\Models\OutboundMessage;
 use App\Models\User;
 use App\Services\Audit\AuditLogWriter;
+use App\Services\Outbound\OutboundAuthorizationService;
 use App\Services\Outbound\OutboundDraftService;
 use App\Services\Outbound\OutboundNotificationService;
 use App\Services\Outbound\OutboundRateLimiter;
@@ -51,6 +52,7 @@ final class DispatchDueOutboundMessagesAction
         private readonly OutboundRateLimiter $rateLimiter,
         private readonly OutboundUsageService $usage,
         private readonly AuditLogWriter $auditLogWriter,
+        private readonly OutboundAuthorizationService $authorization,
     ) {}
 
     /**
@@ -136,6 +138,13 @@ final class DispatchDueOutboundMessagesAction
 
                 try {
                     $prepared = $this->drafts->prepareSendableContent($message, $user, null);
+                    // A schedule is only an intent. Re-run the same central
+                    // send/reply/forward gate immediately before queueing so
+                    // subscription, plan, inbox/domain, sender-profile, and
+                    // operation entitlements cannot be bypassed after the
+                    // schedule was accepted.
+                    $this->authorization->assertCanSend($user, $message->inbox, $message->operation);
+                    $this->authorization->assertCanSchedule($user, $message->operation);
                     $this->rateLimiter->assertWithinLimits($user, [...$prepared['to'], ...$prepared['cc'], ...$prepared['bcc']], $prepared['attachment_bytes']);
                 } catch (OutboundSendException $exception) {
                     if ($this->isTemporaryDefer($exception->errorCode)) {
@@ -273,6 +282,10 @@ final class DispatchDueOutboundMessagesAction
             'state' => OutboundMessageState::Draft,
             ...OutboundScheduleFieldHelper::cleared(),
         ])->save();
+        // A permanent pre-transport rejection (for example suppression or a
+        // lost entitlement) returns the accepted schedule to a draft, so its
+        // reservation must not remain outstanding.
+        $this->usage->release((string) $message->getKey(), 'schedule_pre_transport_rejected');
 
         $this->auditLogWriter->write(
             'outbound.schedule_dispatch_failed',

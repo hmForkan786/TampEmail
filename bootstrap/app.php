@@ -1,12 +1,24 @@
 <?php
 
+use App\Console\Commands\CreateRenewalOrdersCommand;
+use App\Console\Commands\ExpireBillingCheckoutsCommand;
+use App\Console\Commands\ExpireLifecycleSubscriptionsCommand;
 use App\Console\Commands\ProcessRuntimeSmoke;
+use App\Console\Commands\PruneBillingWebhookSecurityCommand;
+use App\Console\Commands\SslCommerzHealthCommand;
+use App\Console\Commands\StartGracePeriodsCommand;
+use App\Console\Commands\StripeHealthCommand;
+use App\Console\Commands\SyncBillingPaymentStatusCommand;
+use App\Console\Commands\VerifyBillingWebhookCommand;
 use App\Contracts\AttachmentScannerInterface;
 use App\Contracts\InboundWebhookDispatcher;
 use App\Contracts\OutboundTransportInterface;
 use App\Http\Middleware\ApiRequestLogger;
 use App\Http\Middleware\ApplySecurityHeaders;
 use App\Http\Middleware\AuthenticateApiKey;
+use App\Http\Middleware\CaptureAffiliateReferral;
+use App\Http\Middleware\EnsureActiveWebUser;
+use App\Http\Middleware\EnsureCommercialApiEntitlement;
 use App\Http\Middleware\RequireApiKeyScope;
 use App\Http\Middleware\ThrottleApiKey;
 use App\Http\Responses\ApiErrorResponse;
@@ -31,6 +43,15 @@ return Application::configure(basePath: dirname(__DIR__))
         health: '/up',
     )
     ->withCommands([
+        ExpireBillingCheckoutsCommand::class,
+        CreateRenewalOrdersCommand::class,
+        StartGracePeriodsCommand::class,
+        ExpireLifecycleSubscriptionsCommand::class,
+        SyncBillingPaymentStatusCommand::class,
+        PruneBillingWebhookSecurityCommand::class,
+        VerifyBillingWebhookCommand::class,
+        SslCommerzHealthCommand::class,
+        StripeHealthCommand::class,
         ProcessRuntimeSmoke::class,
     ])
     ->withBindings([
@@ -68,6 +89,34 @@ return Application::configure(basePath: dirname(__DIR__))
         $schedule->command('outbound:reconcile-events')->withoutOverlapping()->everyFifteenMinutes();
         $schedule->command('outbound:reconcile-usage')->withoutOverlapping()->everyFifteenMinutes();
         $schedule->command('outbound:dispatch-scheduled')->everyMinute()->withoutOverlapping();
+        $schedule->command('billing:create-renewal-orders')->everyFiveMinutes()->withoutOverlapping();
+        $schedule->command('billing:start-grace-periods')->everyFiveMinutes()->withoutOverlapping();
+        $schedule->command('billing:expire-lifecycle-subscriptions')->everyFiveMinutes()->withoutOverlapping();
+        $schedule->command('subscriptions:expire --batch=100')->everyFiveMinutes()->withoutOverlapping();
+        $schedule->command('billing:expire-checkouts')->everyFiveMinutes()->withoutOverlapping();
+        if (config('billing.payment_sync.enabled', true)) {
+            $schedule->command('billing:sync-payment-status')->everyFiveMinutes()->withoutOverlapping();
+        }
+        $schedule->command('billing:prune-webhook-security')->daily()->withoutOverlapping();
+        $schedule->command('mail-servers:refresh-ha')->withoutOverlapping()->everyFiveMinutes();
+        if (config('ads.scheduler.expire_campaigns', true) === true) {
+            $schedule->command('ads:expire-campaigns')->hourly()->withoutOverlapping();
+        }
+        if (config('ads.scheduler.refresh_budgets', true) === true) {
+            $schedule->command('ads:refresh-budgets')->daily()->withoutOverlapping();
+        }
+        if (config('ads.scheduler.prune_statistics', true) === true) {
+            $schedule->command('ads:prune-statistics --confirm')->daily()->withoutOverlapping();
+        }
+        if (config('affiliates.scheduler.maturity_enabled') === true) {
+            $schedule->command('affiliates:mature-commissions')->hourly()->withoutOverlapping();
+        }
+        if (config('affiliates.scheduler.attribution_expire_enabled') === true) {
+            $schedule->command('affiliates:expire-attributions')->hourly()->withoutOverlapping();
+        }
+        if (config('affiliates.scheduler.attribution_prune_enabled') === true) {
+            $schedule->command('affiliates:prune-attributions --confirm')->daily()->withoutOverlapping();
+        }
     })
     ->withMiddleware(function (Middleware $middleware): void {
         $middleware->append(ApplySecurityHeaders::class);
@@ -76,6 +125,12 @@ return Application::configure(basePath: dirname(__DIR__))
             'api.request-log' => ApiRequestLogger::class,
             'api.scope' => RequireApiKeyScope::class,
             'api.rate-limit' => ThrottleApiKey::class,
+            'api.entitlement' => EnsureCommercialApiEntitlement::class,
+            'web.active' => EnsureActiveWebUser::class,
+            'affiliate.capture' => CaptureAffiliateReferral::class,
+        ]);
+        $middleware->web(append: [
+            CaptureAffiliateReferral::class,
         ]);
     })
     ->withExceptions(function (Exceptions $exceptions): void {

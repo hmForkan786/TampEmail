@@ -119,13 +119,8 @@ it('rejects unauthenticated and missing scope requests', function (): void {
 
 it('denies foreign inactive domain and entitlement failures', function (): void {
     $ctx = outboundSendContext();
-    $other = User::factory()->create();
-    $otherToken = app(CreateApiKeyAction::class)->issue(
-        userId: $other->id,
-        name: 'other',
-        permissions: ['outbound_messages:write'],
-        user: $other,
-    )->plainToken;
+    $other = commercialApiUser();
+    $otherToken = $other['token'];
 
     $this->withToken($otherToken)
         ->postJson('/api/v1/outbound-messages', outboundPayload($ctx))
@@ -157,7 +152,7 @@ it('denies foreign inactive domain and entitlement failures', function (): void 
     $this->withToken($ctx['token'])
         ->postJson('/api/v1/outbound-messages', outboundPayload($ctx, ['idempotency_key' => 'k-ent']))
         ->assertForbidden()
-        ->assertJsonPath('error.code', 'entitlement_denied');
+        ->assertJsonPath('error.code', 'feature_not_available');
 });
 
 it('validates recipients content and blocks arbitrary sender', function (): void {

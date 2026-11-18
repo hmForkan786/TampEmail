@@ -10,6 +10,7 @@ use App\Exceptions\OutboundSendException;
 use App\Models\Domain;
 use App\Models\Inbox;
 use App\Models\User;
+use App\Services\Audit\AuditLogWriter;
 use App\Services\Entitlement\EntitlementService;
 
 final class OutboundAuthorizationService
@@ -18,6 +19,7 @@ final class OutboundAuthorizationService
         private readonly EntitlementService $entitlements,
         private readonly OutboundDomainAuthenticationService $domainAuth,
         private readonly OutboundLaunchControlService $launchControl,
+        private readonly AuditLogWriter $audit,
     ) {}
 
     public function assertCanSend(User $user, Inbox $inbox, OutboundOperation $operation = OutboundOperation::Send, ?string $apiKeyId = null): void
@@ -40,8 +42,7 @@ final class OutboundAuthorizationService
             throw new OutboundSendException('inbox_inactive', 'The inbox is not available for outbound email.', 422);
         }
 
-        $inbox->loadMissing('domain');
-        $domain = $inbox->domain;
+        $domain = Domain::query()->find($inbox->domain_id);
 
         if (! $domain instanceof Domain || ! $domain->is_active || $domain->trashed()) {
             throw new OutboundSendException('domain_inactive', 'The inbox domain is not available for outbound email.', 422);
@@ -67,12 +68,41 @@ final class OutboundAuthorizationService
             throw new OutboundSendException('operation_disabled', 'This outbound operation is disabled.', 403);
         }
 
-        if (! $this->entitlements->hasFeature($user, $operation->featureKey())) {
-            throw new OutboundSendException('entitlement_denied', 'The current plan does not allow this outbound operation.', 403);
+        if (! $this->entitlements->allows($user, OutboundOperation::Send->featureKey())) {
+            $this->denyCommercial($user, OutboundOperation::Send->featureKey(), $operation);
+        }
+
+        if ($operation !== OutboundOperation::Send && ! $this->entitlements->allows($user, $operation->featureKey())) {
+            $this->denyCommercial($user, $operation->featureKey(), $operation);
         }
 
         // Rollout gating never bypasses any of the checks above (domain
         // verification, entitlement, etc.) — it is strictly additive.
         $this->launchControl->assertRolloutEligible($user, $inbox, $apiKeyId);
+    }
+
+    public function assertCanSchedule(User $user, OutboundOperation $operation): void
+    {
+        if (! $this->entitlements->allows($user, 'outbound.schedule')) {
+            $this->denyCommercial($user, 'outbound.schedule', $operation);
+        }
+    }
+
+    public function assertCanManageSenderProfiles(User $user): void
+    {
+        if (! $this->entitlements->allows($user, 'outbound.sender_profiles')) {
+            $this->audit->write('commercial.sender_profile_denied', (string) $user->getKey(), $user, null, null, ['feature' => 'outbound.sender_profiles']);
+            throw new OutboundSendException('feature_not_available', 'Your current plan does not include custom sender profiles.', 403);
+        }
+    }
+
+    private function denyCommercial(User $user, string $feature, OutboundOperation $operation): never
+    {
+        $this->audit->write('commercial.outbound_feature_denied', (string) $user->getKey(), $user, null, null, [
+            'feature' => $feature,
+            'operation' => $operation->value,
+        ]);
+
+        throw new OutboundSendException('feature_not_available', 'Your current plan does not include this outbound feature.', 403);
     }
 }

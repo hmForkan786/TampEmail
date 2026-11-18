@@ -13,6 +13,7 @@ use App\Http\Resources\OutboundMessageResource;
 use App\Http\Responses\ApiErrorResponse;
 use App\Models\OutboundMessage;
 use App\Models\User;
+use App\Services\Commercial\CommercialResponseFactory;
 use App\Services\Outbound\OutboundDraftService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -22,6 +23,7 @@ final class OutboundDraftController
     public function __construct(
         private readonly OutboundDraftService $drafts,
         private readonly ScheduleOutboundDraftAction $scheduleOutboundDraft,
+        private readonly CommercialResponseFactory $commercialResponses,
     ) {}
 
     public function index(Request $request): mixed
@@ -42,7 +44,7 @@ final class OutboundDraftController
         try {
             $draft = $this->drafts->create($owner, $request->validated());
         } catch (OutboundSendException $e) {
-            return ApiErrorResponse::make($e->errorCode, $e->getMessage(), $e->status);
+            return $this->mapCommercialException($e, $owner);
         }
 
         return (new OutboundMessageResource($draft))->response()->setStatusCode(201);
@@ -62,7 +64,7 @@ final class OutboundDraftController
         try {
             $this->drafts->delete($owner, $draft, $request->integer('version') ?: null);
         } catch (OutboundSendException $e) {
-            return ApiErrorResponse::make($e->errorCode, $e->getMessage(), $e->status);
+            return $this->mapCommercialException($e, $owner);
         }
 
         return response()->json(['data' => ['deleted' => true]]);
@@ -86,6 +88,10 @@ final class OutboundDraftController
                 ? ['version' => OutboundMessage::query()->whereKey($draft)->where('user_id', $owner->getKey())->value('draft_version')]
                 : [];
 
+            if (in_array($e->errorCode, ['plan_limit_reached', 'feature_not_available'], true)) {
+                return $this->mapCommercialException($e, $owner);
+            }
+
             return ApiErrorResponse::make($e->errorCode, $e->getMessage(), $e->status, $details);
         }
     }
@@ -99,7 +105,7 @@ final class OutboundDraftController
         } try {
             return new OutboundMessageResource($this->drafts->submit($owner, $draft, $version, $apiKey ? (string) $apiKey->getKey() : null));
         } catch (OutboundSendException $e) {
-            return ApiErrorResponse::make($e->errorCode, $e->getMessage(), $e->status);
+            return $this->mapCommercialException($e, $owner);
         }
     }
 
@@ -108,5 +114,14 @@ final class OutboundDraftController
         $owner = $request->attributes->get('apiKeyOwner');
 
         return OutboundMessage::query()->whereKey($id)->where('user_id', $owner->getKey())->where('state', 'draft')->whereNull('draft_deleted_at')->first();
+    }
+
+    private function mapCommercialException(OutboundSendException $exception, User $owner): JsonResponse
+    {
+        if (in_array($exception->errorCode, ['plan_limit_reached', 'feature_not_available'], true)) {
+            return $this->commercialResponses->fromOutboundSendException($exception, $owner);
+        }
+
+        return ApiErrorResponse::make($exception->errorCode, $exception->getMessage(), $exception->status);
     }
 }

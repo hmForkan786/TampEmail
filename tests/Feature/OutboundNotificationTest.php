@@ -363,7 +363,10 @@ it('lets the signed in owner dismiss a notification from the web UI', function (
     $notification = OutboundNotification::query()->where('user_id', $ctx['user']->id)->firstOrFail();
 
     $this->actingAs($ctx['user'])
-        ->delete(route('outbound-notifications.destroy', $notification))
+        ->from(route('outbound-notifications.index'))
+        ->delete(route('outbound-notifications.destroy', $notification), [
+            '_token' => csrf_token(),
+        ])
         ->assertRedirect();
 
     expect($notification->fresh()->dismissed_at)->not->toBeNull();
@@ -379,7 +382,10 @@ it('does not let another signed in user dismiss an owners notification', functio
     $notification = OutboundNotification::query()->where('user_id', $owner['user']->id)->firstOrFail();
 
     $this->actingAs($other['user'])
-        ->delete(route('outbound-notifications.destroy', $notification))
+        ->from(route('outbound-notifications.index'))
+        ->delete(route('outbound-notifications.destroy', $notification), [
+            '_token' => csrf_token(),
+        ])
         ->assertNotFound();
 
     expect($notification->fresh()->dismissed_at)->toBeNull();

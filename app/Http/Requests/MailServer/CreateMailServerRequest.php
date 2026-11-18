@@ -6,6 +6,7 @@ namespace App\Http\Requests\MailServer;
 
 use App\Enums\MailProtocol;
 use App\Enums\MailProvider;
+use App\Enums\MailServerOperationalStatus;
 use App\Http\Responses\ApiErrorResponse;
 use Illuminate\Contracts\Validation\Validator;
 use Illuminate\Foundation\Http\FormRequest;
@@ -46,6 +47,8 @@ final class CreateMailServerRequest extends FormRequest
             'metadata' => ['sometimes', 'nullable', 'array'],
             'pool_key' => ['sometimes', 'nullable', 'string', 'max:255', 'not_regex:/^\s*$/'],
             'max_inboxes' => ['sometimes', 'nullable', 'integer', 'min:1'],
+            'max_throughput' => ['sometimes', 'nullable', 'integer', 'min:1'],
+            'operational_status' => ['sometimes', 'string', 'in:'.implode(',', array_column(MailServerOperationalStatus::cases(), 'value'))],
         ];
     }
 }

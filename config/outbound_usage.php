@@ -12,13 +12,10 @@ declare(strict_types=1);
 | separate from OutboundRateLimiter (abuse/throttling) — this file never
 | configures abuse thresholds.
 |
-| Backward-compatibility policy (see docs/OUTBOUND_USAGE_ACCOUNTING.md):
-| when a plan does not have a metered feature
-| (outbound_messages_per_period / outbound_recipients_per_period /
-| outbound_attachment_bytes_per_period) attached, that dimension is
-| treated as UNLIMITED rather than falling back to the free_defaults
-| below. free_defaults exist only for optional demo/plan seeding
-| reference and are never applied automatically.
+| A missing, null, malformed, zero, or negative outbound message quota
+| mapping fails closed. Optional recipient and attachment-byte dimensions
+| remain unlimited when absent. free_defaults exist only for optional
+| demo/plan seeding reference and are never applied automatically.
 |
 */
 
